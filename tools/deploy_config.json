@@ -1,0 +1,29 @@
+{
+  "project": "ai-analyze-core-private",
+  "runtime_destination": "C:\\Projects\\AI ANALYZE",
+  "allowed_branches": ["main"],
+  "size_limit_bytes": 5242880,
+  "allowlist": [
+    "builders/**",
+    "tests/**",
+    "validation/**",
+    "metadata/**",
+    "knowledge/**",
+    "context_packages/**",
+    "operating_pack/**",
+    "docs/**",
+    "project_discovery/**",
+    "prompts/**",
+    "summary/**",
+    "workflows/**",
+    "README.md",
+    "MASTER_PLAN.md"
+  ],
+  "denylist": [
+    ".gitignore",
+    "SOURCE_COPY_MANIFEST.sanitized.json",
+    "SOURCE_BASELINE_ADDITIONS.sanitized.json",
+    "tools/**",
+    ".deploy/**"
+  ]
+}
