@@ -1,0 +1,171 @@
+{
+  "repo": "ai-analyze-core-private",
+  "created_utc": "2026-07-18T07:11:20.280264+00:00",
+  "note": "Additions-only manifest for Pha 2.1. Does NOT modify or replace the original baseline SOURCE_COPY_MANIFEST.sanitized.json from Pha 2. No absolute local paths recorded.",
+  "associated_commit_sha": "0a9ae3e",
+  "associated_commit_message": "chore: complete AI analysis source baseline dependencies",
+  "total_files": 20,
+  "total_size_bytes": 92257,
+  "files": [
+    {
+      "relative_path": "project_discovery/data_relationship.md",
+      "sha256": "a0be7f7b89753757d1554d7e25d1bd5b294a590dffef86848552df1f37c47c79",
+      "size_bytes": 15118,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Data-flow/architecture diagram documentation.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "project_discovery/dataset_inventory.md",
+      "sha256": "8814b00b717b6c5970d1e8d56b87342cddcb93e203281a7978002338f904a348",
+      "size_bytes": 10891,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Column-level dataset/schema dictionary. Durable technical documentation.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "project_discovery/discovery_summary.md",
+      "sha256": "68ef76ec91e8adf17217a76d3aad13af3144b0458972235c137ccedfd914147b",
+      "size_bytes": 6304,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Narrative architecture/scale overview from Phase 1 discovery. Documentation, not a raw local scan dump.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "project_discovery/python_modules.md",
+      "sha256": "334eaca8cc1ad21765be277c4e0f3465b03bf4b7239e35f58a3377b3da4f13c9",
+      "size_bytes": 9247,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Module-by-module role/data-source/frequency documentation table. Durable technical reference.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "project_discovery/quality_assessment.md",
+      "sha256": "a1e5bfe1407fdc0857f36c61612658a8fb36844bf29b3ed88b184f21baca8895",
+      "size_bytes": 7768,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Qualitative code-quality review commentary. Internal documentation, no secrets/data.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "project_discovery/schema_summary.md",
+      "sha256": "77d44ddf64847f2a42b4c23d57065bd9f2bff828534e9624ebf8807cb6443a8d",
+      "size_bytes": 7977,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "SQL CREATE TABLE schema reference for vn_stock.db tables. Durable technical documentation.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "prompts/ai_analysis_templates.md",
+      "sha256": "a549a02918927e9c9ec6e60c467f28cc854344a8de84e91377ad948f9b37870c",
+      "size_bytes": 4546,
+      "classification": "SOURCE_REQUIRED",
+      "dependency_evidence": "Read directly by builders/run_final_qa.py (QA011 guardrail-text check) and listed in reference_files of all 3 operating_pack/*/upload_manifest.json, checked for existence by builders/validate_operating_pack.py. Confirmed via Phase-2 recovery test FAIL evidence.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "summary/ai_readiness_score.json",
+      "sha256": "1573aab50fe4f94714a0b2075ddab7ba66990816a3dfc24ca2303d50024b6f19",
+      "size_bytes": 2844,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Same summary/ layer, clean content (aggregate dataset-level scores, no per-ticker real data), not itself in required_summary_files.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "summary/data_freshness_summary.json",
+      "sha256": "89a7d19f64335e9d931ecb1c40cb4c8dd32c5c4fef68aae49f7e837e55e1dcd4",
+      "size_bytes": 2788,
+      "classification": "SOURCE_REQUIRED",
+      "dependency_evidence": "Same as summary_manifest.json -- in required_summary_files.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "summary/dataset_coverage_summary.json",
+      "sha256": "a5d50fc676d365354f7ecd2f2a3d123e7bb9f3134571ea2a39134d3be8e64364",
+      "size_bytes": 3694,
+      "classification": "SOURCE_REQUIRED",
+      "dependency_evidence": "Same as summary_manifest.json -- in required_summary_files.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "summary/financial_coverage_summary.json",
+      "sha256": "df7641f4f15ef07f7e519204270b5efca2768a51e8fd48935194339e5db1f9c2",
+      "size_bytes": 1883,
+      "classification": "SOURCE_REQUIRED",
+      "dependency_evidence": "Same as summary_manifest.json -- in required_summary_files. Content is aggregate/methodology only, no per-ticker real financial values.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "summary/price_coverage_summary.json",
+      "sha256": "0da2b7fdfbf1adce8499449939a150f2b19667ca2367e16b662734a41408a547",
+      "size_bytes": 1165,
+      "classification": "SOURCE_REQUIRED",
+      "dependency_evidence": "Same as summary_manifest.json -- in required_summary_files.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "summary/summary_layer_readme.md",
+      "sha256": "4252db177b39fc692d37f23e3aa4150882017b137ace25b8c8ff9cdf9f996104",
+      "size_bytes": 2795,
+      "classification": "SOURCE_REQUIRED",
+      "dependency_evidence": "Listed in reference_files of operating_pack/*/upload_manifest.json; existence checked by validate_operating_pack.py. Confirmed via Phase-2 recovery test FAIL evidence.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "summary/summary_manifest.json",
+      "sha256": "f0f2bd9053a5c942f49cf95c15967ebc3bba6a724e750ece74f877f799fb375b",
+      "size_bytes": 4393,
+      "classification": "SOURCE_REQUIRED",
+      "dependency_evidence": "Listed in builders/build_ticker_context_config.json:required_summary_files; read at runtime by build_ticker_context.py:load_summary_layer(), called from main().",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "summary/ticker_coverage_summary.json",
+      "sha256": "25ca5598a7a9ebff858e8097d5d6eadf84492bff59cc7924edc86cf93ff1cc34",
+      "size_bytes": 1406,
+      "classification": "SOURCE_REQUIRED",
+      "dependency_evidence": "Same as summary_manifest.json -- in required_summary_files.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "workflows/ai_workflow_manifest.json",
+      "sha256": "db2b0acf1abb8b048a8320f4e8fd703b915004599b6ba944ff865b504e8d3835",
+      "size_bytes": 2278,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "JSON workflow specification (design/scaffold, 'chua co orchestrator' per workflow_readme.md). No runtime Python import found; part of MANAGED_DIRS in run_final_qa.py/freeze_v1_release.py.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "workflows/data_audit_workflow.json",
+      "sha256": "4111b11e9aa16a9b047881648bcd4f0862adbc953466e5aabb46f77fc3be5dc6",
+      "size_bytes": 1759,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Same as ai_workflow_manifest.json.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "workflows/screening_workflow.json",
+      "sha256": "0c77f6fbe51dba05094e0ee698557f2e91c7750c8e155303057cd0b48a4d6500",
+      "size_bytes": 1888,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Same as ai_workflow_manifest.json.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "workflows/ticker_analysis_workflow.json",
+      "sha256": "c060706d701001ba97a27719cc8498b9e64f22b117660addc48f5d04ec680a57",
+      "size_bytes": 1987,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Same as ai_workflow_manifest.json.",
+      "source_commit": "0a9ae3e"
+    },
+    {
+      "relative_path": "workflows/workflow_readme.md",
+      "sha256": "44d3a3f03b16b1c058d59eaa8130973933841bb06ece74d871bed1d609ecdf46",
+      "size_bytes": 1526,
+      "classification": "SOURCE_OPTIONAL",
+      "dependency_evidence": "Documentation describing the 4 workflow spec files above.",
+      "source_commit": "0a9ae3e"
+    }
+  ]
+}
