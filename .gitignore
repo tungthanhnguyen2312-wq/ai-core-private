@@ -1,0 +1,32 @@
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+exports/context_packages/
+exports/**/*.json
+reports/
+logs/
+*.log
+*.bak
+
+.claude/
+.agents/
+.vscode/
+.idea/
+
+# staging-tooling artifact: contains absolute local paths, kept out of git.
+# Tracked counterpart: SOURCE_COPY_MANIFEST.sanitized.json
+SOURCE_COPY_MANIFEST.json

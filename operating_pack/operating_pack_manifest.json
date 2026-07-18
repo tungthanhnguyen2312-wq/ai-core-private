@@ -1,0 +1,13 @@
+{
+  "pack_version":"1.0.0-rc",
+  "generated_at":"2026-07-13T00:00:00+07:00",
+  "platforms":["gemini","chatgpt","claude"],
+  "common_files":["operating_pack/common/system_instructions.md","operating_pack/common/operator_checklist.md","operating_pack/common/conflict_handling.md","operating_pack/common/context_budget_policy.json"],
+  "platform_manifests":["operating_pack/gemini/upload_manifest.json","operating_pack/chatgpt/upload_manifest.json","operating_pack/claude/upload_manifest.json"],
+  "task_context_rule":"Attach 1 package for single ticker, 2 for comparison, and at most 10 plus batch manifest/validation for screening.",
+  "validation_required":true,
+  "external_upload_performed":false,
+  "model_call_performed":false,
+  "warnings":["Platform UI and limits may change.","Do not upload raw VNSTOCK or sensitive personal data."],
+  "provenance":[{"source":"Phase 1-10 artifacts","transformation":"Select minimal operating knowledge and platform-specific instructions"}]
+}

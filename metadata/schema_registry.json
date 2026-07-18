@@ -1,0 +1,92 @@
+{
+  "metadata_version": "1.0.0",
+  "global_conventions": {
+    "encoding": "UTF-8",
+    "date_format": "YYYY-MM-DD",
+    "ticker_format": "uppercase, usually 3-4 characters",
+    "sentinels": {"-1": "queried but no numeric value", "NULL": "context-dependent missing or not collected", "True/False": "CSV boolean strings"}
+  },
+  "schemas": {
+    "ohlcv": [
+      {"name":"ticker","dtype":"string","semantic_type":"security_identifier","unit":null,"nullable":false,"missing_rule":"reject","description":"Mã chứng khoán."},
+      {"name":"date","dtype":"date_string","semantic_type":"trading_date","unit":null,"nullable":false,"missing_rule":"reject","description":"Ngày giao dịch."},
+      {"name":"open","dtype":"float","semantic_type":"price","unit":"VND","nullable":true,"missing_rule":"NULL is missing","description":"Giá mở cửa, đã scale x1000."},
+      {"name":"high","dtype":"float","semantic_type":"price","unit":"VND","nullable":true,"missing_rule":"NULL is missing","description":"Giá cao nhất."},
+      {"name":"low","dtype":"float","semantic_type":"price","unit":"VND","nullable":true,"missing_rule":"NULL is missing","description":"Giá thấp nhất."},
+      {"name":"close","dtype":"float","semantic_type":"price","unit":"VND","nullable":true,"missing_rule":"NULL is missing","description":"Giá đóng cửa."},
+      {"name":"volume","dtype":"integer","semantic_type":"trading_volume","unit":"shares","nullable":true,"missing_rule":"NULL is missing","description":"Khối lượng giao dịch."},
+      {"name":"source","dtype":"string","semantic_type":"data_provider","unit":null,"nullable":true,"missing_rule":"NULL means unknown provider","description":"VCI hoặc KBS."}
+    ],
+    "meta": [
+      {"name":"ticker","dtype":"string","semantic_type":"security_identifier","unit":null,"nullable":false,"missing_rule":"reject","description":"Mã chứng khoán."},
+      {"name":"status","dtype":"enum","semantic_type":"crawl_status","unit":null,"nullable":true,"missing_rule":"NULL means unknown progress","description":"done, empty hoặc failed."},
+      {"name":"rows","dtype":"integer","semantic_type":"row_count","unit":"rows","nullable":true,"missing_rule":"NULL is unknown","description":"Số dòng giá."},
+      {"name":"updated","dtype":"datetime_string","semantic_type":"update_time","unit":null,"nullable":true,"missing_rule":"NULL means no known update","description":"Thời điểm cập nhật tiến độ."}
+    ],
+    "metadata": [
+      {"name":"ticker","dtype":"string","semantic_type":"security_identifier","unit":null,"nullable":false,"missing_rule":"reject","description":"Mã chứng khoán."},
+      {"name":"exchange","dtype":"enum","semantic_type":"exchange","unit":null,"nullable":true,"missing_rule":"NULL is unknown","description":"HSX, HNX, UPCOM hoặc DELISTED."},
+      {"name":"industry","dtype":"string","semantic_type":"icb_level_2_industry","unit":null,"nullable":true,"missing_rule":"NULL is unknown","description":"Ngành ICB cấp 2."},
+      {"name":"foreign_room_pct","dtype":"float","semantic_type":"percentage","unit":"percent_remaining","nullable":true,"missing_rule":"NULL is missing","description":"Phần trăm room ngoại còn trống."},
+      {"name":"pe","dtype":"float","semantic_type":"valuation_ratio","unit":"times","nullable":true,"missing_rule":"NULL is missing","description":"P/E quý mới nhất."},
+      {"name":"pb","dtype":"float","semantic_type":"valuation_ratio","unit":"times","nullable":true,"missing_rule":"NULL is missing","description":"P/B quý mới nhất."},
+      {"name":"roe","dtype":"float","semantic_type":"profitability_ratio","unit":"percent","nullable":true,"missing_rule":"NULL is missing","description":"ROE trailing bốn quý."},
+      {"name":"market_cap","dtype":"float","semantic_type":"market_capitalization","unit":"VND","nullable":true,"missing_rule":"NULL is missing","description":"Vốn hóa."},
+      {"name":"shares_outstanding","dtype":"float","semantic_type":"share_count","unit":"shares","nullable":true,"missing_rule":"NULL is missing","description":"Cổ phiếu lưu hành."},
+      {"name":"free_float_est","dtype":"float","semantic_type":"estimated_ratio","unit":"fraction_0_1","nullable":true,"missing_rule":"NULL is missing","description":"Proxy free-float, không phải số chính thức."},
+      {"name":"dividend_yield","dtype":"float","semantic_type":"percentage","unit":"percent","nullable":true,"missing_rule":"-1 means queried with no value; NULL means not collected or missing","description":"Tỷ suất cổ tức trailing."},
+      {"name":"margin_status","dtype":"enum","semantic_type":"trading_risk_status","unit":null,"nullable":true,"missing_rule":"NULL or empty means clean/no flagged status","description":"margin_cut, warning, control hoặc suspend."},
+      {"name":"updated","dtype":"datetime_string","semantic_type":"update_time","unit":null,"nullable":true,"missing_rule":"NULL means unknown","description":"Mốc resume theo ticker."}
+    ],
+    "screen_snapshot": [
+      {"name":"ticker","dtype":"string","semantic_type":"security_identifier","unit":null,"nullable":false,"missing_rule":"reject","description":"Mã chứng khoán."},
+      {"name":"date","dtype":"date_string","semantic_type":"snapshot_date","unit":null,"nullable":false,"missing_rule":"reject","description":"Phiên gần nhất của riêng ticker."},
+      {"name":"close","dtype":"float","semantic_type":"price","unit":"VND","nullable":true,"missing_rule":"empty is missing","description":"Giá đóng cửa."},
+      {"name":"chg_today_pct","dtype":"float","semantic_type":"return","unit":"percent","nullable":true,"missing_rule":"empty is missing","description":"Biến động phiên."},
+      {"name":"gtgd20_ty","dtype":"float","semantic_type":"liquidity","unit":"billion_VND_per_session","nullable":true,"missing_rule":"empty is missing","description":"GTGD trung bình 20 phiên."},
+      {"name":"rel_vol","dtype":"float","semantic_type":"relative_volume","unit":"ratio","nullable":true,"missing_rule":"empty is missing","description":"Khối lượng tương đối."},
+      {"name":"rsi14","dtype":"float","semantic_type":"technical_indicator","unit":"index_0_100","nullable":true,"missing_rule":"empty is missing","description":"RSI 14."},
+      {"name":"macd_hist","dtype":"float","semantic_type":"technical_indicator","unit":"price_derived","nullable":true,"missing_rule":"empty is missing","description":"MACD histogram."},
+      {"name":"bb_pctb","dtype":"float","semantic_type":"technical_indicator","unit":"ratio","nullable":true,"missing_rule":"empty is missing","description":"Bollinger percent B."},
+      {"name":"atr_pct","dtype":"float","semantic_type":"volatility","unit":"percent","nullable":true,"missing_rule":"empty is missing","description":"ATR theo phần trăm."},
+      {"name":"above_sma50","dtype":"string_boolean","semantic_type":"boolean_flag","unit":null,"nullable":true,"missing_rule":"parse exact True/False strings; empty is missing","description":"Giá trên SMA50."},
+      {"name":"above_sma200","dtype":"string_boolean","semantic_type":"boolean_flag","unit":null,"nullable":true,"missing_rule":"parse exact True/False strings; empty is missing","description":"Giá trên SMA200."},
+      {"name":"golden_cross","dtype":"string_boolean","semantic_type":"boolean_flag","unit":null,"nullable":true,"missing_rule":"parse exact True/False strings; empty is missing","description":"Golden cross."},
+      {"name":"pct_from_52w_high","dtype":"float","semantic_type":"distance_return","unit":"percent","nullable":true,"missing_rule":"empty is missing","description":"Khoảng cách từ đỉnh 52 tuần."},
+      {"name":"near_52w_high","dtype":"string_boolean","semantic_type":"boolean_flag","unit":null,"nullable":true,"missing_rule":"parse exact True/False strings; empty is missing","description":"Cờ gần đỉnh 52 tuần."},
+      {"name":"pct_above_52w_low","dtype":"float","semantic_type":"distance_return","unit":"percent","nullable":true,"missing_rule":"empty is missing","description":"Khoảng cách trên đáy 52 tuần."},
+      {"name":"ret_1m/ret_3m/ret_6m/ret_12m","dtype":"float","semantic_type":"period_return","unit":"percent","nullable":true,"missing_rule":"empty is missing","description":"Lợi suất theo kỳ."},
+      {"name":"structure","dtype":"enum","semantic_type":"market_structure","unit":null,"nullable":true,"missing_rule":"empty is missing","description":"up, side hoặc down."},
+      {"name":"dist_swing_low_pct","dtype":"float","semantic_type":"distance_return","unit":"percent","nullable":true,"missing_rule":"empty is missing","description":"Khoảng cách tới swing low."},
+      {"name":"rs_rating","dtype":"integer","semantic_type":"relative_strength_score","unit":"score_0_99","nullable":true,"missing_rule":"empty is missing","description":"Xếp hạng sức mạnh tương đối."},
+      {"name":"exchange/industry/foreign_room_pct/pe/pb/roe/free_float_est/margin_status","dtype":"mixed","semantic_type":"joined_metadata","unit":"field_specific","nullable":true,"missing_rule":"inherit metadata rules","description":"Các trường join từ metadata."}
+    ],
+    "financial_snapshot": [
+      {"name":"ticker","dtype":"string","semantic_type":"security_identifier","unit":null,"nullable":false,"missing_rule":"reject","description":"Mã chứng khoán."},
+      {"name":"period","dtype":"period_string","semantic_type":"reporting_period","unit":null,"nullable":false,"missing_rule":"reject","description":"YYYY-QX hoặc năm."},
+      {"name":"period_type","dtype":"enum","semantic_type":"period_type","unit":null,"nullable":false,"missing_rule":"reject","description":"quarter hoặc year."},
+      {"name":"revenue/net_profit/gross_profit/operating_profit","dtype":"float","semantic_type":"income_statement_amount","unit":"source_currency_amount","nullable":true,"missing_rule":"empty is missing","description":"Các chỉ tiêu kết quả kinh doanh."},
+      {"name":"total_assets/total_liabilities/equity/cash/inventory/receivables/current_assets/current_liabilities/debt","dtype":"float","semantic_type":"balance_sheet_amount","unit":"source_currency_amount","nullable":true,"missing_rule":"empty is missing","description":"Các chỉ tiêu bảng cân đối."},
+      {"name":"operating_cash_flow/capex/free_cash_flow","dtype":"float","semantic_type":"cash_flow_amount","unit":"source_currency_amount","nullable":true,"missing_rule":"empty is missing","description":"Các chỉ tiêu dòng tiền."},
+      {"name":"shares_outstanding/book_value/eps_calc","dtype":"float","semantic_type":"per_share_or_share_count","unit":"field_specific","nullable":true,"missing_rule":"empty is missing","description":"Chỉ tiêu cổ phần; một số là proxy."},
+      {"name":"growth/margin/roe/roa/leverage/liquidity/turnover_ratios","dtype":"float","semantic_type":"derived_financial_ratio","unit":"percent_or_ratio","nullable":true,"missing_rule":"empty is missing","description":"Nhóm tỷ số dẫn xuất theo schema discovery."}
+    ],
+    "ta_signals": [
+      {"name":"ticker","dtype":"string","semantic_type":"security_identifier","unit":null,"nullable":false,"missing_rule":"reject","description":"Mã chứng khoán."},
+      {"name":"date","dtype":"date_string","semantic_type":"scan_date","unit":null,"nullable":false,"missing_rule":"reject","description":"Ngày quét."},
+      {"name":"patterns","dtype":"delimited_string","semantic_type":"candlestick_patterns","unit":null,"nullable":true,"missing_rule":"empty means no pattern","description":"Danh sách phân cách bằng dấu chấm phẩy."},
+      {"name":"smc","dtype":"delimited_string","semantic_type":"smc_signals","unit":null,"nullable":true,"missing_rule":"empty means no signal","description":"Danh sách vùng/tín hiệu SMC."},
+      {"name":"confluence","dtype":"string_boolean","semantic_type":"boolean_flag","unit":null,"nullable":true,"missing_rule":"parse True/False strings","description":"Có hội tụ tín hiệu."},
+      {"name":"direction","dtype":"enum","semantic_type":"signal_direction","unit":null,"nullable":true,"missing_rule":"empty is missing","description":"bullish, bearish hoặc neutral."}
+    ],
+    "macro_snapshot": [
+      {"name":"series","dtype":"string","semantic_type":"macro_series_identifier","unit":null,"nullable":false,"missing_rule":"reject","description":"Mã chuỗi."},
+      {"name":"name","dtype":"string","semantic_type":"display_name","unit":null,"nullable":true,"missing_rule":"empty is missing","description":"Tên hiển thị."},
+      {"name":"unit","dtype":"string","semantic_type":"measurement_unit","unit":null,"nullable":true,"missing_rule":"empty requires cautious interpretation","description":"Đơn vị chuỗi."},
+      {"name":"freq","dtype":"string","semantic_type":"observation_frequency","unit":null,"nullable":true,"missing_rule":"empty is unknown","description":"Tần suất."},
+      {"name":"date","dtype":"date_string","semantic_type":"observation_date","unit":null,"nullable":false,"missing_rule":"reject","description":"Ngày quan sát mới nhất."},
+      {"name":"value","dtype":"float","semantic_type":"macro_value","unit":"defined_by_unit_field","nullable":true,"missing_rule":"empty is missing","description":"Giá trị mới nhất."},
+      {"name":"chg_prev/chg_1m/chg_1y","dtype":"float","semantic_type":"change","unit":"percentage_points_if_percent_series_else_percent_change","nullable":true,"missing_rule":"empty is missing","description":"Biến động theo kỳ."}
+    ]
+  }
+}

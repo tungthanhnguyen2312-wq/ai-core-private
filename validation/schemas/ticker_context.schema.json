@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ai-analyze/schemas/ticker_context.schema.json",
+  "title": "VNSTOCK Ticker Context Package",
+  "type": "object",
+  "$defs": {
+    "metricMeta": {
+      "type": "object",
+      "required": ["value","status","reason","source","period","basis","raw_item_id","raw_label","confidence"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["reported","derived","proxy","source_empty","mapping_missing","insufficient_periods","parse_failed","stale","not_applicable","not_queried","network_failed","unsupported","derivation_not_implemented","unit_unknown","period_basis_unknown"]
+        },
+        "confidence": {"type":["number","null"],"minimum":0,"maximum":1},
+        "formula": {"type":"string"},
+        "inputs": {"type":"array","items":{"type":"string"}},
+        "details": {"type":"object"}
+      }
+    },
+    "sectionCoverage": {
+      "type":"object",
+      "required":["status","coverage","available_metrics","expected_metrics","missing_metrics","available_metric_names","not_applicable_metrics"],
+      "properties": {
+        "status":{"type":"string","enum":["complete","partial","missing","not_applicable"]},
+        "coverage":{"type":"number","minimum":0,"maximum":1},
+        "available_metrics":{"type":"integer","minimum":0},
+        "expected_metrics":{"type":"integer","minimum":0},
+        "missing_metrics":{"type":"array","items":{"type":"string"}},
+        "available_metric_names":{"type":"array","items":{"type":"string"}},
+        "not_applicable_metrics":{"type":"array","items":{"type":"string"}}
+      }
+    }
+  },
+  "required": ["ticker","generated_at","mode","data_sources","latest_available_dates","identity","metadata","price_summary","financial_summary","valuation_inputs","technical_summary","news_summary","shareholder_summary","risks","data_quality","provenance"],
+  "properties": {
+    "ticker": {"type":"string","pattern":"^[A-Z0-9]{2,10}$"},
+    "generated_at": {"type":"string"},
+    "mode": {"const":"test_context_package"},
+    "data_sources": {"type":"array","items":{"type":"string"}},
+    "latest_available_dates": {"type":"object"},
+    "identity": {"type":"object","required":["ticker"]},
+    "metadata": {"type":"object"},
+    "price_summary": {"type":"object"},
+    "financial_summary": {
+      "type":"object",
+      "properties": {
+        "operating_cash_flow":{"type":["number","null"]},
+        "operating_cash_flow_meta":{"$ref":"#/$defs/metricMeta"},
+        "ebit":{"type":["number","null"]},
+        "ebit_meta":{"$ref":"#/$defs/metricMeta"},
+        "ebitda":{"type":["number","null"]},
+        "ebitda_meta":{"$ref":"#/$defs/metricMeta"},
+        "interest_expense":{"type":["number","null"]},
+        "interest_expense_meta":{"$ref":"#/$defs/metricMeta"},
+        "retained_earnings":{"type":["number","null"]},
+        "retained_earnings_meta":{"$ref":"#/$defs/metricMeta"},
+        "depreciation":{"type":["number","null"]},
+        "depreciation_meta":{"$ref":"#/$defs/metricMeta"},
+        "sga":{"type":["number","null"]},
+        "sga_meta":{"$ref":"#/$defs/metricMeta"},
+        "coverage":{"$ref":"#/$defs/sectionCoverage"},
+        "coverage_scope":{"type":"array","items":{"type":"string"}},
+        "metric_contract_version":{"type":"string"}
+      }
+    },
+    "valuation_inputs": {"type":"object"},
+    "technical_summary": {"type":"object"},
+    "news_summary": {
+      "type":"object",
+      "properties": {
+        "meta":{"$ref":"#/$defs/metricMeta"},
+        "coverage":{"$ref":"#/$defs/sectionCoverage"},
+        "metric_contract_version":{"type":"string"}
+      }
+    },
+    "shareholder_summary": {
+      "type":"object",
+      "properties": {
+        "status":{"type":"string","enum":["done","source_empty","unsupported","parse_failed","network_failed","stale","manual_override","not_queried"]},
+        "reason":{"type":["string","null"]},
+        "attempts":{"type":"array","items":{"type":"object"}},
+        "sources_attempted":{"type":"array","items":{"type":"string"}},
+        "latest_as_of_date":{"type":["string","null"]},
+        "freshness":{"type":["object","null"]},
+        "manual_override_count":{"type":"integer","minimum":0},
+        "major_shareholders_count":{"type":["integer","null"]},
+        "meta":{"$ref":"#/$defs/metricMeta"},
+        "coverage":{"$ref":"#/$defs/sectionCoverage"},
+        "metric_contract_version":{"type":"string"}
+      }
+    },
+    "risks": {"type":"array"},
+    "data_quality": {
+      "type":"object",
+      "required":["validation_status","missing_sections","warnings","not_fully_confirmed"],
+      "properties": {
+        "validation_status":{"type":"string"},
+        "validation_profile":{"type":"string"},
+        "profile_validation_status":{"type":"string","enum":["pass","fail"]},
+        "missing_sections":{"type":"array","items":{"type":"string"}},
+        "warnings":{"type":"array","items":{"type":"string"}},
+        "not_fully_confirmed":{"type":"array","items":{"type":"string"}},
+        "metric_contract_version":{"type":"string"},
+        "section_coverage":{"type":"object"}
+      }
+    },
+    "provenance": {"type":"array","minItems":1,"items":{"type":"object"}}
+  }
+}

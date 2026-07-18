@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ai-analyze/schemas/context_coverage_report.schema.json",
+  "title": "Context Coverage Report",
+  "type": "object",
+  "required": [
+    "report_version",
+    "ticker",
+    "validation_profile",
+    "schema_valid",
+    "required_sections_present",
+    "minimum_coverage_passed",
+    "profile_valid",
+    "overall_status",
+    "overall_coverage",
+    "blocking_missing",
+    "non_blocking_missing",
+    "coverage",
+    "stale_metrics",
+    "proxy_metrics",
+    "not_applicable_metrics"
+  ],
+  "properties": {
+    "report_version": {"type": "string"},
+    "ticker": {"type": ["string", "null"]},
+    "validation_profile": {"type": "string"},
+    "schema_valid": {"type": "boolean"},
+    "required_sections_present": {"type": "boolean"},
+    "minimum_coverage_passed": {"type": "boolean"},
+    "profile_valid": {"type": "boolean"},
+    "overall_status": {"type": "string", "enum": ["complete", "partial", "missing", "invalid"]},
+    "overall_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+    "blocking_missing": {"type": "array", "items": {"type": "object"}},
+    "non_blocking_missing": {"type": "array", "items": {"type": "object"}},
+    "coverage": {"type": "object"},
+    "stale_metrics": {"type": "array", "items": {"type": "object"}},
+    "proxy_metrics": {"type": "array", "items": {"type": "object"}},
+    "not_applicable_metrics": {"type": "array", "items": {"type": "object"}}
+  }
+}

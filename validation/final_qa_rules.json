@@ -1,0 +1,22 @@
+{
+  "rules_version":"1.0.0",
+  "release_target":"v1.0",
+  "severity_order":["critical","high","medium","low","info"],
+  "release_gate":{"critical_allowed":0,"high_allowed":0},
+  "checks":[
+    {"id":"QA001","name":"json_parse","severity":"critical","scope":"AI ANALYZE/**/*.json","requirement":"Every JSON file parses as UTF-8 JSON."},
+    {"id":"QA002","name":"utf8_text","severity":"high","scope":"AI ANALYZE text artifacts","requirement":"Every managed text file decodes as strict UTF-8."},
+    {"id":"QA003","name":"python_ast","severity":"critical","scope":"builders/**/*.py and tests/**/*.py","requirement":"Every Python file parses successfully."},
+    {"id":"QA004","name":"test_suite","severity":"critical","scope":"tests/test_phase*.py","requirement":"All discovered Phase tests pass."},
+    {"id":"QA005","name":"schema_contracts","severity":"high","scope":"10 context packages plus automated manifest/report","requirement":"Selected release artifacts validate against the documented schema subset."},
+    {"id":"QA006","name":"context_required_fields","severity":"high","scope":"exports/context_packages/*_context.json","requirement":"Required sections, provenance, warnings and missing_sections are present."},
+    {"id":"QA007","name":"path_guards","severity":"critical","scope":"writer scripts","requirement":"Traversal/outside-output and overwrite attempts are rejected; dry-run performs no writes."},
+    {"id":"QA008","name":"vnstock_read_only","severity":"critical","scope":"builders/*.py","requirement":"No write-mode SQLite connection, crawler execution or VNSTOCK file write path is implemented."},
+    {"id":"QA009","name":"batch_limit","severity":"high","scope":"ticker context builder","requirement":"A batch above 10 tickers is rejected."},
+    {"id":"QA010","name":"provenance_fingerprint","severity":"high","scope":"catalog/manifest/staleness/rebuild artifacts","requirement":"Provenance exists and fingerprint limitations are explicit."},
+    {"id":"QA011","name":"investment_guardrail","severity":"high","scope":"prompts/workflows/docs","requirement":"Operating prompts prohibit guaranteed buy/sell recommendations and fabricated data."},
+    {"id":"QA012","name":"known_limitations","severity":"medium","scope":"release-facing Markdown","requirement":"Release-facing documentation states known limitations and AI usage guidance."}
+  ],
+  "limitations":["Static checks cannot prove absence of every runtime side effect.","The JSON Schema validator implements a documented subset, not full Draft 2020-12."],
+  "provenance":[{"source":"Phase 1-9 safety contracts and tests","transformation":"Consolidated into final v1.0 QA gate"}]
+}

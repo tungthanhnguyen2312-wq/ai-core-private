@@ -1,0 +1,8 @@
+{
+  "report_version":"2.0.0",
+  "generated_at":"2026-01-03T00:00:00+07:00",
+  "summary":{"package_count":1,"json_parse_valid":1,"non_strict_pass":1,"strict_pass":0,"provenance_present":1},
+  "results":[{"ticker":"TEST","file":"TEST_context.json","json_parse":"valid","required_sections_present":true,"missing_sections":["news_summary"],"warnings":[],"not_fully_confirmed":["news mapping"],"provenance_status":"present","provenance_count":1,"non_strict":"pass","non_strict_errors":[],"strict":"fail","strict_errors":["missing"]}],
+  "warnings":[],
+  "provenance":[{"source":"fixture"}]
+}

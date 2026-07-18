@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.4.0",
+  "package_type": "ticker_context",
+  "ticker": null,
+  "generated_at": null,
+  "analysis_cutoff": null,
+  "data_sources": [],
+  "latest_available_dates": {"price":null,"technical":null,"metadata_updated":null,"financial_period":null,"shareholder_updated":null,"news_published_utc":null},
+  "identity": {"ticker":null,"exchange":null,"industry":null,"activity_status":"unknown","status_basis":null},
+  "metadata": {"point_in_time":true,"foreign_room_pct":null,"market_cap":null,"shares_outstanding":null,"free_float_est":null,"free_float_is_proxy":true,"dividend_yield":null,"margin_status":null,"updated":null},
+  "price_summary": {"latest_date":null,"close":null,"currency":"VND","history_date_min":null,"history_date_max":null,"observation_count":null,"gtgd20_ty":null,"rel_vol":null,"returns":{},"adjustment_status":"not fully confirmed"},
+  "financial_summary": {"latest_period":null,"period_type":null,"unit_status":"not fully confirmed","periods":[],"reported_fields":{},"derived_ratios":{},"proxy_fields":[]},
+  "valuation_inputs": {"as_of":null,"price":null,"market_cap":null,"earnings_basis":null,"net_profit":null,"equity":null,"debt":null,"cash":null,"shares_outstanding":null,"computed_multiples":{}},
+  "technical_summary": {"date":null,"rsi14":null,"macd_hist":null,"above_sma50":null,"above_sma200":null,"golden_cross":null,"structure":null,"rs_rating":null,"patterns":[],"smc":[],"direction":null},
+  "news_summary": {"cutoff":null,"items":[],"ticker_linkage_method":null,"linkage_warning":"No canonical ticker field in source news."},
+  "shareholder_summary": {"point_in_time":true,"status":"not_queried","reason":null,"attempts":[],"sources_attempted":[],"latest_as_of_date":null,"freshness":null,"manual_override_count":0,"updated_at":null,"progress_status":null,"holders":[],"history_available":false},
+  "risks": [],
+  "data_quality": {"validation_status":"not_run","stale":null,"sentinels_normalized":false,"boolean_strings_normalized":false,"unit_scale_checked":false,"conflicts":[],"limitations":[]},
+  "missing_sections": [],
+  "warnings": [],
+  "provenance": []
+}

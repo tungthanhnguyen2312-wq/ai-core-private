@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ai-analyze/schemas/batch_manifest.schema.json",
+  "title": "Automated Batch Manifest",
+  "type": "object",
+  "required": ["manifest_version","generated_at","batch_size","tickers","packages","source_fingerprints","stale_detection_rule","warnings","provenance"],
+  "properties": {
+    "manifest_version":{"type":"string"},
+    "generated_at":{"type":"string"},
+    "batch_size":{"type":"integer","minimum":1,"maximum":10},
+    "tickers":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"string"}},
+    "packages":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["ticker","path","package_fingerprint"]}},
+    "source_fingerprints":{"type":"array","items":{"type":"object","required":["path","exists","method"]}},
+    "stale_detection_rule":{"type":"string"},
+    "warnings":{"type":"array","items":{"type":"string"}},
+    "provenance":{"type":"array","minItems":1,"items":{"type":"object"}}
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "config_version": "1.0.0",
+  "protected_contracts": {
+    "valuation": {
+      "blocking_metrics_contains": ["cash_flow.operating_cash_flow"],
+      "required_sections_contains": ["cash_flow"]
+    },
+    "forensic": {
+      "blocking_metrics_contains": ["cash_flow.operating_cash_flow", "financial_advanced.retained_earnings"],
+      "required_sections_contains": ["financial_advanced", "cash_flow"]
+    }
+  },
+  "status_classification": {
+    "available": ["reported", "derived", "proxy"],
+    "missing": ["source_empty", "mapping_missing", "insufficient_periods", "parse_failed", "stale", "not_queried", "network_failed", "unsupported", "derivation_not_implemented", "unit_unknown", "period_basis_unknown"],
+    "excluded": ["not_applicable"]
+  },
+  "sections": {
+    "metadata": {
+      "context_path": "metadata",
+      "metrics": [
+        {"metric": "exchange", "value_path": "metadata.exchange", "default_status": "reported"},
+        {"metric": "industry", "value_path": "metadata.industry", "default_status": "reported"},
+        {"metric": "market_cap", "value_path": "metadata.market_cap", "default_status": "reported"},
+        {"metric": "shares_outstanding", "value_path": "metadata.shares_outstanding", "default_status": "reported"},
+        {"metric": "free_float_est", "value_path": "metadata.free_float_est", "default_status": "proxy"}
+      ]
+    },
+    "price": {
+      "context_path": "price_summary",
+      "metrics": [
+        {"metric": "last_date", "value_path": "price_summary.last_date", "default_status": "reported"},
+        {"metric": "latest_close", "value_path": "price_summary.latest_close", "default_status": "reported"},
+        {"metric": "trading_days", "value_path": "price_summary.trading_days", "default_status": "reported"},
+        {"metric": "avg_volume_20d", "value_path": "price_summary.avg_volume_20d", "default_status": "derived"},
+        {"metric": "return_1m_pct", "value_path": "price_summary.return_1m_pct", "default_status": "derived"}
+      ]
+    },
+    "financial_core": {
+      "context_path": "financial_summary",
+      "metrics": [
+        {"metric": "revenue", "value_path": "financial_summary.revenue", "default_status": "reported"},
+        {"metric": "net_profit", "value_path": "financial_summary.net_profit", "default_status": "reported"},
+        {"metric": "total_assets", "value_path": "financial_summary.total_assets", "default_status": "reported"},
+        {"metric": "equity", "value_path": "financial_summary.equity", "default_status": "reported"},
+        {"metric": "total_liabilities", "value_path": "financial_summary.total_liabilities", "default_status": "reported"}
+      ]
+    },
+    "financial_advanced": {
+      "context_path": "financial_summary",
+      "metrics": [
+        {"metric": "ebit", "value_path": "financial_summary.ebit", "meta_path": "financial_summary.ebit_meta"},
+        {"metric": "ebitda", "value_path": "financial_summary.ebitda", "meta_path": "financial_summary.ebitda_meta"},
+        {"metric": "interest_expense", "value_path": "financial_summary.interest_expense", "meta_path": "financial_summary.interest_expense_meta"},
+        {"metric": "retained_earnings", "value_path": "financial_summary.retained_earnings", "meta_path": "financial_summary.retained_earnings_meta"},
+        {"metric": "depreciation", "value_path": "financial_summary.depreciation", "meta_path": "financial_summary.depreciation_meta"},
+        {"metric": "sga", "value_path": "financial_summary.sga", "meta_path": "financial_summary.sga_meta"}
+      ]
+    },
+    "cash_flow": {
+      "context_path": "financial_summary",
+      "metrics": [
+        {"metric": "operating_cash_flow", "value_path": "financial_summary.operating_cash_flow", "meta_path": "financial_summary.operating_cash_flow_meta"}
+      ]
+    },
+    "news": {
+      "context_path": "news_summary",
+      "metrics": [
+        {"metric": "company_news", "value_path": "news_summary.company_news_count", "meta_path": "news_summary.meta"}
+      ]
+    },
+    "shareholders": {
+      "context_path": "shareholder_summary",
+      "metrics": [
+        {"metric": "major_shareholders", "value_path": "shareholder_summary.major_shareholders_count", "meta_path": "shareholder_summary.meta"}
+      ]
+    },
+    "technical": {
+      "context_path": "technical_summary",
+      "metrics": [
+        {"metric": "rsi14", "value_path": "technical_summary.rsi14", "default_status": "derived"},
+        {"metric": "macd_hist", "value_path": "technical_summary.macd_hist", "default_status": "derived"},
+        {"metric": "above_sma50", "value_path": "technical_summary.above_sma50", "default_status": "derived"},
+        {"metric": "above_sma200", "value_path": "technical_summary.above_sma200", "default_status": "derived"},
+        {"metric": "structure", "value_path": "technical_summary.structure", "default_status": "derived"},
+        {"metric": "rs_rating", "value_path": "technical_summary.rs_rating", "default_status": "derived"}
+      ]
+    },
+    "macro": {
+      "context_path": "macro_summary",
+      "metrics": [
+        {"metric": "macro_snapshot", "value_path": "macro_summary", "default_status": "reported"}
+      ]
+    }
+  },
+  "profiles": {
+    "current_snapshot": {
+      "required_sections": ["metadata", "price", "financial_core"],
+      "blocking_metrics": ["metadata.exchange", "price.latest_close", "financial_core.revenue", "financial_core.net_profit", "financial_core.equity"],
+      "blocking_any_of": [],
+      "allowed_missing_statuses": ["source_empty", "mapping_missing", "insufficient_periods", "parse_failed", "stale", "not_queried", "network_failed", "unsupported", "derivation_not_implemented", "unit_unknown", "period_basis_unknown"],
+      "allow_proxy": true,
+      "proxy_weight": 0.5,
+      "allow_stale": true,
+      "stale_weight": 0.5,
+      "minimum_section_coverage": {"metadata": 0.8, "price": 0.8, "financial_core": 0.8},
+      "minimum_overall_coverage": 0.8,
+      "guards": []
+    },
+    "technical_analysis": {
+      "required_sections": ["price", "technical"],
+      "blocking_metrics": ["price.last_date", "price.latest_close", "technical.rsi14", "technical.structure"],
+      "blocking_any_of": [],
+      "allowed_missing_statuses": ["source_empty", "mapping_missing", "insufficient_periods", "parse_failed", "stale", "not_queried", "network_failed", "unsupported", "derivation_not_implemented", "unit_unknown", "period_basis_unknown"],
+      "allow_proxy": true,
+      "proxy_weight": 1.0,
+      "allow_stale": false,
+      "stale_weight": 0.0,
+      "minimum_section_coverage": {"price": 0.8, "technical": 0.8},
+      "minimum_overall_coverage": 0.8,
+      "guards": []
+    },
+    "valuation": {
+      "required_sections": ["metadata", "price", "financial_core", "financial_advanced", "cash_flow"],
+      "blocking_metrics": ["price.latest_close", "financial_core.net_profit", "financial_core.equity", "cash_flow.operating_cash_flow"],
+      "blocking_any_of": [{"metrics": ["financial_advanced.ebit", "financial_advanced.ebitda"], "minimum_available": 1, "reason": "valuation_requires_ebit_or_ebitda"}],
+      "allowed_missing_statuses": ["source_empty", "insufficient_periods", "not_queried", "unsupported"],
+      "allow_proxy": false,
+      "proxy_weight": 0.0,
+      "allow_stale": false,
+      "stale_weight": 0.0,
+      "minimum_section_coverage": {"metadata": 0.6, "price": 0.8, "financial_core": 0.8, "financial_advanced": 0.15, "cash_flow": 1.0},
+      "minimum_overall_coverage": 0.7,
+      "guards": []
+    },
+    "forensic": {
+      "required_sections": ["financial_core", "financial_advanced", "cash_flow"],
+      "blocking_metrics": ["cash_flow.operating_cash_flow", "financial_advanced.retained_earnings", "financial_advanced.interest_expense", "financial_advanced.depreciation"],
+      "blocking_any_of": [],
+      "allowed_missing_statuses": ["not_applicable"],
+      "allow_proxy": false,
+      "proxy_weight": 0.0,
+      "allow_stale": false,
+      "stale_weight": 0.0,
+      "minimum_section_coverage": {"financial_core": 0.8, "financial_advanced": 0.5, "cash_flow": 1.0},
+      "minimum_overall_coverage": 0.75,
+      "guards": []
+    },
+    "backtest": {
+      "required_sections": ["price", "financial_core"],
+      "blocking_metrics": ["price.last_date", "price.latest_close"],
+      "blocking_any_of": [],
+      "allowed_missing_statuses": ["not_applicable"],
+      "allow_proxy": false,
+      "proxy_weight": 0.0,
+      "allow_stale": false,
+      "stale_weight": 0.0,
+      "minimum_section_coverage": {"price": 1.0, "financial_core": 0.8},
+      "minimum_overall_coverage": 0.9,
+      "guards": ["analysis_cutoff_present", "financial_point_in_time_safe", "price_adjustment_confirmed"]
+    }
+  }
+}

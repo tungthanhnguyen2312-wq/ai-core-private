@@ -1,0 +1,34 @@
+{
+  "metadata_version": "1.0.0",
+  "raw_layer": {
+    "path": "../VNSTOCK/data_bctc/",
+    "formats": ["csv","parquet"],
+    "file_naming": "{TICKER}_{report_type}_{period_type}.{ext}",
+    "grain": "rows are financial items; reporting periods are columns",
+    "identifier_fields": ["ticker","report_type","source","scraped_at","item","item_en","item_id"],
+    "period_column_examples": ["2026-Q1","2025-Q4","2025-Q3","2024-Q2"],
+    "report_types": {
+      "balance_sheet": "Bảng cân đối kế toán",
+      "income_statement": "Kết quả kinh doanh",
+      "cash_flow": "Lưu chuyển tiền tệ"
+    },
+    "progress_registry": "../VNSTOCK/data_bctc/scrape_meta.csv",
+    "known_scale": "approximately 1,494 tickers and 8,391 CSV/Parquet files"
+  },
+  "processed_layer": {
+    "path": "../VNSTOCK/financial_snapshot.{csv,parquet}",
+    "grain": "one row per ticker and reporting period",
+    "primary_key": ["ticker","period"],
+    "period_type_values": ["quarter","year"],
+    "shape": "wide columns of standardized amounts and derived ratios",
+    "amount_groups": ["income_statement","balance_sheet","cash_flow","per_share"],
+    "derived_groups": ["growth","margins","profitability","leverage","liquidity","turnover","cash_flow_ratio"]
+  },
+  "transformation_contract": [
+    "bctc_processor.py maps raw item/item_en to standardized item_id.",
+    "Raw period columns are unpivoted/normalized into ticker-period rows.",
+    "Provider percentage scale differences must be normalized before comparison.",
+    "Some output values are coalesced by industry or calculated proxies; they are not direct reported facts.",
+    "Never join raw and processed data assuming identical grain."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ai-analyze/schemas/batch_validation_report.schema.json",
+  "title": "Automated Batch Validation Report",
+  "type": "object",
+  "required": ["report_version","generated_at","summary","results","warnings","provenance"],
+  "properties": {
+    "report_version":{"type":"string"},
+    "generated_at":{"type":"string"},
+    "summary":{"type":"object","required":["package_count","json_parse_valid","non_strict_pass","strict_pass","provenance_present"]},
+    "results":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["ticker","file","json_parse","required_sections_present","missing_sections","warnings","provenance_status","non_strict","strict"]}},
+    "warnings":{"type":"array","items":{"type":"string"}},
+    "provenance":{"type":"array","minItems":1,"items":{"type":"object"}}
+  }
+}

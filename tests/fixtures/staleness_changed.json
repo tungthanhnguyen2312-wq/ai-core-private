@@ -1,0 +1,9 @@
+{
+  "comparison_version":"1.0.0",
+  "generated_at":"2026-01-03T00:00:00+07:00",
+  "stale_or_changed":true,
+  "package_changes":[{"ticker":"TEST","status":"changed"}],
+  "source_changes":[{"path":"source.csv","status":"changed"}],
+  "warnings":[],
+  "provenance":[{"source":"fixture"}]
+}

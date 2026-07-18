@@ -1,0 +1,17 @@
+{
+  "metadata_version": "1.0.0",
+  "groups": [
+    {"pattern":"../VNSTOCK/*.py","classification":"source_code","examples":["vn_stock_pipeline.py","stock_analyzer.py","vn_indicators.py"],"ai_read_policy":"read_only_for_code_audit_not_primary_analysis","notes":"13 module; local và gitignored."},
+    {"pattern":"../VNSTOCK/vn_stock.db","classification":"database","examples":["ohlcv","meta","metadata","macro","news","shareholders","shareholders_progress"],"ai_read_policy":"query_selectively_never_ingest_whole_file","notes":"Kho dữ liệu chính khoảng 168 MB."},
+    {"pattern":"../VNSTOCK/{screen_snapshot,market_breadth,macro_snapshot,ta_signals,news_latest,financial_snapshot}.csv","classification":"csv","examples":["screen_snapshot.csv","financial_snapshot.csv"],"ai_read_policy":"recommended_selectively","notes":"Các view phù hợp AI; lọc ticker/kỳ/top N trước khi nạp."},
+    {"pattern":"../VNSTOCK/ohlcv_flat.csv","classification":"csv","examples":["ohlcv_flat.csv"],"ai_read_policy":"do_not_read_directly_into_llm","notes":"Khoảng 108 MB và 1,91 triệu dòng; query/filter trước."},
+    {"pattern":"../VNSTOCK/*.parquet","classification":"parquet","examples":["ohlcv_flat.parquet","financial_snapshot.parquet"],"ai_read_policy":"recommended_for_programmatic_filtered_access","notes":"Hiệu quả hơn CSV cho truy vấn cục bộ."},
+    {"pattern":"../VNSTOCK/data_bctc/*.{csv,parquet}","classification":"csv_parquet_collection","examples":["HPG_balance_sheet_quarter.csv"],"ai_read_policy":"do_not_bulk_read_select_one_ticker_report_only","notes":"Khoảng 8.391 file raw."},
+    {"pattern":"../VNSTOCK/*.{html,js,css}","classification":"frontend","examples":["dashboard.html","app.js","style.css"],"ai_read_policy":"not_needed_for_market_analysis","notes":"Dashboard GitHub Pages tĩnh."},
+    {"pattern":"../VNSTOCK/docs/*.md","classification":"docs","examples":["ARCHITECTURE.md","DATA_PIPELINE.md","CLI_REFERENCE.md"],"ai_read_policy":"read_for_system_understanding_not_market_facts","notes":"Tài liệu kỹ thuật chi tiết."},
+    {"pattern":"../VNSTOCK/{README,CHANGELOG,CONTRIBUTING,SECURITY}*.md","classification":"docs","examples":["README.md","CHANGELOG.md"],"ai_read_policy":"read_for_project_context_only","notes":"Thông tin dự án và quy trình."},
+    {"pattern":"../VNSTOCK/{config.json,requirements.txt,tickers.txt,tickers_bctc.txt}","classification":"config","examples":["config.json","requirements.txt"],"ai_read_policy":"read_only_when_needed_for_execution_context","notes":"Không phải dữ liệu phân tích chính."},
+    {"pattern":"../VNSTOCK/logs/*","classification":"logs","examples":["bctc_sync.log","stock_analyzer.log"],"ai_read_policy":"do_not_read_unless_diagnosing_pipeline","notes":"Có thể lớn, mang tính vận hành."},
+    {"pattern":"../VNSTOCK/{analysis_latest,ai_report_latest}.*","classification":"derived_reports","examples":["analysis_latest.json","ai_report_latest.json"],"ai_read_policy":"read_as_derived_context_verify_against_source","notes":"Output Quant/AI, không phải ground truth."}
+  ]
+}

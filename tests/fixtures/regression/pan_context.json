@@ -1,0 +1,21 @@
+{
+  "ticker": "PAN",
+  "metadata": {"exchange":"HSX","industry":"Food","market_cap":1000,"shares_outstanding":100,"free_float_est":0.5},
+  "price_summary": {"last_date":"2026-07-13","latest_close":10,"trading_days":300,"avg_volume_20d":1000,"return_1m_pct":2},
+  "financial_summary": {
+    "revenue":100,"net_profit":10,"total_assets":500,"equity":200,"total_liabilities":300,
+    "ebit":110,"ebitda":120,"interest_expense":10,"retained_earnings":30,"depreciation":10,"sga":20,
+    "operating_cash_flow":null,
+    "ebit_meta":{"value":110,"status":"derived","source":"fixture","basis":"formula"},
+    "ebitda_meta":{"value":120,"status":"derived","source":"fixture","basis":"formula"},
+    "interest_expense_meta":{"value":10,"status":"reported","source":"fixture","basis":"statement"},
+    "retained_earnings_meta":{"value":30,"status":"reported","source":"fixture","basis":"statement"},
+    "depreciation_meta":{"value":10,"status":"reported","source":"fixture","basis":"statement"},
+    "sga_meta":{"value":20,"status":"derived","source":"fixture","basis":"formula"},
+    "operating_cash_flow_meta":{"value":null,"status":"source_empty","reason":"fixture_missing_ocf","source":"fixture","basis":"statement"}
+  },
+  "technical_summary": {"rsi14":50,"macd_hist":1,"above_sma50":true,"above_sma200":true,"structure":"up","rs_rating":70},
+  "news_summary": {"company_news_count":0,"meta":{"value":null,"status":"source_empty","reason":"no_company_news","source":"fixture"}},
+  "shareholder_summary": {"major_shareholders_count":null,"meta":{"value":null,"status":"source_empty","reason":"no_shareholder_rows","source":"fixture"}},
+  "macro_summary": {}
+}

@@ -1,0 +1,11 @@
+{
+  "platform":"Gemini Project or Gem-style workspace",
+  "manifest_version":"1.0.0",
+  "project_instructions_file":"operating_pack/gemini/project_instructions.md",
+  "reference_files":["knowledge/DataDictionary.md","knowledge/AnalysisGuide.md","knowledge/Formula.md","knowledge/MarketConvention.md","knowledge/AIUsageRules.md","validation/point_in_time_rules.md","validation/provenance_standard.md","docs/v1_0_KnownLimitations.md","prompts/ai_analysis_templates.md","metadata/datasets.json","metadata/schema_registry.json","metadata/data_quality_rules.json","summary/summary_layer_readme.md","exports/qa/final_qa_report_v2.json"],
+  "operator_only_files":["operating_pack/common/operator_checklist.md","operating_pack/common/context_budget_policy.json","operating_pack/gemini/workflow.md"],
+  "task_attachments":{"single_ticker":"one *_context.json","comparison":"two *_context.json","screening":"batch manifest, batch validation and up to 10 selected packages"},
+  "do_not_upload":["VNSTOCK database","full OHLCV export","raw BCTC collection","personal notes/portfolio data"],
+  "warnings":["Gemini UI, file limits and retrieval behavior were not externally verified in Phase 11.","No files were uploaded."],
+  "provenance":[{"source":"AI ANALYZE operating design","external_product_details":"not fully confirmed"}]
+}

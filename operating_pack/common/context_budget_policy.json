@@ -1,0 +1,14 @@
+{
+  "policy_version":"1.0.0",
+  "principle":"Use the smallest validated context set that can answer the task.",
+  "base_project_files":"Use the platform upload manifest; do not add raw VNSTOCK data.",
+  "task_budgets": {
+    "single_ticker":{"context_packages_max":1,"required_support":["current validation or package data_quality"],"notes":"Attach one ticker package only."},
+    "comparison":{"context_packages_max":2,"required_support":["compatibility check"],"notes":"Require compatible dates/periods/units."},
+    "screening":{"context_packages_max":10,"required_support":["batch manifest","batch validation report"],"notes":"Use pass/fail/unknown; split into smaller batches if platform limits require."}
+  },
+  "never_upload":["../VNSTOCK/vn_stock.db","../VNSTOCK/ohlcv_flat.csv","../VNSTOCK/data_bctc/","personal notes or portfolio data"],
+  "refresh_rule":"Replace task context when fingerprints, generated_at or rebuild decision changes.",
+  "limitations":["No universal token/file limit is assumed; verify the current platform/account limit before upload."],
+  "provenance":[{"source":"Phase 6 batch cap, Phase 7 fingerprints, Phase 10 safety audit"}]
+}

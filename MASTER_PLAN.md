@@ -1,0 +1,1 @@
+Đọc MASTER_PLAN.md, đọc trạng thái phase hiện tại, đề xuất bước tiếp theo. Không làm gì cho đến khi tôi duyệt.

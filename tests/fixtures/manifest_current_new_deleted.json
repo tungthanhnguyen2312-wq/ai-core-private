@@ -1,0 +1,11 @@
+{
+  "manifest_version":"2.0.0",
+  "generated_at":"2026-01-03T00:00:00+07:00",
+  "batch_size":1,
+  "tickers":["NEW"],
+  "packages":[{"ticker":"NEW","path":"NEW_context.json","package_fingerprint":{"method":"sha256","sha256":"new","size_bytes":12}}],
+  "source_fingerprints":[{"path":"new_source.csv","exists":true,"method":"sha256","sha256":"newsrc","size_bytes":30}],
+  "stale_detection_rule":"fixture",
+  "warnings":[],
+  "provenance":[{"source":"fixture"}]
+}

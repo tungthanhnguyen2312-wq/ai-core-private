@@ -1,0 +1,11 @@
+{
+  "manifest_version":"2.0.0",
+  "generated_at":"2026-01-02T00:00:00+07:00",
+  "batch_size":1,
+  "tickers":["TEST"],
+  "packages":[{"ticker":"TEST","path":"TEST_context.json","package_fingerprint":{"method":"sha256","sha256":"bbb","size_bytes":11}}],
+  "source_fingerprints":[{"path":"source.csv","exists":true,"method":"sha256","sha256":"src2","size_bytes":20}],
+  "stale_detection_rule":"fixture",
+  "warnings":[],
+  "provenance":[{"source":"fixture"}]
+}

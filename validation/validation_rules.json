@@ -1,0 +1,28 @@
+{
+  "rules_version": "1.0.0",
+  "generated_at": "2026-07-13T00:00:00+07:00",
+  "source_basis": ["metadata/data_quality_rules.json", "metadata/schema_registry.json", "knowledge/AIUsageRules.md", "knowledge/MarketConvention.md"],
+  "rules": [
+    {"id":"VAL001","name":"ticker_not_null","scope":["all ticker datasets"],"severity":"error","check":"ticker is non-null, non-empty and uppercase normalized","on_fail":"reject record/package"},
+    {"id":"VAL002","name":"date_parseable","scope":["date fields"],"severity":"error","check":"value parses as YYYY-MM-DD where specified","on_fail":"reject field and flag source"},
+    {"id":"VAL003","name":"period_parseable","scope":["financial period"],"severity":"error","check":"period matches YYYY-Q1..Q4 or supported year form and agrees with period_type","on_fail":"reject period"},
+    {"id":"VAL004","name":"ohlcv_numeric","scope":["open","high","low","close","volume"],"severity":"error","check":"non-missing OHLCV values are numeric","on_fail":"reject record"},
+    {"id":"VAL005","name":"volume_non_negative","scope":["volume"],"severity":"error","check":"volume >= 0 when present","on_fail":"flag invalid record"},
+    {"id":"VAL006","name":"ohlc_bounds","scope":["OHLCV"],"severity":"error","check":"high >= open, close, low and low <= open, close, high when all present","on_fail":"flag anomaly; do not auto-correct"},
+    {"id":"VAL007","name":"minus_one_sentinel","scope":["metadata.dividend_yield","shareholders.pct"],"severity":"error","check":"-1 is converted to missing with status queried_no_value before analysis","on_fail":"block calculations using field"},
+    {"id":"VAL008","name":"null_by_context","scope":["nullable fields"],"severity":"error","check":"NULL interpreted using field-specific missing_rule","on_fail":"do not impute"},
+    {"id":"VAL009","name":"string_boolean","scope":["screen_snapshot boolean fields","ta_signals.confluence"],"severity":"error","check":"only exact normalized True/False strings become booleans; empty remains missing","on_fail":"reject/flag value"},
+    {"id":"VAL010","name":"latest_snapshot_filter","scope":["screen_snapshot","ta_signals","live context"],"severity":"error","check":"ticker date equals approved global latest market date for live use","on_fail":"mark stale and exclude from live selection"},
+    {"id":"VAL011","name":"stale_ticker_warning","scope":["ticker context"],"severity":"warning","check":"latest_price_date lag versus global latest is computed and status warning emitted","on_fail":"block active label"},
+    {"id":"VAL012","name":"adjusted_price_uncertainty","scope":["returns","MA","drawdown","backtest"],"severity":"warning","check":"adjustment status is recorded; long-horizon/corporate-action-sensitive metrics carry warning if unconfirmed","on_fail":"lower suitability/confidence"},
+    {"id":"VAL013","name":"bctc_layer_distinction","scope":["bctc_raw","financial_snapshot"],"severity":"error","check":"raw item-period-column grain is not concatenated/joined as processed ticker-period grain without explicit transformation","on_fail":"block transformation"},
+    {"id":"VAL014","name":"metadata_point_in_time","scope":["metadata"],"severity":"error","check":"current metadata is labeled point_in_time and excluded from backtest unless effective history exists","on_fail":"block backtest package"},
+    {"id":"VAL015","name":"shareholder_no_history","scope":["shareholders"],"severity":"error","check":"shareholder snapshot is labeled no_history and excluded from historical inference/backtest","on_fail":"block historical claim"},
+    {"id":"VAL016","name":"provider_percentage_scale","scope":["VCI/KBS raw percentage fields"],"severity":"error","check":"provider scale is identified/normalized before comparison","on_fail":"block ratio comparison"},
+    {"id":"VAL017","name":"margin_empty_clean","scope":["margin_status"],"severity":"warning","check":"empty/NULL is mapped to no_flag according to project convention, not generic missing risk","on_fail":"flag semantic error"},
+    {"id":"VAL018","name":"provenance_required","scope":["summary","context package"],"severity":"error","check":"source, generated_at, transformation, assumptions and limitations are present","on_fail":"reject artifact"},
+    {"id":"VAL019","name":"cutoff_enforced","scope":["historical","backtest"],"severity":"error","check":"no observation/update/publication after analysis cutoff is included","on_fail":"reject package for look-ahead"},
+    {"id":"VAL020","name":"utf8","scope":["all output files"],"severity":"error","check":"output is valid UTF-8","on_fail":"reject artifact"}
+  ],
+  "limitations": ["Rules define validation behavior but were not executed against full VNSTOCK data in Phase 3.", "Publication-date and corporate-action validations require sources not fully confirmed." ]
+}

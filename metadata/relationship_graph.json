@@ -1,0 +1,35 @@
+{
+  "metadata_version": "1.0.0",
+  "center_key": "ticker",
+  "foreign_keys_enforced": false,
+  "foreign_key_note": "SQLite không enforce foreign key; mọi quan hệ dưới đây là quy ước logic của pipeline.",
+  "time_keys": {
+    "date": ["ohlcv","screen_snapshot","ta_signals","market_breadth","macro","macro_snapshot"],
+    "period": ["financial_snapshot","bctc_raw period columns"],
+    "published_utc": ["news","news_latest"],
+    "updated": ["meta","metadata","shareholders_progress","scrape_meta"],
+    "updated_at": ["shareholders"]
+  },
+  "nodes": [
+    {"id":"ticker_universe","type":"config"},{"id":"ohlcv","type":"database_table"},{"id":"meta","type":"progress_table"},{"id":"metadata","type":"database_table"},{"id":"shareholders","type":"database_table"},{"id":"shareholders_progress","type":"progress_table"},{"id":"macro","type":"database_table"},{"id":"news","type":"database_table"},{"id":"screen_snapshot","type":"csv"},{"id":"market_breadth","type":"csv"},{"id":"ta_signals","type":"csv"},{"id":"bctc_raw","type":"file_collection"},{"id":"financial_snapshot","type":"csv_parquet"},{"id":"blacklist","type":"csv"},{"id":"analysis_latest","type":"derived_json"},{"id":"ai_report_latest","type":"derived_json_markdown"}
+  ],
+  "edges": [
+    {"from":"ticker_universe","to":"ohlcv","join_keys":["ticker"],"relation":"feeds crawler universe"},
+    {"from":"ohlcv","to":"meta","join_keys":["ticker"],"relation":"price backfill progress"},
+    {"from":"ohlcv","to":"metadata","join_keys":["ticker"],"relation":"logical security join"},
+    {"from":"blacklist","to":"metadata","join_keys":["ticker"],"relation":"merge margin_status"},
+    {"from":"ohlcv","to":"screen_snapshot","join_keys":["ticker","latest date"],"relation":"derive technical features"},
+    {"from":"metadata","to":"screen_snapshot","join_keys":["ticker"],"relation":"join exchange, industry, valuation and risk fields"},
+    {"from":"screen_snapshot","to":"market_breadth","join_keys":["date","industry to group"],"relation":"aggregate breadth"},
+    {"from":"ohlcv","to":"ta_signals","join_keys":["ticker","latest date"],"relation":"derive candle and SMC signals"},
+    {"from":"screen_snapshot","to":"ta_signals","join_keys":["ticker","date"],"relation":"reuse industry, RS and liquidity fields"},
+    {"from":"ohlcv","to":"shareholders","join_keys":["ticker"],"relation":"defines eligible universe"},
+    {"from":"shareholders_progress","to":"shareholders","join_keys":["ticker"],"relation":"describes crawl state, not ownership fact"},
+    {"from":"bctc_raw","to":"financial_snapshot","join_keys":["ticker","reporting period"],"relation":"normalize item_id and calculate ratios"},
+    {"from":"screen_snapshot","to":"analysis_latest","join_keys":["ticker"],"relation":"quant input"},
+    {"from":"screen_snapshot","to":"ai_report_latest","join_keys":["ticker"],"relation":"filtered AI context"},
+    {"from":"market_breadth","to":"ai_report_latest","join_keys":["date"],"relation":"market and sector context"},
+    {"from":"macro","to":"ai_report_latest","join_keys":["observation date"],"relation":"macro context via snapshot"},
+    {"from":"news","to":"ai_report_latest","join_keys":["published_utc"],"relation":"news context; no direct ticker FK"}
+  ]
+}

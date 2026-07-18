@@ -1,0 +1,10 @@
+{
+  "ticker": "PAN",
+  "validation_profile": "valuation",
+  "profile_valid": false,
+  "overall_status": "partial",
+  "overall_coverage": 0.909091,
+  "cash_flow_coverage": 0.0,
+  "ocf_blocking_status": "source_empty",
+  "ocf_blocking_reason": "fixture_missing_ocf"
+}

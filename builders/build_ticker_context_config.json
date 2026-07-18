@@ -1,0 +1,22 @@
+{
+  "config_version": "1.0.0",
+  "allowed_input_dirs": ["project_discovery","metadata","knowledge","summary","context_packages","validation"],
+  "forbidden_output_dirs": ["../VNSTOCK","project_discovery","metadata","knowledge","summary","context_packages","validation","workflows","builders","docs"],
+  "default_output_dir": "exports/context_packages",
+  "required_summary_files": ["summary/summary_manifest.json","summary/dataset_coverage_summary.json","summary/ticker_coverage_summary.json","summary/data_freshness_summary.json","summary/financial_coverage_summary.json","summary/price_coverage_summary.json"],
+  "validation_rules_path": "validation/validation_rules.json",
+  "validation_profiles_path": "validation/context_validation_profiles.json",
+  "context_schema_path": "validation/schemas/ticker_context.schema.json",
+  "context_template_path": "context_packages/ticker_context_template.json",
+  "strict_mode_default": false,
+  "dry_run_default": true,
+  "max_batch_size": 10,
+  "source_paths": {
+    "database": "../VNSTOCK/vn_stock.db",
+    "financial_snapshot": "../VNSTOCK/financial_snapshot.csv",
+    "screen_snapshot": "../VNSTOCK/screen_snapshot.csv",
+    "ta_signals": "../VNSTOCK/ta_signals.csv",
+    "news_latest": "../VNSTOCK/news_latest.csv"
+  },
+  "limitations": ["News mapping is limited to explicit aliases and ticker mentions with financial context.", "Financial monetary unit/scale and price adjustment are not fully confirmed.", "Explicit --no-dry-run is required to create a new export."]
+}

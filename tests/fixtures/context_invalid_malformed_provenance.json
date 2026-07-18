@@ -1,0 +1,18 @@
+{
+  "ticker":"TEST",
+  "generated_at":"2026-01-01T00:00:00+07:00",
+  "mode":"test_context_package",
+  "data_sources":[],
+  "latest_available_dates":{},
+  "identity":{"ticker":"TEST"},
+  "metadata":{},
+  "price_summary":{},
+  "financial_summary":{},
+  "valuation_inputs":{},
+  "technical_summary":{},
+  "news_summary":{},
+  "shareholder_summary":{},
+  "risks":[],
+  "data_quality":{"validation_status":"invalid","missing_sections":[],"warnings":[],"not_fully_confirmed":[]},
+  "provenance":"not-an-array"
+}

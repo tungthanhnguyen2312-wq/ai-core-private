@@ -1,0 +1,21 @@
+{
+  "metadata_version": "1.0.0",
+  "rules": [
+    {"id":"DQ001","severity":"critical","scope":["meta","metadata"],"rule":"Never confuse meta with metadata.","action":"Treat meta as price-crawler progress and metadata as current security/fundamental attributes."},
+    {"id":"DQ002","severity":"critical","scope":["metadata.dividend_yield","shareholders.pct"],"rule":"Numeric -1 means queried but no numeric value.","action":"Convert to missing/NaN for analysis; do not use as a real negative value."},
+    {"id":"DQ003","severity":"high","scope":["all nullable fields"],"rule":"NULL is context-dependent.","action":"Use field-specific missing_rule; distinguish not collected, unavailable and clean status."},
+    {"id":"DQ004","severity":"high","scope":["screen_snapshot","ta_signals"],"rule":"CSV booleans are strings True/False.","action":"Parse exact normalized strings; never apply generic truthiness to non-empty strings."},
+    {"id":"DQ005","severity":"high","scope":["metadata.margin_status","screen_snapshot.margin_status","ta_signals.margin_status"],"rule":"Empty margin_status means clean/no flagged status.","action":"Do not label empty values as unknown risk unless source context contradicts this convention."},
+    {"id":"DQ006","severity":"critical","scope":["screen_snapshot","ta_signals","live scans"],"rule":"Snapshots may include dead or stale tickers.","action":"For live analysis filter to the latest market date and inspect exchange/status; ASA is a known stale example."},
+    {"id":"DQ007","severity":"high","scope":["metadata.free_float_est","screen_snapshot.free_float_est"],"rule":"free_float_est is a proxy.","action":"Label as estimate and avoid presenting it as official free float."},
+    {"id":"DQ008","severity":"critical","scope":["shareholders"],"rule":"Shareholder data is point-in-time with no history.","action":"Do not use current ownership snapshot in historical backtests or infer historical holdings."},
+    {"id":"DQ009","severity":"high","scope":["ohlcv","ohlcv_flat","technical returns"],"rule":"Prices may not be fully adjusted for dividends or splits.","action":"Flag long-horizon returns and MA breaks around corporate actions; verify adjustment before backtesting."},
+    {"id":"DQ010","severity":"high","scope":["all text files"],"rule":"Encoding is UTF-8.","action":"Read and write explicitly as UTF-8; preserve Vietnamese text."},
+    {"id":"DQ011","severity":"critical","scope":["VCI/KBS percentage fields","BCTC","shareholders"],"rule":"VCI and KBS may return percentage values on different scales (0..1 versus 0..100).","action":"Use normalized processed values or validate provider scale before combining raw observations."},
+    {"id":"DQ012","severity":"critical","scope":["bctc_raw","financial_snapshot"],"rule":"Raw BCTC and financial_snapshot have different shapes and grain.","action":"Raw has item rows and period columns; processed snapshot has ticker-period rows and standardized measure columns. Never concatenate them directly."},
+    {"id":"DQ013","severity":"high","scope":["metadata","shareholders"],"rule":"Current snapshots are not historical dimensions.","action":"Avoid look-ahead bias in backtests."},
+    {"id":"DQ014","severity":"medium","scope":["macro_snapshot.chg_prev","macro_snapshot.chg_1m","macro_snapshot.chg_1y"],"rule":"Change semantics depend on series unit.","action":"For percent series interpret as percentage-point difference; otherwise as percent change."},
+    {"id":"DQ015","severity":"medium","scope":["news","news_latest"],"rule":"News has no canonical ticker field.","action":"Do not assert ticker linkage without a validated entity-linking step."},
+    {"id":"DQ016","severity":"medium","scope":["analysis_latest","ai_report_latest"],"rule":"Quant and AI reports are derived outputs.","action":"Use them as context, not ground truth; verify important claims against source datasets."}
+  ]
+}

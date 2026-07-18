@@ -1,0 +1,28 @@
+{
+  "metadata_version": "1.0.0",
+  "registry_mode": "summary_only",
+  "enumerated": false,
+  "reason": "Universe khoảng 1.686-1.745 mã và BCTC khoảng 1.494 mã; Phase 1.5 tránh quét database/file lớn chỉ để enumerate.",
+  "counts": {
+    "price_tickers_observed": 1686,
+    "ticker_list_approx": 1745,
+    "financial_tickers_observed": 1494,
+    "screen_snapshot_tickers_approx": "1500+",
+    "exchanges": ["HSX","HNX","UPCOM"],
+    "metadata_may_include": ["DELISTED"]
+  },
+  "per_ticker_contract": {
+    "ticker": "uppercase security identifier",
+    "has_price": "true when ticker exists in ohlcv",
+    "has_financial": "true when ticker has raw BCTC or financial_snapshot rows",
+    "has_metadata": "true when ticker exists in metadata",
+    "has_news_if_available": "unknown unless an explicit ticker mapping is derived; news schema has no ticker field",
+    "has_shareholder_if_available": "true when ticker exists in shareholders; false/unknown must distinguish empty progress from not queried"
+  },
+  "availability_rules": [
+    "Do not infer current tradability from has_price alone.",
+    "For live analysis require ticker date equal to the latest market snapshot date and inspect exchange/margin status.",
+    "Do not equate missing shareholders with zero ownership; inspect shareholders_progress when querying DB.",
+    "Do not claim ticker-specific news without a separate validated entity-linking step."
+  ]
+}

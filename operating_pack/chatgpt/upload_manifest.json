@@ -1,0 +1,12 @@
+{
+  "platform":"ChatGPT Projects",
+  "manifest_version":"1.0.0",
+  "project_instructions_file":"operating_pack/chatgpt/project_instructions.md",
+  "reference_files":["knowledge/DataDictionary.md","knowledge/AnalysisGuide.md","knowledge/Formula.md","knowledge/MarketConvention.md","knowledge/AIUsageRules.md","validation/point_in_time_rules.md","validation/provenance_standard.md","docs/v1_0_KnownLimitations.md","prompts/ai_analysis_templates.md","metadata/datasets.json","metadata/schema_registry.json","metadata/data_quality_rules.json","summary/summary_layer_readme.md","exports/qa/final_qa_report_v2.json"],
+  "operator_only_files":["operating_pack/common/operator_checklist.md","operating_pack/common/context_budget_policy.json","operating_pack/chatgpt/workflow.md"],
+  "task_attachments":{"single_ticker":"one *_context.json","comparison":"two *_context.json","screening":"batch_manifest_auto_v2.json, batch_validation_report_auto_v2.json and selected packages up to 10"},
+  "do_not_upload":["VNSTOCK database","full OHLCV export","raw BCTC collection","personal notes/portfolio data"],
+  "current_limit_rule":"Verify the current account/project file limit before upload; reduce optional references rather than raw-compressing context.",
+  "warnings":["Project instructions are project-scoped and may override global custom instructions according to the cited official OpenAI Help article.","No files were uploaded in Phase 11."],
+  "provenance":[{"source":"https://help.openai.com/en/articles/10169521-using-projects-in-chatgpt","checked":"2026-07-13","scope":"Projects can group chats, reference files and project instructions"}]
+}
