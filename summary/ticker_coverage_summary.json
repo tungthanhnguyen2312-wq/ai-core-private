@@ -1,0 +1,11 @@
+{
+  "summary_type": "aggregate_only",
+  "generated_at": "2026-07-13T00:00:00+07:00",
+  "enumerated": false,
+  "reason": "Per-ticker enumeration would require scanning the large SQLite database, OHLCV history and thousands of BCTC files. Phase 3 uses safe discovery-level coverage instead.",
+  "source_basis": ["metadata/ticker_registry.json", "project_discovery/dataset_inventory.md", "project_discovery/file_inventory.md"],
+  "aggregate_counts": {"price_tickers_observed":1686,"ticker_list_approx":1745,"financial_tickers_observed":1494,"technical_snapshot_tickers_approx":"1500+"},
+  "per_ticker_schema": {"ticker":"string","has_price":"boolean or unknown","has_metadata":"boolean or unknown","has_financial":"boolean or unknown","has_news":"unknown unless entity-linked","has_shareholder":"boolean or unknown","has_technical":"boolean or unknown","latest_price_date":"YYYY-MM-DD or null","latest_financial_period":"YYYY-QX/YYYY or null","warnings":"array of strings"},
+  "coverage_caveats": ["News has no ticker field, so has_news cannot be reliably populated without entity linking.", "Missing shareholder rows must be interpreted with shareholders_progress.", "Price presence does not imply current tradability.", "Financial and metadata coverage counts were not freshly scanned."],
+  "limitations": ["No individual ticker records are included.", "Counts are observed/approximate as of discovery."]
+}

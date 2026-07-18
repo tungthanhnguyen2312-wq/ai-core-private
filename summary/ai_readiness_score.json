@@ -1,0 +1,20 @@
+{
+  "summary_type": "dataset_level_ai_readiness",
+  "generated_at": "2026-07-13T00:00:00+07:00",
+  "investment_score": false,
+  "ticker_level_scoring": false,
+  "reason": "Ticker-level coverage was not enumerated safely in Phase 3.",
+  "source_basis": ["summary/dataset_coverage_summary.json", "summary/data_freshness_summary.json", "metadata/data_quality_rules.json"],
+  "formula": {"scale":"0-100","components":{"coverage":25,"freshness":20,"schema_clarity":20,"provenance_quality":20,"data_quality_safety":15},"calculation":"sum of component scores; data_quality_safety awards points for known, encoded risks rather than low market risk","interpretation":{"80-100":"ready with documented controls","60-79":"usable with material checks","40-59":"limited; targeted validation required","0-39":"not ready for autonomous analysis"}},
+  "scores": [
+    {"dataset":"price_ohlcv","coverage":24,"freshness":16,"schema_clarity":19,"provenance_quality":16,"data_quality_safety":9,"total":84,"explanation":"Strong scale/schema; adjustment and corporate-action uncertainty remain."},
+    {"dataset":"metadata","coverage":19,"freshness":12,"schema_clarity":19,"provenance_quality":15,"data_quality_safety":10,"total":75,"explanation":"Useful current snapshot; no historical dimension and aggregate coverage not confirmed."},
+    {"dataset":"financial","coverage":21,"freshness":14,"schema_clarity":16,"provenance_quality":16,"data_quality_safety":9,"total":76,"explanation":"Broad report coverage; unit, mapping and publication-date gaps remain."},
+    {"dataset":"macro","coverage":20,"freshness":15,"schema_clarity":17,"provenance_quality":15,"data_quality_safety":11,"total":78,"explanation":"Seventeen series available; mixed frequency/unit requires alignment."},
+    {"dataset":"news","coverage":14,"freshness":13,"schema_clarity":18,"provenance_quality":15,"data_quality_safety":10,"total":70,"explanation":"Good thematic breadth; no ticker mapping and limited depth."},
+    {"dataset":"shareholders","coverage":14,"freshness":10,"schema_clarity":18,"provenance_quality":14,"data_quality_safety":9,"total":65,"explanation":"Current snapshot only; coverage and history limitations."},
+    {"dataset":"technical","coverage":22,"freshness":14,"schema_clarity":18,"provenance_quality":16,"data_quality_safety":10,"total":80,"explanation":"Rich features; stale rows, string booleans and derived-signal risks."},
+    {"dataset":"quant_ai_outputs","coverage":15,"freshness":9,"schema_clarity":12,"provenance_quality":13,"data_quality_safety":9,"total":58,"explanation":"Useful secondary context; nested schema/freshness and model assumptions require checks."}
+  ],
+  "limitations": ["Scores are rule-based documentation readiness estimates, not measurements from a fresh data audit.", "Scores must not be used to rank investments or expected returns."]
+}

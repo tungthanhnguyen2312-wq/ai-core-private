@@ -1,0 +1,16 @@
+{
+  "name": "screening_workflow",
+  "version": "1.0.0",
+  "status": "design_only_not_executed",
+  "common_inputs": ["universe","analysis cutoff","criteria","missing policy","minimum liquidity","allowed risk statuses"],
+  "screen_types": [
+    {"type":"fundamental","purpose":"Filter on growth, profitability, balance-sheet, cash-flow and valuation fields.","required_data":["financial_snapshot","metadata","latest valid ticker status"],"controls":["quarter/year alignment","unit/scale check","no pass on missing","point-in-time restriction"]},
+    {"type":"technical","purpose":"Filter on trend, momentum, liquidity, volume and signals.","required_data":["screen_snapshot","ta_signals","OHLCV when confirmation is needed"],"controls":["global latest-date filter","string boolean parse","stale ticker exclusion","adjustment warning"]},
+    {"type":"data_readiness","purpose":"Filter tickers by availability and validation readiness, not investment merit.","required_data":["ticker coverage","freshness","validation results"],"controls":["unknown is not false","no investment interpretation","provenance required"]},
+    {"type":"risk","purpose":"Filter or flag margin/trading/data/financial risks.","required_data":["metadata","blacklist-derived status","financial snapshot","price liquidity","data quality"],"controls":["empty margin means no flag under project convention","proxy labels","no automatic buy/sell output"]}
+  ],
+  "execution": "No screening is run in Phase 4. This file only defines required inputs and controls.",
+  "output_contract": ["criteria specification","dataset read plan","validation plan","expected result schema"],
+  "forbidden_actions": ["execute full market scan","rank expected returns","treat missing as passing","write source data"],
+  "limitations": ["Thresholds and universe rules must be approved separately; per-ticker coverage is not enumerated." ]
+}

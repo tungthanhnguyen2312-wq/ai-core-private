@@ -1,0 +1,21 @@
+{
+  "name": "ticker_analysis_workflow",
+  "version": "1.0.0",
+  "status": "scaffold_only",
+  "objective": "Produce a validated ticker context package and guide a non-deterministic AI response without guaranteed investment advice.",
+  "inputs": {"ticker":"required uppercase-normalizable string","analysis_cutoff":"optional ISO date","mode":"current|historical_research|backtest","requested_sections":"optional array"},
+  "steps": [
+    {"order":1,"name":"receive_ticker","action":"Accept ticker and scope; do not query automatically."},
+    {"order":2,"name":"validate_ticker","action":"Normalize format, reject empty/unsafe values."},
+    {"order":3,"name":"check_coverage","action":"Read aggregate summary; mark per-ticker coverage unknown until a real read-only adapter exists."},
+    {"order":4,"name":"build_context_package","action":"Build template-compatible skeleton; attach no invented values."},
+    {"order":5,"name":"validate_context","action":"Apply required keys, provenance, missing, stale and point-in-time controls."},
+    {"order":6,"name":"send_context_to_ai","action":"Provide only validated context plus knowledge rules; preserve warnings."},
+    {"order":7,"name":"ai_response","action":"Follow AnalysisGuide and AIUsageRules; separate fact, derived calculation, inference and scenario."}
+  ],
+  "required_validation": ["ticker_not_null","provenance_required","latest_snapshot_filter when real data exists","cutoff_enforced for historical/backtest","no invented data"],
+  "response_constraints": ["No guaranteed buy/sell statement.","No fabricated values.","State data cutoff, missing sections, conflicts and limitations."],
+  "allowed_actions": ["read approved files","dry-run builder","write new context package to approved export path"],
+  "forbidden_actions": ["write to VNSTOCK","run crawler or market pipeline","update database","create certain investment recommendation"],
+  "limitations": ["Phase 4 builder does not implement real ticker data adapters."]
+}

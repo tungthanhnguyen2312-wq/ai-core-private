@@ -1,0 +1,17 @@
+{
+  "summary_type": "observed_financial_coverage",
+  "generated_at": "2026-07-13T00:00:00+07:00",
+  "source_basis": ["project_discovery/dataset_inventory.md", "project_discovery/schema_summary.md", "metadata/financial_statement_registry.json"],
+  "ticker_count_observed": 1494,
+  "raw_file_count_observed": 8391,
+  "period_count_observed": "approximately 8 quarters per ticker/report where available",
+  "latest_period_observed": "2026-Q1",
+  "report_types": ["balance_sheet","income_statement","cash_flow"],
+  "coverage_by_report_type": {"balance_sheet":"available; exact ticker/file count not freshly computed","income_statement":"available; exact ticker/file count not freshly computed","cash_flow":"available; exact ticker/file count not freshly computed"},
+  "raw_layer": {"grain":"financial item rows with reporting periods as columns","key_fields":["ticker","report_type","item_id"],"formats":["csv","parquet"]},
+  "financial_snapshot_layer": {"grain":"one row per ticker and period","key_fields":["ticker","period","period_type"],"content":"standardized amounts and derived ratios"},
+  "unit_scale_uncertainty": ["Exact raw statement monetary unit is not fully confirmed from current metadata.", "VCI and KBS percentage scales may differ in raw responses; processed data is expected to normalize them."],
+  "mapping_gaps": {"EBIT":"not fully confirmed","EBITDA":"not fully confirmed","interest_expense":"not fully confirmed","retained_earnings":"not fully confirmed","depreciation":"not fully confirmed","sga_expense":"not fully confirmed"},
+  "ai_usage_notes": ["Prefer filtered financial_snapshot for routine analysis.", "Use raw data for targeted reconciliation only.", "Do not use reporting period as publication availability date in backtests."],
+  "limitations": ["No per-ticker or per-report recount was performed.", "Missingness by field/period was not computed."]
+}

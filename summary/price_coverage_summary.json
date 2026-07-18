@@ -1,0 +1,15 @@
+{
+  "summary_type": "observed_price_coverage",
+  "generated_at": "2026-07-13T00:00:00+07:00",
+  "source_basis": ["project_discovery/dataset_inventory.md", "project_discovery/quality_assessment.md", "metadata/schema_registry.json"],
+  "row_count_observed": 1909419,
+  "ticker_count_observed": 1686,
+  "date_range_observed": {"min":"2015-01-01","max":"2026-07-10"},
+  "fields": ["ticker","date","open","high","low","close","volume","source"],
+  "primary_key": ["ticker","date"],
+  "price_unit": "VND; discovery states values were scaled x1000",
+  "adjustment_status": "not fully confirmed",
+  "risks": ["Stale/delisted tickers may remain.", "Corporate actions may create artificial return, moving-average or drawdown breaks.", "Provider failover may introduce source transitions."],
+  "suitability": {"short_horizon_current_analysis":"conditional on latest-date filtering","long_horizon_returns":"conditional on adjustment verification","backtest":"conditional; requires point-in-time inputs, corporate-action checks and no look-ahead","full_llm_ingestion":"not suitable"},
+  "limitations": ["No gap, duplicate, null or split-event scan was performed in Phase 3."]
+}

@@ -1,0 +1,18 @@
+{
+  "summary_type": "observed_freshness",
+  "generated_at": "2026-07-13T00:00:00+07:00",
+  "source_basis": ["project_discovery/quality_assessment.md", "metadata/data_quality_rules.json"],
+  "as_of_discovery_date": "2026-07-13",
+  "datasets": [
+    {"name":"ohlcv","latest_date":"2026-07-10","latest_updated_field":"meta.updated available but aggregate latest not reported","stale_risk":"medium","live_analysis_suitability":"suitable only after latest-date and active-status filtering","backtest_suitability":"conditional on adjusted-price verification and point-in-time controls"},
+    {"name":"metadata","latest_date":null,"latest_updated_field":"metadata.updated per ticker","stale_risk":"medium because refresh is per ticker and quarterly","live_analysis_suitability":"conditional","backtest_suitability":"not suitable as historical dimension"},
+    {"name":"financial_snapshot","latest_date":"2026-Q1 observed","latest_updated_field":"derived from raw scraped_at/scrape_meta.updated; aggregate not reported","stale_risk":"medium","live_analysis_suitability":"conditional on filing availability","backtest_suitability":"not suitable for strict backtest without publication/availability date"},
+    {"name":"macro","latest_date":"2026-07-12 observed","latest_updated_field":"not reported","stale_risk":"varies by series frequency","live_analysis_suitability":"conditional on series frequency","backtest_suitability":"historical DB usable with date alignment"},
+    {"name":"news","latest_date":"2026-07-12 observed","latest_updated_field":"news.fetched","stale_risk":"high for intraday use after discovery date","live_analysis_suitability":"requires fresh fetch timestamp","backtest_suitability":"conditional on published_utc cutoff"},
+    {"name":"shareholders","latest_date":null,"latest_updated_field":"shareholders.updated_at per row","stale_risk":"medium to high","live_analysis_suitability":"current snapshot context only","backtest_suitability":"not suitable"},
+    {"name":"screen_snapshot","latest_date":"2026-07-10 observed","latest_updated_field":"date per ticker","stale_risk":"high for any later live date","live_analysis_suitability":"only if regenerated/current and filtered to global latest date","backtest_suitability":"not suitable as historical series"},
+    {"name":"quant_ai_outputs","latest_date":"not fully confirmed","latest_updated_field":"file/report-specific","stale_risk":"high unless timestamp checked","live_analysis_suitability":"secondary context only","backtest_suitability":"not suitable without point-in-time regeneration"}
+  ],
+  "warnings": ["Latest is dataset-specific and must not be assumed synchronized.", "Snapshot fields are not historical dimensions."],
+  "limitations": ["No current filesystem mtime or database MAX query was performed."]
+}

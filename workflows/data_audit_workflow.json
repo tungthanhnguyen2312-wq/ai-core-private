@@ -1,0 +1,21 @@
+{
+  "name": "data_audit_workflow",
+  "version": "1.0.0",
+  "status": "design_only_not_executed",
+  "objective": "Detect and report data quality issues without altering source data.",
+  "checks": [
+    {"name":"missing","method":"Apply field-specific nullable and missing rules; never impute automatically."},
+    {"name":"stale","method":"Compare ticker/dataset latest date with approved global/reference latest date."},
+    {"name":"duplicate","method":"Check declared primary/logical keys; preserve records and report duplicates."},
+    {"name":"minus_one_sentinel","method":"Map -1 only in documented fields to queried_no_value/missing."},
+    {"name":"null_context","method":"Interpret NULL by schema missing_rule, including margin no-flag convention."},
+    {"name":"date_period_validity","method":"Parse YYYY-MM-DD and supported financial periods; match period_type."},
+    {"name":"adjusted_price_uncertainty","method":"Flag return/MA/drawdown/backtest outputs if adjustment is unconfirmed."},
+    {"name":"bctc_mapping_gaps","method":"Report unconfirmed EBIT, EBITDA, interest, retained earnings, depreciation and SGA mappings."},
+    {"name":"point_in_time_risk","method":"Reject current metadata/shareholder/latest snapshots from backtest and enforce cutoff."}
+  ],
+  "issue_output_fields": ["dataset","record_keys","check","severity","observed_value","expected_rule","source","status","limitations"],
+  "allowed_actions": ["read-only validation","report pass/fail/unknown","retain unresolved conflicts"],
+  "forbidden_actions": ["auto-fix source","delete duplicate","update database","run crawler or analysis pipeline"],
+  "limitations": ["No audit is executed in Phase 4; corporate-action and publication-date sources are not fully confirmed."]
+}
