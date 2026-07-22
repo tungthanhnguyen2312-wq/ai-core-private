@@ -124,6 +124,22 @@ class PriceBasisWorkflowTests(unittest.TestCase):
         self.assertEqual(payload, {})
         self.assertEqual(warning, "analysis_bundle_invalid_json")
 
+    def test_dashboard_runtime_config_falls_back_to_legacy_runtime(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            legacy_runtime = root / "VNSTOCK"
+            legacy_runtime.mkdir()
+            (legacy_runtime / "analysis_bundle.json").write_text(
+                json.dumps({"price_basis": "raw", "price_basis_verified": True}), encoding="utf-8"
+            )
+            with patch.object(builder, "WORKSPACE_ROOT", root / "ai-core-private"), \
+                 patch.object(builder, "VNSTOCK_ROOT", legacy_runtime):
+                payload, warning = builder.load_optional_analysis_bundle({
+                    "source_paths": {"analysis_bundle": "../dashboard-runtime/analysis_bundle.json"}
+                })
+        self.assertIsNone(warning)
+        self.assertEqual(payload["price_basis"], "raw")
+
     def test_entry_point_passes_loaded_bundle_to_context_builder(self):
         args = Namespace(
             positional_ticker="TEST", ticker=[], tickers=None, output=None,

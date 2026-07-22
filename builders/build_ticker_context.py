@@ -29,7 +29,20 @@ if hasattr(sys.stderr, "reconfigure"):
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE_ROOT = SCRIPT_DIR.parent
-VNSTOCK_ROOT = (WORKSPACE_ROOT.parent / "VNSTOCK").resolve()
+
+
+def resolve_dashboard_runtime_root() -> Path:
+    """Prefer the unified workspace runtime while supporting old and transitional layouts."""
+    candidates = (
+        WORKSPACE_ROOT.parent / "dashboard-runtime",
+        WORKSPACE_ROOT.parent / "VNSTOCK",
+        WORKSPACE_ROOT.parent.parent / "VNSTOCK",
+    )
+    return next((path.resolve() for path in candidates if path.exists()), candidates[0].resolve())
+
+
+# Retain the established internal name so existing context logic and tests keep their contract.
+VNSTOCK_ROOT = resolve_dashboard_runtime_root()
 CONFIG_PATH = SCRIPT_DIR / "build_ticker_context_config.json"
 REPORTS_ROOT = (WORKSPACE_ROOT / "reports").resolve()
 
@@ -94,13 +107,23 @@ def load_json(path: Path) -> Any:
         raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
 
 
+def resolve_optional_source_path(configured: str) -> Path:
+    """Resolve a configured source, falling back to the discovered legacy runtime root."""
+    path = Path(str(configured))
+    if path.is_absolute():
+        return path
+    candidate = (WORKSPACE_ROOT / path).resolve()
+    if candidate.exists() or not path.as_posix().startswith("../dashboard-runtime/"):
+        return candidate
+    return VNSTOCK_ROOT / Path(*path.parts[2:])
+
+
 def load_optional_analysis_bundle(config: Mapping[str, Any]) -> tuple[dict[str, Any], str | None]:
     """Load the configured Phase 1 bundle without making it a required runtime input."""
     configured = (config.get("source_paths") or {}).get("analysis_bundle")
     if not configured:
         return {}, "analysis_bundle_not_configured"
-    path = Path(str(configured))
-    path = path if path.is_absolute() else (WORKSPACE_ROOT / path).resolve()
+    path = resolve_optional_source_path(str(configured))
     if not path.exists():
         return {}, "analysis_bundle_missing"
     try:
