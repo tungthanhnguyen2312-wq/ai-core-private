@@ -95,6 +95,13 @@ FINANCIAL_CONTRACT_METRICS = (
 # name does not establish whether prices include corporate-action adjustments.
 PRICE_BASIS_VALUES = frozenset({"raw", "adjusted", "unknown"})
 PRICE_BASIS_UNVERIFIED_CODE = "price_basis_unverified"
+CORPORATE_INTELLIGENCE_SECTIONS = (
+    "company_profile",
+    "company_subsidiaries",
+    "ownership_structure",
+    "major_shareholders",
+)
+CORPORATE_INTELLIGENCE_STATUSES = frozenset({"available", "missing", "partial", "malformed", "incomparable"})
 
 
 def load_json(path: Path) -> Any:
@@ -202,6 +209,69 @@ def apply_bundle_price_basis_contract(
         "transformation": "Propagate Phase 1 price-basis contract without changing OHLCV-derived calculations.",
         "price_basis": contract["price_basis"], "price_basis_verified": contract["price_basis_verified"],
         "limitations": [] if contract["price_basis_verified"] else ["OHLCV basis is not verified"],
+    })
+    return context
+
+
+def corporate_intelligence_contract(
+    bundle: Mapping[str, Any] | None,
+    ticker: str,
+    bundle_load_warning: str | None = None,
+) -> dict[str, Any]:
+    """Return one ticker's producer-owned Corporate Intelligence contract unchanged.
+
+    The producer owns all field semantics, identities, snapshot dates, and provenance.
+    This consumer only validates the outer envelope so an absent or malformed optional
+    section is explicit instead of being reconstructed from other ticker data.
+    """
+    if bundle_load_warning:
+        return {"status": "missing", "reason": bundle_load_warning, "sources": []}
+    if not isinstance(bundle, Mapping):
+        return {"status": "missing", "reason": "analysis_bundle_not_available", "sources": []}
+    tickers = bundle.get("tickers")
+    if not isinstance(tickers, Mapping):
+        return {"status": "missing", "reason": "analysis_bundle_tickers_not_available", "sources": []}
+    ticker_entry = tickers.get(ticker)
+    if not isinstance(ticker_entry, Mapping):
+        return {"status": "missing", "reason": "ticker_not_in_analysis_bundle", "sources": []}
+    raw = ticker_entry.get("corporate_intelligence")
+    if raw is None:
+        return {"status": "missing", "reason": "corporate_intelligence_not_in_bundle", "sources": []}
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "reason": "corporate_intelligence_not_an_object", "sources": []}
+
+    status = raw.get("status")
+    if not isinstance(status, str) or status not in CORPORATE_INTELLIGENCE_STATUSES:
+        return {
+            "status": "malformed", "reason": "corporate_intelligence_status_invalid",
+            "producer_status": status, "sources": [],
+        }
+    contract = copy.deepcopy(dict(raw))
+    invalid_sections = [section for section in CORPORATE_INTELLIGENCE_SECTIONS
+                        if not isinstance(contract.get(section), Mapping)]
+    if invalid_sections:
+        return {
+            "status": "malformed", "reason": "corporate_intelligence_section_invalid",
+            "producer_status": status, "invalid_sections": invalid_sections, "sources": [],
+        }
+    return contract
+
+
+def apply_bundle_corporate_intelligence_contract(
+    context: dict[str, Any],
+    bundle: Mapping[str, Any] | None = None,
+    bundle_load_warning: str | None = None,
+) -> dict[str, Any]:
+    """Attach the source-scoped producer contract without merging or deriving fields."""
+    contract = corporate_intelligence_contract(bundle, str(context.get("ticker") or ""), bundle_load_warning)
+    context["corporate_intelligence"] = contract
+    context.setdefault("provenance", []).append({
+        "source_file": "analysis_bundle.json", "source_dataset": "corporate_intelligence",
+        "source_keys": {"ticker": context.get("ticker")},
+        "transformation": "Pass through producer-owned, source-scoped corporate snapshots without canonicalization.",
+        "corporate_intelligence_status": contract["status"],
+        "limitations": ([] if contract["status"] == "available"
+                        else ["Corporate Intelligence is not fully available; do not infer missing or incomparable values."]),
     })
     return context
 
@@ -1275,6 +1345,7 @@ def build_context_package(
     context["missing_sections"] = context["data_quality"]["missing_sections"]
     context["warnings"] = context["data_quality"]["warnings"]
     apply_bundle_price_basis_contract(context, bundle_payload, bundle_load_warning)
+    apply_bundle_corporate_intelligence_contract(context, bundle_payload, bundle_load_warning)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
