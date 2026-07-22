@@ -12,7 +12,7 @@ Produce a structured, evidence-based description of one ticker using a validated
 
 ### Required input
 
-One `{TICKER}_context.json`, AnalysisGuide, AIUsageRules, and a user-specified purpose/cutoff.
+One `{TICKER}_context.json`, AnalysisGuide, AIUsageRules, and a user-specified purpose/cutoff. `corporate_intelligence` is optional for backward-compatible older context packages.
 
 ### Prompt
 
@@ -23,12 +23,16 @@ First report package generated_at/latest dates, validation status, missing secti
 
 Then describe only supported sections: identity/current metadata; price and liquidity with recorded calculation method; financial summary with unit/availability warnings; valuation inputs without unsupported calculations; technical snapshot without certain predictions; shareholder snapshot with no-history warning; and news only if safely mapped.
 
+If `corporate_intelligence` is present, report its top-level status and separately report `company_profile`, `company_subsidiaries`, `ownership_structure`, and `major_shareholders`. Preserve each provider/source scope, source identity, provenance, raw relationship semantics, and snapshot date exactly as supplied. Do not merge KBS and VCI records, equate fields with different provider semantics, or derive a common ownership/relationship taxonomy. For major-shareholder deltas, use a change only when its own status says it is comparable; retain `incomparable` and its reason as a data warning.
+
+Place source-recorded Corporate Intelligence values under Fact; place `missing`, `partial`, `malformed`, `incomparable`, absent provenance, and snapshot-date limitations under Data Warnings/Unknown; put any carefully qualified interpretation under Inference. Missing or malformed Corporate Intelligence is a data limitation, not negative evidence about the company. If an older context package has no `corporate_intelligence` section, state that it is unavailable and continue only with the other supported context sections.
+
 Separate Fact, Derived, Inference and Unknown. Cite internal provenance near important values. End with data risks, alternative interpretations and information needed for higher confidence. Do not issue a buy/sell recommendation or price target.
 ```
 
 ### Expected output
 
-Scope/cutoff, validation gate, factual tables, cautious interpretation, missing/conflicts, provenance and limitations.
+Scope/cutoff, validation gate, factual tables, Corporate Intelligence facts by source when available, data warnings/unknowns, cautious interpretation, missing/conflicts, provenance and limitations.
 
 ## 2. Two-ticker comparison template
 
