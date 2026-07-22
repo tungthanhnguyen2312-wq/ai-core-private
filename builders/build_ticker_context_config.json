@@ -16,6 +16,7 @@
     "financial_snapshot": "../VNSTOCK/financial_snapshot.csv",
     "screen_snapshot": "../VNSTOCK/screen_snapshot.csv",
     "ta_signals": "../VNSTOCK/ta_signals.csv",
+    "analysis_bundle": "../VNSTOCK/analysis_bundle.json",
     "news_latest": "../VNSTOCK/news_latest.csv"
   },
   "limitations": ["News mapping is limited to explicit aliases and ticker mentions with financial context.", "Financial monetary unit/scale and price adjustment are not fully confirmed.", "Explicit --no-dry-run is required to create a new export."]

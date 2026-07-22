@@ -18,7 +18,7 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -78,6 +78,11 @@ FINANCIAL_CONTRACT_METRICS = (
     "sga",
 )
 
+# Phase 2 price-basis consumer contract.  A provider name, endpoint, or OHLCV column
+# name does not establish whether prices include corporate-action adjustments.
+PRICE_BASIS_VALUES = frozenset({"raw", "adjusted", "unknown"})
+PRICE_BASIS_UNVERIFIED_CODE = "price_basis_unverified"
+
 
 def load_json(path: Path) -> Any:
     try:
@@ -87,6 +92,95 @@ def load_json(path: Path) -> Any:
         raise FileNotFoundError(f"Required JSON file not found: {path}") from exc
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
+
+
+def load_optional_analysis_bundle(config: Mapping[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """Load the configured Phase 1 bundle without making it a required runtime input."""
+    configured = (config.get("source_paths") or {}).get("analysis_bundle")
+    if not configured:
+        return {}, "analysis_bundle_not_configured"
+    path = Path(str(configured))
+    path = path if path.is_absolute() else (WORKSPACE_ROOT / path).resolve()
+    if not path.exists():
+        return {}, "analysis_bundle_missing"
+    try:
+        payload = load_json(path)
+    except (OSError, ValueError):
+        return {}, "analysis_bundle_invalid_json"
+    if not isinstance(payload, dict):
+        return {}, "analysis_bundle_invalid_payload"
+    return payload, None
+
+
+def normalize_price_basis_contract(bundle: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Read Phase 1's additive price-basis fields with a safe legacy fallback."""
+    bundle = bundle or {}
+    raw_basis = bundle.get("price_basis")
+    basis = str(raw_basis).strip().lower() if raw_basis is not None else ""
+    verified = bundle.get("price_basis_verified") is True
+    if verified and basis in {"raw", "adjusted"}:
+        provenance = bundle.get("price_basis_provenance")
+        return {
+            "price_basis": basis,
+            "price_basis_verified": True,
+            "price_basis_provenance": dict(provenance) if isinstance(provenance, Mapping) else {},
+        }
+    return {
+        "price_basis": "unknown",
+        "price_basis_verified": False,
+        "price_basis_provenance": (
+            dict(bundle["price_basis_provenance"])
+            if isinstance(bundle.get("price_basis_provenance"), Mapping)
+            else {"source": "missing_or_unverified_bundle_price_basis"}
+        ),
+    }
+
+
+def apply_bundle_price_basis_contract(
+    context: dict[str, Any],
+    bundle: Mapping[str, Any] | None = None,
+    bundle_load_warning: str | None = None,
+) -> dict[str, Any]:
+    """Propagate price-basis provenance and warning into an existing ticker context.
+
+    This is additive-only: it neither recomputes technical values nor changes scores.
+    It accepts both Phase 1 bundles and older payloads without price-basis fields.
+    """
+    contract = normalize_price_basis_contract(bundle)
+    price_summary = context.setdefault("price_summary", {})
+    price_summary.update(contract)
+
+    quality = context.setdefault("data_quality", {})
+    flags = [flag for flag in quality.get("flags", [])
+             if not (isinstance(flag, Mapping) and flag.get("code") == PRICE_BASIS_UNVERIFIED_CODE)]
+    warnings = list(quality.get("warnings", []))
+    warnings = [warning for warning in warnings if "price basis is unverified" not in str(warning).lower()]
+    not_confirmed = list(quality.get("not_fully_confirmed", []))
+    not_confirmed = [item for item in not_confirmed if item != "OHLCV price basis"]
+
+    if not contract["price_basis_verified"]:
+        flags.append({
+            "scope": "pipeline", "ticker": context.get("ticker"), "code": PRICE_BASIS_UNVERIFIED_CODE,
+            "severity": "warning", "metric": "price_basis", "evidence": contract,
+            "message": "OHLCV price basis is unverified; corporate actions may affect return, MA, and RS.",
+            "consumer_action": "Do not assume raw or adjusted prices; qualify OHLCV-derived conclusions.",
+        })
+        warnings.append("OHLCV price basis is unverified; corporate actions may affect return, MA, and RS.")
+        not_confirmed.append("OHLCV price basis")
+    if bundle_load_warning:
+        warnings.append(f"analysis_bundle fallback: {bundle_load_warning}.")
+
+    quality["flags"] = flags
+    quality["warnings"] = sorted(set(warnings))
+    quality["not_fully_confirmed"] = sorted(set(not_confirmed))
+    context.setdefault("provenance", []).append({
+        "source_file": "analysis_bundle.json", "source_dataset": "price_basis_contract",
+        "source_keys": {"ticker": context.get("ticker")},
+        "transformation": "Propagate Phase 1 price-basis contract without changing OHLCV-derived calculations.",
+        "price_basis": contract["price_basis"], "price_basis_verified": contract["price_basis_verified"],
+        "limitations": [] if contract["price_basis_verified"] else ["OHLCV basis is not verified"],
+    })
+    return context
 
 
 def save_json(path: Path, payload: Any) -> None:
@@ -1011,7 +1105,14 @@ def load_technical_slice(ticker: str) -> tuple[dict[str, Any], list[dict[str, An
     }, provenance
 
 
-def build_context_package(ticker: str, template: dict[str, Any], summaries: dict[str, Any], strict: bool = False) -> dict[str, Any]:
+def build_context_package(
+    ticker: str,
+    template: dict[str, Any],
+    summaries: dict[str, Any],
+    strict: bool = False,
+    bundle_payload: Mapping[str, Any] | None = None,
+    bundle_load_warning: str | None = None,
+) -> dict[str, Any]:
     db_path = VNSTOCK_ROOT / "vn_stock.db"
     context = copy.deepcopy(template)
     context["schema_version"] = "1.4.0"
@@ -1131,6 +1232,8 @@ def build_context_package(ticker: str, template: dict[str, Any], summaries: dict
     }
     context["missing_sections"] = context["data_quality"]["missing_sections"]
     context["warnings"] = context["data_quality"]["warnings"]
+    apply_bundle_price_basis_contract(context, bundle_payload, bundle_load_warning)
+    context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
     return context
@@ -1241,11 +1344,15 @@ def main() -> int:
             schema_path = (WORKSPACE_ROOT / config["context_schema_path"]).resolve()
         summaries = load_summary_layer(config)
         template = load_json((WORKSPACE_ROOT / config["context_template_path"]).resolve())
+        bundle_payload, bundle_load_warning = load_optional_analysis_bundle(config)
         results = []
         any_profile_failed = False
         any_schema_failed = False
         for ticker in tickers:
-            context = build_context_package(ticker, template, summaries, strict=strict)
+            context = build_context_package(
+                ticker, template, summaries, strict=strict,
+                bundle_payload=bundle_payload, bundle_load_warning=bundle_load_warning,
+            )
             validation = validate_context(
                 context,
                 strict=strict,
