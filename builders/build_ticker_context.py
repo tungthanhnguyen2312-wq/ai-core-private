@@ -939,12 +939,10 @@ def load_shareholder_slice(ticker: str, db_path: Path) -> tuple[dict[str, Any], 
         attempts = []
         if "shareholder_records_v2" in tables:
             rows = connection.execute(
-                """SELECT holder_name, shares, ownership_pct, source_name, as_of_date,
+                """SELECT record_key, holder_name, shares, ownership_pct, source_name, as_of_date,
                           fetched_at, source_reference, verified_at, record_origin,
                           reconciliation_status, conflict_group, provenance_json
-                   FROM shareholder_records_v2 WHERE ticker=?
-                   ORDER BY CASE WHEN ownership_pct IS NULL THEN 1 ELSE 0 END,
-                            ownership_pct DESC, as_of_date DESC LIMIT 20""",
+                   FROM shareholder_records_v2 WHERE ticker=?""",
                 (ticker,),
             ).fetchall()
             if "shareholder_sync_runs" in tables:
@@ -985,8 +983,30 @@ def load_shareholder_slice(ticker: str, db_path: Path) -> tuple[dict[str, Any], 
     finally:
         connection.close()
     phase6 = run is not None or bool(attempts) or bool(rows and "holder_name" in rows[0].keys())
-    provenance = [{"source_file": str(db_path), "source_dataset": "shareholder_records_v2 + attempts + sync_runs" if phase6 else "shareholders + shareholders_progress", "source_keys": {"ticker": ticker},
-                   "transformation": "Read-only ticker query; Phase 6 schema preferred when present; legacy -1 pct normalized to null."}]
+    selected_as_of_date = None
+    if phase6:
+        valid_dates = set()
+        for row in rows:
+            value = row["as_of_date"]
+            if not isinstance(value, str):
+                continue
+            try:
+                parsed_date = datetime.strptime(value, "%Y-%m-%d").date().isoformat()
+            except ValueError:
+                continue
+            if value == parsed_date:
+                valid_dates.add(parsed_date)
+        if valid_dates:
+            selected_as_of_date = max(valid_dates)
+            rows = [row for row in rows if row["as_of_date"] == selected_as_of_date]
+
+        def shareholder_rank_key(row: sqlite3.Row) -> tuple[int, float, str, str]:
+            pct = _number(row["ownership_pct"])
+            return (pct is None, -(pct or 0.0), (row["holder_name"] or "").casefold(), row["record_key"] or "")
+
+        rows = sorted(rows, key=shareholder_rank_key)[:20]
+    provenance = [{"source_file": str(db_path), "source_dataset": "shareholder_records_v2 + attempts + sync_runs" if phase6 else "shareholders + shareholders_progress", "source_keys": {"ticker": ticker, "as_of_date": selected_as_of_date or "unknown"},
+                   "transformation": "Read-only ticker query; Phase 6 records are ranked only within the latest valid as_of_date snapshot, with a deterministic unknown-date fallback; legacy -1 pct normalized to null."}]
     holders = []
     for row in rows:
         if phase6:
@@ -998,7 +1018,7 @@ def load_shareholder_slice(ticker: str, db_path: Path) -> tuple[dict[str, Any], 
             holders.append({
                 "shareholder_name": row["holder_name"], "shares_owned": _number(row["shares"]),
                 "pct": pct, "source": row["source_name"], "updated_at": row["fetched_at"],
-                "as_of_date": row["as_of_date"], "source_reference": row["source_reference"],
+                "as_of_date": selected_as_of_date, "source_reference": row["source_reference"],
                 "verified_at": row["verified_at"], "record_origin": row["record_origin"],
                 "reconciliation_status": row["reconciliation_status"], "conflict_group": row["conflict_group"],
                 "provenance": row_provenance,
@@ -1007,9 +1027,8 @@ def load_shareholder_slice(ticker: str, db_path: Path) -> tuple[dict[str, Any], 
             pct = _number(row["pct"])
             holders.append({"shareholder_name": row["shareholder_name"], "shares_owned": _number(row["shares_owned"]),
                             "pct": None if pct == -1 else pct, "source": row["source"], "updated_at": row["updated_at"]})
-    dates = [
-        (row["as_of_date"] if phase6 else row["updated_at"])
-        for row in rows if (row["as_of_date"] if phase6 else row["updated_at"])
+    dates = ([selected_as_of_date] if selected_as_of_date else []) if phase6 else [
+        row["updated_at"] for row in rows if row["updated_at"]
     ]
     progress_status = progress["status"] if progress else None
     final_status = run["final_status"] if run else ({"empty": "source_empty", "failed": "network_failed"}.get(progress_status, progress_status))
@@ -1077,14 +1096,14 @@ def load_shareholder_slice(ticker: str, db_path: Path) -> tuple[dict[str, Any], 
         "reason": reason or ("ticker_absent_from_shareholders_progress" if progress is None else meta.get("reason")),
         "attempts": [dict(item) for item in attempts],
         "sources_attempted": [item["source"] for item in attempts],
-        "latest_as_of_date": (run["latest_as_of_date"] if run and run["latest_as_of_date"] else (max(dates) if dates else None)),
+        "latest_as_of_date": selected_as_of_date if phase6 else (max(dates) if dates else None),
         "freshness": freshness,
         "manual_override_count": int(run["manual_override_count"]) if run else 0,
         "raw_record_count": int(run["raw_record_count"]) if run else None,
         "parsed_record_count": int(run["parsed_record_count"]) if run else None,
         "deduplicated_record_count": int(run["deduplicated_record_count"]) if run else (len(rows) if rows else None),
         "retained_record_count": len(rows),
-        "latest_snapshot_date": max(dates) if dates else (run["updated"] if run else (progress["updated"] if progress else None)),
+        "latest_snapshot_date": selected_as_of_date if phase6 else (max(dates) if dates else (progress["updated"] if progress else None)),
         "major_shareholders_count": (
             int(run["deduplicated_record_count"])
             if rows and run and run["deduplicated_record_count"]

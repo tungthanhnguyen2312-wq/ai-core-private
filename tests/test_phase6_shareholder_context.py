@@ -91,6 +91,51 @@ class Phase6ShareholderContextTests(unittest.TestCase):
         self.assertEqual(summary["major_shareholders_count"], 1)
         self.assertEqual(summary["latest_as_of_date"], "2026-06-30")
 
+    def test_top_holders_uses_only_latest_valid_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = self._database(Path(temporary))
+            connection = sqlite3.connect(path)
+            provenance = json.dumps([])
+            connection.executemany(
+                "INSERT INTO shareholder_records_v2 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    ("old", "PAN", "Older majority", "older majority", 100, 90, "2026-03-31", "Source", None, None, None, None, "api", "accepted", None, provenance),
+                    ("new-a", "PAN", "Latest first", "latest first", 100, 30, "2026-06-30", "Source", None, None, None, None, "api", "accepted", None, provenance),
+                    ("new-b", "PAN", "Latest second", "latest second", 100, 20, "2026-06-30", "Source", None, None, None, None, "api", "accepted", None, provenance),
+                    ("bad", "PAN", "Malformed date", "malformed date", 100, 80, "not-a-date", "Source", None, None, None, None, "api", "accepted", None, provenance),
+                    ("missing", "PAN", "Missing date", "missing date", 100, 70, None, "Source", None, None, None, None, "api", "accepted", None, provenance),
+                ],
+            )
+            connection.commit()
+            connection.close()
+            summary, provenance_entries = builder.load_shareholder_slice("PAN", path)
+        self.assertEqual(summary["latest_as_of_date"], "2026-06-30")
+        self.assertEqual(summary["latest_snapshot_date"], "2026-06-30")
+        self.assertEqual(
+            [holder["shareholder_name"] for holder in summary["top_holders"]],
+            ["Latest first", "Latest second", "Verified Holder"],
+        )
+        self.assertTrue(all(holder["as_of_date"] == "2026-06-30" for holder in summary["top_holders"]))
+        self.assertEqual(provenance_entries[0]["source_keys"]["as_of_date"], "2026-06-30")
+
+    def test_invalid_dates_use_deterministic_unknown_snapshot_fallback(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = self._database(Path(temporary))
+            connection = sqlite3.connect(path)
+            connection.execute("UPDATE shareholder_records_v2 SET as_of_date='not-a-date' WHERE ticker='PAN'")
+            connection.execute(
+                "INSERT INTO shareholder_records_v2 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("tie", "PAN", "A holder", "a holder", 100, 10, None, "Source", None, None, None, None, "api", "accepted", None, json.dumps([])),
+            )
+            connection.commit()
+            connection.close()
+            summary, provenance_entries = builder.load_shareholder_slice("PAN", path)
+        self.assertIsNone(summary["latest_as_of_date"])
+        self.assertIsNone(summary["latest_snapshot_date"])
+        self.assertEqual([holder["shareholder_name"] for holder in summary["top_holders"]], ["A holder", "Verified Holder"])
+        self.assertTrue(all(holder["as_of_date"] is None for holder in summary["top_holders"]))
+        self.assertEqual(provenance_entries[0]["source_keys"]["as_of_date"], "unknown")
+
 
 if __name__ == "__main__":
     unittest.main()
