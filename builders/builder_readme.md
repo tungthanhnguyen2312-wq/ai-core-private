@@ -9,36 +9,41 @@
 Dry-run mặc định:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --dry-run
 ```
 
 Tạo package mới trong `exports/context_packages/` (không ghi đè):
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --no-dry-run
 ```
 
 Chỉ định output an toàn:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --output exports/context_packages/HPG_context_v2.json --no-dry-run
 ```
 
 Batch an toàn tối đa 10 ticker:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --tickers HPG,FPT,VCB,VNM,MWG,TCB,MBB,SSI,VIC,VRE --dry-run
 ```
 
 Strict mode sẽ fail nếu còn missing hoặc not-fully-confirmed:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --strict --dry-run
 ```
 
 ## Guard path
 
-Script chỉ cho output `.json` trong `exports/context_packages/`, tuyệt đối không trong `../VNSTOCK`. File đã tồn tại sẽ không bị ghi đè; batch bị giới hạn tối đa 10 ticker.
+Script chỉ cho output `.json` trong `exports/context_packages/`, tuyệt đối không trong dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT`. File đã tồn tại sẽ không bị ghi đè; batch bị giới hạn tối đa 10 ticker.
 
 ## Provenance / Source Basis
 
@@ -60,12 +65,14 @@ Dùng dry-run trước khi build. Khi đưa package cho AI, phải đọc valida
 Dry-run manifest, validation and fingerprint generation:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_batch_artifacts.py --tickers HPG,FPT,VCB,VNM,MWG,TCB,MBB,SSI,VIC,VRE --dry-run
 ```
 
 Create new `_auto` artifacts without overwriting existing files:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_batch_artifacts.py --tickers HPG,FPT,VCB,VNM,MWG,TCB,MBB,SSI,VIC,VRE --no-dry-run
 ```
 
@@ -76,12 +83,14 @@ Small source files receive SHA-256 fingerprints; large files receive size/mtime 
 Validate an artifact with the dependency-free schema subset:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/validate_json_schema_subset.py --schema validation/schemas/ticker_context.schema.json --instance exports/context_packages/HPG_context.json
 ```
 
 Compare two automated manifests in dry-run mode:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/compare_batch_runs.py --previous exports/context_packages/batch_manifest_auto.json --current exports/context_packages/batch_manifest_auto_v2.json --dry-run
 ```
 
@@ -92,12 +101,14 @@ The validator is intentionally a documented subset, not a full Draft 2020-12 eng
 Build a new catalog without overwriting an existing artifact:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_artifact_catalog.py --dry-run
 ```
 
 Evaluate deterministic maintenance actions:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/decide_rebuild.py --dry-run
 ```
 
@@ -108,12 +119,14 @@ These commands manage artifact freshness and validation only. `no_rebuild` is no
 Run the v1.0 gate without writing reports:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/run_final_qa.py --dry-run
 ```
 
 Create new QA reports under `exports/qa/`:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/run_final_qa.py --no-dry-run
 ```
 
@@ -122,6 +135,7 @@ The release gate requires zero Critical and High findings. QA success does not p
 ## Operating pack validation
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/validate_operating_pack.py --dry-run
 ```
 

@@ -7,7 +7,7 @@
 | Valid ticker | `--ticker SAMPLE --dry-run` | Exit 0, normalized ticker, `would_write=false`. |
 | Invalid ticker | empty/unsafe punctuation | Exit 2, no file. |
 | Ticker not known | valid format but no enumerated coverage | Non-strict skeleton with coverage `unknown`; strict fails. |
-| Wrong output path | path in `../VNSTOCK` or outside workspace | Exit 2, no write. |
+| Wrong output path | path inside the dashboard runtime selected by `STOCK_LOOKUP_RUNTIME_ROOT` or outside workspace | Exit 2, no write. |
 | Forbidden AI folder | output inside metadata/builders/etc. | Exit 2. |
 | Existing output | `--no-dry-run` targeting existing file | Refuse overwrite. |
 | Missing summary | rename absent in isolated fixture/config | Descriptive missing-file error. |

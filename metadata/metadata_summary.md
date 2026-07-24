@@ -35,7 +35,7 @@ Nội dung được tổng hợp từ toàn bộ tám tài liệu Phase 1 trong 
 - Các thống kê phản ánh thời điểm discovery ngày 2026-07-13 và có thể thay đổi khi pipeline chạy về sau.
 - `ticker` được chuẩn hóa uppercase và thường dài 3–4 ký tự.
 - `margin_status` rỗng được hiểu là sạch theo quy ước discovery.
-- Đường dẫn trong registry là đường dẫn logic tương đối từ workspace `AI ANALYZE` tới `../VNSTOCK`.
+Đường dẫn trong registry được Consumer diễn giải theo contract cấu hình; dashboard runtime đích được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT`, không suy diễn từ thư mục sibling.
 - Các trường được gom nhóm trong `schema_registry.json` có chung contract kiểu/semantic; danh sách cột đầy đủ vẫn được xác định bởi schema discovery.
 
 ## Điểm chưa chắc chắn

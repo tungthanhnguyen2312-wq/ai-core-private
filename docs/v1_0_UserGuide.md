@@ -22,7 +22,7 @@ Bạn cần:
 
 - Python có thể gọi bằng lệnh `python`.
 - PowerShell mở tại thư mục gốc `AI ANALYZE`.
-- Quyền đọc `../VNSTOCK` và quyền ghi trong `AI ANALYZE`.
+Quyền đọc dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT` và quyền ghi trong repository Consumer.
 - Một tài khoản ChatGPT hoặc Claude (chat-upload) hoặc Codex/Claude Code (đọc file trực tiếp) nếu muốn dùng context với AI bên ngoài.
 
 Không chạy lệnh từ bên trong `release/v1.0`. Đây là snapshot đã freeze và không được sửa tại chỗ.
@@ -49,12 +49,14 @@ Không chạy lệnh từ bên trong `release/v1.0`. Đây là snapshot đã fre
 Luôn chạy dry-run trước:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --dry-run
 ```
 
 Khi dry-run pass và bạn thật sự cần một file mới, dùng tên output có version/ngày:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --output exports/context_packages/HPG_context_YYYYMMDD.json --no-dry-run
 ```
 
@@ -71,12 +73,14 @@ Builder sẽ:
 Builder hỗ trợ tối đa 10 ticker trong một lần. Dry-run:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --tickers HPG,FPT,VCB --output exports/context_packages --dry-run
 ```
 
 Tạo file mới chỉ khi output tương ứng chưa tồn tại:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --tickers HPG,FPT,VCB --output exports/context_packages --no-dry-run
 ```
 
@@ -87,6 +91,7 @@ Nếu tên mặc định đã tồn tại, builder sẽ dừng để bảo vệ 
 Strict mode:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --strict --dry-run
 ```
 
@@ -202,6 +207,7 @@ Input tối thiểu:
 Dry-run tạo lại batch artifacts khi cần kiểm tra:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_batch_artifacts.py --tickers HPG,FPT,VCB --dry-run
 ```
 

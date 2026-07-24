@@ -5,7 +5,7 @@
 1. Dừng bước phụ thuộc vào dữ liệu lỗi.
 2. Giữ nguyên file nguồn và warnings để có thể truy vết.
 3. Chạy lại ở `--dry-run` trước.
-4. Không sửa `../VNSTOCK` hoặc `release/v1.0`.
+4. Không sửa dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT` hoặc `release/v1.0`.
 5. Không tự điền số thiếu để làm cho validation pass.
 
 ## Lỗi builder và file
@@ -19,6 +19,7 @@
 Builder bảo vệ file cũ và không ghi đè. Dùng tên có ngày/version, ví dụ:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --output exports/context_packages/HPG_context_YYYYMMDD.json --no-dry-run
 ```
 
@@ -26,7 +27,7 @@ Không xóa package cũ chỉ để dùng lại cùng tên.
 
 ### Builder từ chối output path
 
-Output phải nằm trong vùng được phép, thường là `exports/context_packages/`. Không dùng path trong `../VNSTOCK`, `release/v1.0` hoặc thư mục hệ thống.
+Output phải nằm trong vùng được phép, thường là `exports/context_packages/`. Không dùng path bên trong dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT`, `release/v1.0` hoặc thư mục hệ thống.
 
 ### Ticker bị từ chối
 
@@ -37,6 +38,7 @@ Kiểm tra ticker không rỗng, không chứa path/ký tự lệnh và có đ�
 Kiểm tra bằng:
 
 ```powershell
+Set-Location <consumer-repository>
 Get-Content PATH_TO_FILE.json -Raw -Encoding UTF8 | ConvertFrom-Json
 ```
 

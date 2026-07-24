@@ -69,6 +69,7 @@ The Markdown report presents the same decision fields and section table for huma
 The command below reads saved context packages only; it does not call VNSTOCK APIs:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_context_coverage_universe.py --profile current_snapshot --dry-run
 python builders/build_context_coverage_universe.py --profile current_snapshot --no-dry-run
 ```

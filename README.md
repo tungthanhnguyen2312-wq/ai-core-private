@@ -2,9 +2,9 @@
 
 AI ANALYZE chuẩn bị các **context package có kiểm soát** từ nguồn VNSTOCK để người dùng làm việc với ChatGPT, Claude hoặc Codex. Hệ thống giúp AI biết dữ liệu nào đang có, dữ liệu nào thiếu, nguồn ở đâu và giới hạn nào phải giữ.
 
-> **[DEPRECATED 2026-07-17]** Gemini đã bị loại khỏi luồng khuyến nghị sau 2 lần kiểm toán độc lập phát hiện lỗi tự bịa/bỏ sót dữ liệu lặp lại dù input đúng chuẩn (`STOCK_ANALYSIS_MASTER_PLAN.md`, `FINAL_STOCK_ANALYSIS_20260717.md` ở gốc `C:\Projects`). `operating_pack/gemini/` vẫn giữ nguyên trên đĩa làm lịch sử/audit trail, không dùng cho tác vụ mới — xem `docs/v1_0_DailyWorkflow.md` mục D.
+> **[DEPRECATED 2026-07-17]** Gemini đã bị loại khỏi luồng khuyến nghị sau 2 lần kiểm toán độc lập phát hiện lỗi tự bịa/bỏ sót dữ liệu lặp lại dù input đúng chuẩn (`STOCK_ANALYSIS_MASTER_PLAN.md`, `FINAL_STOCK_ANALYSIS_20260717.md`, được lưu ngoài repository trong hồ sơ vận hành nội bộ). `operating_pack/gemini/` vẫn giữ nguyên trên đĩa làm lịch sử/audit trail, không dùng cho tác vụ mới — xem `docs/v1_0_DailyWorkflow.md` mục D.
 
-AI ANALYZE không chạy crawler, không tự cập nhật thị trường và không tạo khuyến nghị mua/bán. Thư mục `../VNSTOCK` luôn là nguồn chỉ đọc.
+AI ANALYZE không chạy crawler, không tự cập nhật thị trường và không tạo khuyến nghị mua/bán. Dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT` luôn là nguồn chỉ đọc.
 
 ## Bắt đầu ở đây
 
@@ -46,7 +46,7 @@ Screening chỉ lọc trong tập package được cung cấp, không phải qu�
 
 ## Quy tắc an toàn bắt buộc
 
-- Không sửa, di chuyển, đổi tên hoặc xóa file trong `../VNSTOCK`.
+- Không sửa, di chuyển, đổi tên hoặc xóa file trong dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT`.
 - Không upload database, raw OHLCV, kho BCTC raw hoặc dữ liệu cá nhân lên nền tảng AI.
 - Không coi `-1`, `NULL`, chuỗi rỗng hoặc section thiếu là số 0.
 - Không suy đoán tin tức theo ticker khi mapping chưa được xác nhận.

@@ -4,7 +4,7 @@
 
 | Thư mục | Vai trò | AI nên đọc? | Ghi? | Rủi ro dùng sai |
 |---|---|---|---|---|
-| `../VNSTOCK/` | Code, DB, dữ liệu raw/processed, reports và frontend nguồn | Chỉ đọc có chọn lọc khi được phép | Không trong workflow knowledge | Sửa nguồn, chạy crawler, bulk-load dữ liệu lớn hoặc dùng output stale. |
+| Dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT` | Runtime DB, dữ liệu đã materialize, reports, generated artifacts và frontend đã publish | Chỉ đọc có chọn lọc khi được phép | Không trong workflow knowledge | Sửa runtime, chạy crawler, bulk-load dữ liệu lớn hoặc dùng output stale. |
 | `project_discovery/` | Tám tài liệu discovery read-only | Có, để hiểu hệ thống | Không | Thống kê là snapshot tại ngày discovery, có thể không còn mới. |
 | `metadata/` | Registry JSON và context machine-readable | Có, đọc trước dữ liệu | Không trong Phase 2 | Bỏ qua missing rule hoặc coi summary ticker là enumeration đầy đủ. |
 | `knowledge/` | Project Knowledge chính thức cho AI | Có | Chỉ tạo file theo phase được duyệt | Tài liệu không phải market data hoặc ground truth. |

@@ -8,7 +8,7 @@ AI ANALYZE không thay thế pipeline VNSTOCK, không phải kho dữ liệu gia
 
 ## Quan hệ giữa VNSTOCK và AI ANALYZE
 
-- `../VNSTOCK` là hệ thống nguồn: crawler, SQLite, CSV/Parquet, BCTC, bộ xử lý, Quant/AI output và dashboard.
+- Dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT` là nguồn runtime: SQLite, CSV/Parquet đã materialize, Quant/AI output và dashboard; crawler cùng source code thuộc Producer repository, không thuộc runtime này.
 - `project_discovery/` là ảnh chụp khám phá read-only về cấu trúc, schema, module, lineage và chất lượng.
 - `metadata/` là lớp machine-readable: registry dataset, schema, quan hệ và quy tắc chất lượng.
 - `knowledge/` là lớp hướng dẫn dùng cho AI và con người: từ điển, quy trình phân tích, công thức, quy ước và prompt.

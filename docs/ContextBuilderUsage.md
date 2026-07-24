@@ -3,24 +3,28 @@
 ## Dry-run một ticker
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --dry-run
 ```
 
 ## Tạo context HPG
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --no-dry-run
 ```
 
 Builder từ chối ghi đè file đã tồn tại. Để tạo phiên bản mới, chỉ định tên mới trong thư mục approved:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --output exports/context_packages/HPG_context_v2.json --no-dry-run
 ```
 
 ## Nhiều ticker
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --ticker FPT --ticker VCB --output exports/context_packages --dry-run
 ```
 
@@ -29,6 +33,7 @@ python builders/build_ticker_context.py --ticker HPG --ticker FPT --ticker VCB -
 ## Strict mode
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --strict --dry-run
 ```
 

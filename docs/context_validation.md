@@ -48,6 +48,7 @@ Requires price and financial core plus point-in-time guards. It blocks a missing
 Both ticker forms are supported:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py PAN --validate-profile valuation --dry-run
 python builders/build_ticker_context.py --ticker PAN --validate-profile current_snapshot --dry-run
 ```
@@ -55,6 +56,7 @@ python builders/build_ticker_context.py --ticker PAN --validate-profile current_
 To write explicit coverage artifacts while leaving the context build in dry-run:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py PAN --validate-profile valuation --dry-run `
   --coverage-report-json reports/context_coverage_pan.json `
   --coverage-report-markdown reports/context_coverage_pan.md

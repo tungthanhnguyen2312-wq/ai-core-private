@@ -7,6 +7,7 @@ Hướng dẫn này giúp người dùng tạo hoặc chọn một context packa
 Chạy hai kiểm tra chỉ đọc:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/run_final_qa.py --dry-run
 python builders/validate_operating_pack.py --dry-run
 ```
@@ -20,12 +21,14 @@ Ví dụ dùng `HPG`. Nếu file `exports/context_packages/HPG_context.json` đ�
 Muốn kiểm tra khả năng build mà không ghi file:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --dry-run
 ```
 
 Dry-run thành công **không tạo file**. Nếu cần package mới, đặt tên mới để không ghi đè:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --output exports/context_packages/HPG_context_YYYYMMDD.json --no-dry-run
 ```
 
@@ -60,7 +63,7 @@ Sau đó:
 1. Tạo Project/workspace trên nền tảng.
 2. Đưa nội dung `project_instructions.md` vào phần hướng dẫn của Project.
 3. Upload đúng các file trong `upload_manifest.json`, trong giới hạn hiện tại của tài khoản.
-4. Không upload `../VNSTOCK`, database, raw OHLCV hoặc kho BCTC raw.
+4. Không upload toàn bộ dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT`, database, raw OHLCV hoặc kho BCTC raw.
 5. Gắn context package của tác vụ hiện tại vào cuộc hội thoại.
 
 Chi tiết giao diện có thể thay đổi theo nền tảng; nếu một tính năng không tồn tại, không thay thế bằng cách upload raw data.

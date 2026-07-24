@@ -3,7 +3,7 @@
 ## Before upload
 
 - [ ] Use only the platform upload manifest.
-- [ ] Do not upload `../VNSTOCK`, SQLite, raw OHLCV or `data_bctc/`.
+- [ ] Do not upload the dashboard runtime selected by `STOCK_LOOKUP_RUNTIME_ROOT`, SQLite, raw OHLCV or `data_bctc/`.
 - [ ] Confirm files contain no sensitive personal notes or portfolio data.
 - [ ] Confirm final QA release gate is PASS.
 - [ ] Confirm context package JSON parses and provenance is present.

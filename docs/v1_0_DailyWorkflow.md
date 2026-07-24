@@ -7,14 +7,16 @@ Tài liệu này là checklist vận hành hằng ngày. Mọi lệnh được c
 ### 1. Xác nhận đúng thư mục
 
 ```powershell
+Set-Location <consumer-repository>
 Get-Location
 ```
 
-Đường dẫn phải kết thúc bằng `AI ANALYZE`. Không chạy builder từ `../VNSTOCK` hoặc `release/v1.0`.
+PowerShell phải được mở tại thư mục gốc của repository Consumer. Không chạy builder từ dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT` hoặc từ `release/v1.0`.
 
 ### 2. Chạy kiểm tra chỉ đọc
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/run_final_qa.py --dry-run
 python builders/validate_operating_pack.py --dry-run
 ```
@@ -46,12 +48,14 @@ Các báo cáo `staleness_report` và `rebuild_decision` là snapshot tại th�
 Một ticker:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --dry-run
 ```
 
 Tối đa 10 ticker:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --tickers HPG,FPT,VCB --output exports/context_packages --dry-run
 ```
 
@@ -60,6 +64,7 @@ python builders/build_ticker_context.py --tickers HPG,FPT,VCB --output exports/c
 Ví dụ một ticker với tên versioned:
 
 ```powershell
+Set-Location <consumer-repository>
 python builders/build_ticker_context.py --ticker HPG --output exports/context_packages/HPG_context_YYYYMMDD.json --no-dry-run
 ```
 
@@ -82,6 +87,7 @@ Trước khi upload, đánh dấu từng mục:
 Có thể kiểm tra nhanh JSON bằng PowerShell:
 
 ```powershell
+Set-Location <consumer-repository>
 Get-Content exports/context_packages/HPG_context.json -Raw -Encoding UTF8 | ConvertFrom-Json | Select-Object ticker, generated_at
 ```
 
@@ -90,7 +96,7 @@ Get-Content exports/context_packages/HPG_context.json -Raw -Encoding UTF8 | Conv
 ## D. Chuẩn bị ChatGPT, Claude hoặc Codex
 
 **[DEPRECATED 2026-07-17] Gemini đã bị loại khỏi luồng khuyến nghị.** Hai lần kiểm toán độc lập
-(`STOCK_ANALYSIS_MASTER_PLAN.md` và `FINAL_STOCK_ANALYSIS_20260717.md`, cả hai ở gốc `C:\Projects`)
+(`STOCK_ANALYSIS_MASTER_PLAN.md` và `FINAL_STOCK_ANALYSIS_20260717.md`, được lưu ngoài repository trong hồ sơ vận hành nội bộ)
 phát hiện Gemini Deep Research lặp lại lỗi tự bịa/bỏ sót dữ liệu dù input đã đúng chuẩn (tuyên bố
 sai dữ liệu HPG/OHLCV 30 phiên "khuyết thiếu" trong khi có đầy đủ). `operating_pack/gemini/` được
 **giữ nguyên làm lịch sử/audit trail** (không xóa) nhưng không còn nằm trong quy trình khuyến nghị

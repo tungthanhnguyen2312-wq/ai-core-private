@@ -21,7 +21,7 @@ Phase 2 đã tạo bộ Project Knowledge chính thức giúp AI hiểu kiến t
 
 - Tám tài liệu trong `project_discovery/`: discovery summary, project tree, file/dataset inventory, module analysis, data relationship, schema summary và quality assessment.
 - Mười file Phase 1.5 trong `metadata/`: dataset/schema/module/file/ticker/financial/relationship/quality registries cùng AI context và metadata summary.
-- Không cần đọc thêm hoặc sửa bất kỳ file nào trong `../VNSTOCK` cho nội dung Phase 2.
+- Không cần đọc thêm hoặc sửa bất kỳ file nào trong dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT` cho nội dung Phase 2.
 
 ## Giả định
 
