@@ -258,6 +258,35 @@ def corporate_intelligence_contract(
     return contract
 
 
+
+FRESHNESS_STATUSES = frozenset({"current", "expiring", "stale", "missing", "historical", "unknown"})
+FRESHNESS_FIELDS = ("generated_at", "as_of_date", "source", "freshness_status", "expected_update_frequency", "stale_reason", "is_actionable")
+
+def freshness_history_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+    """Pass through optional producer envelopes; legacy bundles remain explicit missing."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("freshness") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return {"status": "missing", "reason": "freshness_not_in_legacy_bundle", "domains": {}}
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "reason": "freshness_not_an_object", "domains": {}}
+    domains = {}
+    for name, envelope in raw.items():
+        if not isinstance(envelope, Mapping) or envelope.get("freshness_status") not in FRESHNESS_STATUSES:
+            return {"status": "malformed", "reason": f"freshness_domain_invalid:{name}", "domains": {}}
+        domains[name] = copy.deepcopy(dict(envelope))
+    warnings = [f"{name}: {value.get('freshness_status')} ? {value.get('stale_reason')}" for name, value in domains.items() if value.get("freshness_status") in {"stale", "missing", "unknown"}]
+    return {"status": "available", "domains": domains, "data_warnings": warnings, "unknowns": [name for name, value in domains.items() if not value.get("is_actionable")]}
+
+def apply_bundle_freshness_history_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = freshness_history_contract(bundle, str(context.get("ticker") or ""))
+    context["freshness_history"] = contract
+    if contract["status"] == "available":
+        context.setdefault("warnings", []).extend(contract["data_warnings"])
+        context.setdefault("data_quality", {}).setdefault("warnings", []).extend(contract["data_warnings"])
+    context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "freshness_history", "transformation": "Pass through producer freshness metadata; not a business fact.", "limitations": ["Freshness does not override completeness or actionability."]})
+    return context
+
 def apply_bundle_corporate_intelligence_contract(
     context: dict[str, Any],
     bundle: Mapping[str, Any] | None = None,
@@ -1347,6 +1376,7 @@ def build_context_package(
     context["warnings"] = context["data_quality"]["warnings"]
     apply_bundle_price_basis_contract(context, bundle_payload, bundle_load_warning)
     apply_bundle_corporate_intelligence_contract(context, bundle_payload, bundle_load_warning)
+    apply_bundle_freshness_history_contract(context, bundle_payload)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
