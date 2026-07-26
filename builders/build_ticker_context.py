@@ -347,6 +347,15 @@ def apply_bundle_fundamental_quality_contract(context:dict[str,Any],bundle:Mappi
 RELATIVE_VALUATION_STATES = frozenset({"available", "unavailable", "inapplicable", "incomparable", "malformed"})
 
 INTRINSIC_VALUATION_STATES = frozenset({"available", "unavailable", "inapplicable", "incomparable", "malformed"})
+
+def scenario_analysis_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+ entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None; raw=entry.get("scenario_analysis") if isinstance(entry,Mapping) else None
+ if not isinstance(raw,Mapping) or not isinstance(raw.get("scenarios"),Mapping):return {"status":"unknown","reason":"scenario_analysis_not_in_legacy_or_malformed_bundle","scenarios":{},"warnings":["Scenario evidence is unavailable."]}
+ scenarios=copy.deepcopy(dict(raw["scenarios"]));allowed={"available","limited","unknown","blocked","partial","incomparable"}
+ if any(not isinstance(v,Mapping) or v.get("state") not in allowed for v in scenarios.values()):return {"status":"unknown","reason":"scenario_analysis_invalid","scenarios":{},"warnings":["Scenario evidence is malformed."]}
+ return {"status":raw.get("state","unknown"),"scenarios":scenarios,"facts":copy.deepcopy((raw.get("evidence_inventory") or {}).get("facts",[])),"data_warnings":copy.deepcopy(raw.get("data_warnings",[])),"unknowns":copy.deepcopy(raw.get("unknowns",[])),"inferences":copy.deepcopy((raw.get("evidence_inventory") or {}).get("inferences",[])),"hypotheses":copy.deepcopy((raw.get("evidence_inventory") or {}).get("hypotheses",[]))}
+def apply_bundle_scenario_analysis_contract(context:dict[str,Any],bundle:Mapping[str,Any]|None)->dict[str,Any]:
+ value=scenario_analysis_contract(bundle,str(context.get("ticker") or ""));context["scenario_analysis"]=value;context.setdefault("data_quality",{}).setdefault("warnings",[]).extend(value.get("data_warnings",value.get("warnings",[])));context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"scenario_analysis","transformation":"Pass through structured producer scenario evidence without recomputation.","limitations":["No recommendation, probability, or target price."]});return context
 def intrinsic_valuation_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
  entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None; raw=entry.get("intrinsic_valuation") if isinstance(entry,Mapping) else None
  if not isinstance(raw,Mapping) or not isinstance(raw.get("methods"),Mapping):return {"status":"unknown","reason":"intrinsic_valuation_not_in_legacy_or_malformed_bundle","methods":{},"warnings":["Intrinsic valuation is unavailable."]}
@@ -1474,6 +1483,7 @@ def build_context_package(
     apply_bundle_fundamental_quality_contract(context, bundle_payload)
     apply_bundle_relative_valuation_contract(context, bundle_payload)
     apply_bundle_intrinsic_valuation_contract(context, bundle_payload)
+    apply_bundle_scenario_analysis_contract(context, bundle_payload)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
