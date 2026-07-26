@@ -100,6 +100,7 @@ CORPORATE_INTELLIGENCE_SECTIONS = (
     "company_subsidiaries",
     "ownership_structure",
     "major_shareholders",
+    "corporate_events",
 )
 CORPORATE_INTELLIGENCE_STATUSES = frozenset({"available", "missing", "partial", "malformed", "incomparable"})
 

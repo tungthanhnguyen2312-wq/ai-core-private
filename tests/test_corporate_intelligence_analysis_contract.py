@@ -23,6 +23,8 @@ class CorporateIntelligenceAnalysisContractTests(unittest.TestCase):
         for required_field in ("source identity", "provenance", "raw relationship semantics", "snapshot date"):
             self.assertIn(required_field, self.prompt)
         self.assertIn("Do not merge KBS and VCI records", self.prompt)
+        self.assertIn("not complete history", self.prompt)
+        self.assertIn("do not use them alone for an investment recommendation", self.prompt)
 
     def test_statuses_are_data_warnings_not_negative_conclusions(self):
         for status in ("`missing`", "`partial`", "`malformed`", "`incomparable`"):

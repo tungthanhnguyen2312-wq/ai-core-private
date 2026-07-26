@@ -32,6 +32,9 @@ def producer_contract(status: str = "available") -> dict:
             "source_name": "VCI", "snapshot_date": "2026-06-30", "records": [],
             "delta": {"status": "incomparable", "reason": "no_prior_comparable_snapshot", "changes": []},
         }]},
+        "corporate_events": {"status": "partial", "coverage_status": "partial_unqualified_50_row_cap", "sources": [{
+            "source_name": "VCI", "records": [{"provider_event_id": "event-1", "fields": {"record_date": None, "value_per_share": 0}, "provenance": {"provider": "VCI"}}],
+        }]},
     }
 
 
