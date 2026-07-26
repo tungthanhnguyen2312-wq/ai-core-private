@@ -333,6 +333,17 @@ def apply_bundle_financial_canonical_contract(context: dict[str, Any], bundle: M
     context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "financial_canonical", "transformation": "Pass through canonical financial metric provenance; do not present unavailable, derived, or incomparable values as facts.", "limitations": ["Publication time, scope, and restatement may be unknown."]})
     return context
 
+
+def fundamental_quality_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+    entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None
+    raw=entry.get("fundamental_quality") if isinstance(entry,Mapping) else None
+    if not isinstance(raw,Mapping) or not isinstance(raw.get("models"),Mapping): return {"status":"unknown","reason":"fundamental_quality_not_in_legacy_bundle","models":{},"warnings":["Fundamental quality is unavailable."]}
+    models=copy.deepcopy(dict(raw["models"])); bad=[n for n,m in models.items() if not isinstance(m,Mapping) or m.get("result_state") not in {"available","partial","unavailable","inapplicable","incomparable","unknown"}]
+    if bad:return {"status":"unknown","reason":"fundamental_quality_malformed","models":{},"warnings":["Fundamental quality is malformed."]}
+    return {"status":"available","models":models,"warnings":[f"{n}: {m.get('result_state')}" for n,m in models.items() if m.get('result_state')!='available'],"unknowns":[n for n,m in models.items() if m.get('result_state')!='available']}
+def apply_bundle_fundamental_quality_contract(context:dict[str,Any],bundle:Mapping[str,Any]|None)->dict[str,Any]:
+    value=fundamental_quality_contract(bundle,str(context.get("ticker") or ""));context["fundamental_quality"]=value;context.setdefault("data_quality",{}).setdefault("warnings",[]).extend(value["warnings"]);context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"fundamental_quality","transformation":"Pass through producer model output; score interpretation is inference, not fact.","limitations":["No Consumer-side recomputation."]});return context
+
 def apply_bundle_corporate_intelligence_contract(
     context: dict[str, Any],
     bundle: Mapping[str, Any] | None = None,
@@ -1425,6 +1436,7 @@ def build_context_package(
     apply_bundle_freshness_history_contract(context, bundle_payload)
     apply_bundle_analysis_readiness_contract(context, bundle_payload)
     apply_bundle_financial_canonical_contract(context, bundle_payload)
+    apply_bundle_fundamental_quality_contract(context, bundle_payload)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
