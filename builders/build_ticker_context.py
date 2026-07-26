@@ -346,6 +346,16 @@ def apply_bundle_fundamental_quality_contract(context:dict[str,Any],bundle:Mappi
 
 RELATIVE_VALUATION_STATES = frozenset({"available", "unavailable", "inapplicable", "incomparable", "malformed"})
 
+INTRINSIC_VALUATION_STATES = frozenset({"available", "unavailable", "inapplicable", "incomparable", "malformed"})
+def intrinsic_valuation_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+ entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None; raw=entry.get("intrinsic_valuation") if isinstance(entry,Mapping) else None
+ if not isinstance(raw,Mapping) or not isinstance(raw.get("methods"),Mapping):return {"status":"unknown","reason":"intrinsic_valuation_not_in_legacy_or_malformed_bundle","methods":{},"warnings":["Intrinsic valuation is unavailable."]}
+ methods=copy.deepcopy(dict(raw["methods"]));bad=[n for n,m in methods.items() if not isinstance(m,Mapping) or m.get("state") not in INTRINSIC_VALUATION_STATES]
+ if bad:return {"status":"unknown","reason":"intrinsic_valuation_method_invalid","methods":{},"warnings":["Intrinsic valuation is malformed."]}
+ return {"status":raw.get("status","unknown"),"methods":methods,"data_warnings":[f"intrinsic valuation {n}: {m.get('state')}" for n,m in methods.items() if m.get("state")!="available"],"inferences":["Scenario interpretation and margin of safety are inferences; no target price or recommendation is generated."]}
+def apply_bundle_intrinsic_valuation_contract(context:dict[str,Any],bundle:Mapping[str,Any]|None)->dict[str,Any]:
+ value=intrinsic_valuation_contract(bundle,str(context.get("ticker") or ""));context["intrinsic_valuation"]=value;context.setdefault("data_quality",{}).setdefault("warnings",[]).extend(value.get("data_warnings",value.get("warnings",[])));context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"intrinsic_valuation","transformation":"Pass through producer valuation without recomputation.","limitations":["No target price or recommendation."]});return context
+
 def relative_valuation_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
     entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
     raw = entry.get("relative_valuation") if isinstance(entry, Mapping) else None
@@ -1463,6 +1473,7 @@ def build_context_package(
     apply_bundle_financial_canonical_contract(context, bundle_payload)
     apply_bundle_fundamental_quality_contract(context, bundle_payload)
     apply_bundle_relative_valuation_contract(context, bundle_payload)
+    apply_bundle_intrinsic_valuation_contract(context, bundle_payload)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
