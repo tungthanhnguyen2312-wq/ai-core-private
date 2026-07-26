@@ -348,6 +348,13 @@ RELATIVE_VALUATION_STATES = frozenset({"available", "unavailable", "inapplicable
 
 INTRINSIC_VALUATION_STATES = frozenset({"available", "unavailable", "inapplicable", "incomparable", "malformed"})
 
+def risk_analysis_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+ entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None;raw=entry.get("risk_analysis") if isinstance(entry,Mapping) else None
+ if not isinstance(raw,Mapping):return {"status":"unknown","reason":"risk_analysis_not_in_legacy_bundle"}
+ return copy.deepcopy(dict(raw))
+def apply_bundle_risk_analysis_contract(context:dict[str,Any],bundle:Mapping[str,Any]|None)->dict[str,Any]:
+ value=risk_analysis_contract(bundle,str(context.get("ticker") or ""));context["risk_analysis"]=value;context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"risk_analysis","transformation":"Pass through producer risk metrics without recomputation.","limitations":["No position recommendation or expectancy."]});return context
+
 def scenario_analysis_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
  entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None; raw=entry.get("scenario_analysis") if isinstance(entry,Mapping) else None
  if not isinstance(raw,Mapping) or not isinstance(raw.get("scenarios"),Mapping):return {"status":"unknown","reason":"scenario_analysis_not_in_legacy_or_malformed_bundle","scenarios":{},"warnings":["Scenario evidence is unavailable."]}
@@ -1484,6 +1491,7 @@ def build_context_package(
     apply_bundle_relative_valuation_contract(context, bundle_payload)
     apply_bundle_intrinsic_valuation_contract(context, bundle_payload)
     apply_bundle_scenario_analysis_contract(context, bundle_payload)
+    apply_bundle_risk_analysis_contract(context, bundle_payload)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
