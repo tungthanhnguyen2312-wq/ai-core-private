@@ -344,6 +344,31 @@ def fundamental_quality_contract(bundle: Mapping[str, Any] | None, ticker: str) 
 def apply_bundle_fundamental_quality_contract(context:dict[str,Any],bundle:Mapping[str,Any]|None)->dict[str,Any]:
     value=fundamental_quality_contract(bundle,str(context.get("ticker") or ""));context["fundamental_quality"]=value;context.setdefault("data_quality",{}).setdefault("warnings",[]).extend(value["warnings"]);context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"fundamental_quality","transformation":"Pass through producer model output; score interpretation is inference, not fact.","limitations":["No Consumer-side recomputation."]});return context
 
+RELATIVE_VALUATION_STATES = frozenset({"available", "unavailable", "inapplicable", "incomparable", "malformed"})
+
+def relative_valuation_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("relative_valuation") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return {"status": "unknown", "reason": "relative_valuation_not_in_legacy_bundle", "methods": {}, "warnings": ["Relative valuation is unavailable."]}
+    if not isinstance(raw, Mapping) or not isinstance(raw.get("methods"), Mapping):
+        return {"status": "unknown", "reason": "relative_valuation_malformed", "methods": {}, "warnings": ["Relative valuation is malformed."]}
+    methods = copy.deepcopy(dict(raw["methods"]))
+    bad = [name for name, method in methods.items() if not isinstance(method, Mapping) or method.get("state") not in RELATIVE_VALUATION_STATES or (method.get("is_actionable") is True and method.get("state") != "available")]
+    if bad:
+        return {"status": "unknown", "reason": "relative_valuation_method_invalid", "invalid_methods": bad, "methods": {}, "warnings": ["Relative valuation is malformed."]}
+    warnings = [f"relative valuation {name}: {method.get('state')}" for name, method in methods.items() if method.get("state") != "available" or not method.get("is_actionable")]
+    return {"status": raw.get("status", "unknown"), "methods": methods, "data_warnings": warnings,
+            "unknowns": [name for name, method in methods.items() if method.get("state") != "available"],
+            "inferences": ["Relative cheap/expensive assessments and comparisons remain inferences; no target price or recommendation is generated."]}
+
+def apply_bundle_relative_valuation_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    value = relative_valuation_contract(bundle, str(context.get("ticker") or ""))
+    context["relative_valuation"] = value
+    context.setdefault("data_quality", {}).setdefault("warnings", []).extend(value.get("data_warnings", value.get("warnings", [])))
+    context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "relative_valuation", "transformation": "Pass through producer valuation observations without Consumer-side recomputation.", "limitations": ["No target price, recommendation, or cheap/expensive conclusion is a fact."]})
+    return context
+
 def apply_bundle_corporate_intelligence_contract(
     context: dict[str, Any],
     bundle: Mapping[str, Any] | None = None,
@@ -1437,6 +1462,7 @@ def build_context_package(
     apply_bundle_analysis_readiness_contract(context, bundle_payload)
     apply_bundle_financial_canonical_contract(context, bundle_payload)
     apply_bundle_fundamental_quality_contract(context, bundle_payload)
+    apply_bundle_relative_valuation_contract(context, bundle_payload)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
