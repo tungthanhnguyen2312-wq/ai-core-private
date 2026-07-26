@@ -313,6 +313,26 @@ def apply_bundle_analysis_readiness_contract(context: dict[str, Any], bundle: Ma
     context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "analysis_readiness", "transformation": "Pass through producer readiness; it is a data-quality gate, not a business fact.", "limitations": ["Inference cannot override non-ready or non-actionable domains."]})
     return context
 
+
+def financial_canonical_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+    """Optional producer financial records; never reconstruct missing provenance."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("financial_canonical") if isinstance(entry, Mapping) else None
+    if raw is None: return {"status": "missing", "reason": "financial_canonical_not_in_legacy_bundle", "records": [], "warnings": ["Canonical financial metrics are unavailable."]}
+    if not isinstance(raw, Mapping) or not isinstance(raw.get("records"), list): return {"status": "malformed", "reason": "financial_canonical_malformed", "records": [], "warnings": ["Canonical financial metrics are malformed."]}
+    allowed = {"available", "unknown", "unavailable", "incomparable"}
+    valid = [record for record in raw["records"] if isinstance(record, Mapping) and record.get("quality_state") in allowed]
+    if len(valid) != len(raw["records"]): return {"status": "malformed", "reason": "financial_canonical_record_invalid", "records": [], "warnings": ["Canonical financial metric record is invalid."]}
+    warnings = [f"{r.get('canonical_metric')}: {r.get('reason')}" for r in valid if r.get("quality_state") != "available"]
+    return {"status": raw.get("status", "available"), "records": copy.deepcopy(valid), "invalid_periods": copy.deepcopy(raw.get("invalid_periods", [])), "warnings": warnings, "unknowns": [r.get("canonical_metric") for r in valid if r.get("quality_state") in {"unknown", "unavailable", "incomparable"}]}
+
+def apply_bundle_financial_canonical_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    canonical = financial_canonical_contract(bundle, str(context.get("ticker") or ""))
+    context["financial_canonical"] = canonical
+    context.setdefault("data_quality", {}).setdefault("warnings", []).extend(canonical["warnings"])
+    context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "financial_canonical", "transformation": "Pass through canonical financial metric provenance; do not present unavailable, derived, or incomparable values as facts.", "limitations": ["Publication time, scope, and restatement may be unknown."]})
+    return context
+
 def apply_bundle_corporate_intelligence_contract(
     context: dict[str, Any],
     bundle: Mapping[str, Any] | None = None,
@@ -1404,6 +1424,7 @@ def build_context_package(
     apply_bundle_corporate_intelligence_contract(context, bundle_payload, bundle_load_warning)
     apply_bundle_freshness_history_contract(context, bundle_payload)
     apply_bundle_analysis_readiness_contract(context, bundle_payload)
+    apply_bundle_financial_canonical_contract(context, bundle_payload)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
