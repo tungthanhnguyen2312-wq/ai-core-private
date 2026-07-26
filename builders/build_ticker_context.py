@@ -287,6 +287,32 @@ def apply_bundle_freshness_history_contract(context: dict[str, Any], bundle: Map
     context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "freshness_history", "transformation": "Pass through producer freshness metadata; not a business fact.", "limitations": ["Freshness does not override completeness or actionability."]})
     return context
 
+
+READINESS_STATES = frozenset({"ready", "degraded", "blocked", "unknown"})
+
+def analysis_readiness_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+    """Pass through producer readiness without turning it into a business fact."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("analysis_readiness") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return {"status": "unknown", "reason": "analysis_readiness_not_in_legacy_bundle", "domains": {}}
+    if not isinstance(raw, Mapping) or not isinstance(raw.get("domains"), Mapping):
+        return {"status": "unknown", "reason": "analysis_readiness_malformed", "domains": {}}
+    domains = copy.deepcopy(dict(raw["domains"]))
+    invalid = [name for name, value in domains.items() if not isinstance(value, Mapping) or value.get("state") not in READINESS_STATES or (value.get("state") == "ready" and value.get("is_actionable") is not True)]
+    if invalid:
+        return {"status": "unknown", "reason": "analysis_readiness_domain_invalid", "invalid_domains": invalid, "domains": {}}
+    warnings = [f"analysis readiness {name}: {value.get('state')} ? {value.get('reason')}" for name, value in domains.items() if value.get("state") != "ready"]
+    return {"status": "available", "reference_at": raw.get("reference_at"), "domains": domains, "data_warnings": warnings, "unknowns": [name for name, value in domains.items() if value.get("state") in {"unknown", "blocked"}], "inferences_allowed": all(value.get("state") == "ready" for value in domains.values())}
+
+def apply_bundle_analysis_readiness_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    readiness = analysis_readiness_contract(bundle, str(context.get("ticker") or ""))
+    context["analysis_readiness"] = readiness
+    if readiness["status"] != "available" or not readiness["inferences_allowed"]:
+        context.setdefault("data_quality", {}).setdefault("warnings", []).extend(readiness.get("data_warnings", []) or ["Analysis readiness is unknown; do not promote inferences."])
+    context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "analysis_readiness", "transformation": "Pass through producer readiness; it is a data-quality gate, not a business fact.", "limitations": ["Inference cannot override non-ready or non-actionable domains."]})
+    return context
+
 def apply_bundle_corporate_intelligence_contract(
     context: dict[str, Any],
     bundle: Mapping[str, Any] | None = None,
@@ -1377,6 +1403,7 @@ def build_context_package(
     apply_bundle_price_basis_contract(context, bundle_payload, bundle_load_warning)
     apply_bundle_corporate_intelligence_contract(context, bundle_payload, bundle_load_warning)
     apply_bundle_freshness_history_contract(context, bundle_payload)
+    apply_bundle_analysis_readiness_contract(context, bundle_payload)
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
