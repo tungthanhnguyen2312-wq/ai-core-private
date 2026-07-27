@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ai-analyze/schemas/vnstock_metadata_snapshot_registry_handoff.schema.json",
+  "title": "vnstock_metadata_snapshot Evidence Platform Registry handoff record",
+  "description": "Shape of ONE ticker x field provenance record for the vnstock_metadata_snapshot sub-source (the `metadata` table in vn_stock.db, written by stock-core-private/meta_sync.py). Forward-looking ingestion contract only: no Evidence Platform Registry exists in this workspace yet. Same contract as operations-review/evidence/subsource-freshness-metadata-refresh-closeout-20260727-125051/vnstock_metadata_snapshot_registry_handoff.schema.json, restructured to inline the three nested objects (timestamps, raw_hash, freshness_sla) instead of $defs/$ref: this repo's validator (builders/validate_json_schema_subset.py) does not resolve $ref, and none of these three sub-objects is reused elsewhere in this schema, so inlining loses no deduplication value while making every constraint (including the fail-closed raw_hash/provider_timestamp pins) actually enforced by validate().",
+  "type": "object",
+  "required": ["source", "provider", "ticker", "field", "value", "timestamps", "raw_hash", "transform_version", "qualification_status", "freshness_sla"],
+  "properties": {
+    "source": {
+      "const": "vnstock_metadata_snapshot",
+      "description": "Logical sub-source name -- matches the `source=` provenance tag already used by ai-core-private/builders/build_ticker_context.py for these same fields."
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "vnstock:Listing(source=VCI).symbols_by_exchange",
+        "vnstock:Listing(source=VCI).symbols_by_industries",
+        "vnstock:Trading(source=VCI).price_board",
+        "vnstock:Finance(source=KBS).ratio",
+        "vnstock:Company(source=VCI).overview",
+        "derived_local:Company(source=VCI).shareholders",
+        "manual_curation:blacklist.csv"
+      ],
+      "description": "The literal upstream call meta_sync.py makes for this field, or the manual/derived origin when the value is not a direct provider passthrough."
+    },
+    "ticker": {"type": "string", "pattern": "^[A-Z0-9]{2,10}$"},
+    "field": {
+      "type": "string",
+      "enum": ["exchange", "industry", "foreign_room_pct", "pe", "pb", "roe", "market_cap", "shares_outstanding", "free_float_est", "dividend_yield", "margin_status"]
+    },
+    "value": {
+      "description": "The parsed scalar as currently persisted in metadata.<field>. Null is preserved as-is (never coerced to 0/blank); dividend_yield's historical -1 sentinel (\"queried, no value\") is passed through unchanged, never reinterpreted as data."
+    },
+    "timestamps": {
+      "type": "object",
+      "required": ["observed_at", "effective_at", "provider_timestamp", "timestamp_basis"],
+      "properties": {
+        "observed_at": {
+          "type": "string",
+          "description": "meta_sync.py's local job clock at the moment the per-ticker write committed (metadata.updated)."
+        },
+        "effective_at": {
+          "type": ["string", "null"],
+          "description": "Equal to observed_at for live/point-in-time fields. For KBS ratio fields (pe/pb/roe/dividend_yield) this is only an approximation of the scrape moment -- see timestamp_basis."
+        },
+        "provider_timestamp": {
+          "type": "null",
+          "description": "Always null today: no vnstock endpoint used by meta_sync.py exposes a provider-asserted timestamp. Must never be back-filled with observed_at."
+        },
+        "timestamp_basis": {
+          "type": "string",
+          "enum": ["scrape_time_live_value", "scrape_time_approximates_unretained_reporting_period"]
+        }
+      }
+    },
+    "raw_hash": {
+      "type": "object",
+      "required": ["raw_payload_retained", "value"],
+      "properties": {
+        "raw_payload_retained": {
+          "const": false,
+          "description": "meta_sync.py never retains the raw provider response; a per-field raw hash cannot be computed, including retroactively."
+        },
+        "value": {"const": null}
+      }
+    },
+    "transform_version": {
+      "type": "string",
+      "pattern": "^meta_sync\\.py@sha256:[0-9a-f]{12}$",
+      "description": "First 12 hex chars of sha256(stock-core-private/meta_sync.py) at the time the record was produced."
+    },
+    "qualification_status": {
+      "type": "string",
+      "enum": ["reported", "derived", "proxy", "source_empty"],
+      "description": "Reuses ai-core-private/builders/missing_data_contract.py's MetricStatus vocabulary. Describes vnstock_metadata_snapshot's own pipeline, not the hash-gated PDF evidence-qualification pipeline."
+    },
+    "distinct_from": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Populated only for roe and shares_outstanding: names the financial-statement-derived counterpart(s) this value must never be aliased with."
+    },
+    "freshness_sla": {
+      "type": "object",
+      "required": ["domain", "cadence_days", "grace_days", "policy_source"],
+      "properties": {
+        "domain": {"const": "vnstock_metadata_snapshot"},
+        "cadence_days": {"const": 92},
+        "grace_days": {"const": 35},
+        "policy_source": {"const": "stock-core-private/freshness_history.py:RULES[\"vnstock_metadata_snapshot\"]"}
+      }
+    }
+  }
+}
