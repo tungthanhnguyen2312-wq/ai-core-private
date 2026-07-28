@@ -84,10 +84,12 @@ each source) and reporting per-field `exact_match` / `null_mismatch` / `value_mi
 ### Non-goals (integration milestone)
 
 - No wiring into the daily pipeline, `run.py`, or any scheduled job.
-- No automatic shadow-mode invocation inside `build_context_package` -- a caller must explicitly
-  load both slices and call `compare_metadata_slices` itself.
+- No automatic shadow-mode invocation inside `build_context_package` unless the caller explicitly
+  opts in via `registry_shadow_gate=True` (see "Explicit metadata source configuration" below) --
+  otherwise a caller must load both slices and call `compare_metadata_slices` itself.
 - No change to the default (DB) behavior for any existing caller.
-- No persistence of shadow-comparison reports; they are returned in memory only.
+- No persistence of shadow-comparison reports; they are returned in memory only unless the caller
+  passes an explicit output path to `check_registry_promotion_gate`.
 - No decision here about whether/when the registry path should ever become the default.
 
 ## Bounded shadow-comparison CLI (`builders/metadata_registry_shadow_compare.py`)
@@ -111,3 +113,45 @@ report file.
   registry snapshot, or any other file to reconcile a difference.
 - No wiring into `build_context_package`, the daily pipeline, or any other consumer.
 - No new registry storage/service decision; this only compares two already-existing sources.
+
+## Explicit metadata source configuration (`build_context_package`)
+
+`build_context_package(..., metadata_source: str = "database", metadata_registry_snapshot: Path
+| None = None, registry_shadow_gate: bool = False)`.
+
+- **`metadata_source="database"` (the default, unconditionally):** identical to every prior
+  behavior -- metadata is read via `load_metadata_slice(ticker, db_path)`.
+  `metadata_registry_snapshot` and `registry_shadow_gate` are both ignored if given; nothing about
+  this path can be affected by them.
+- **`metadata_source="registry_snapshot"`:** requires an explicit `metadata_registry_snapshot`
+  file or directory -- never auto-discovered, never defaulted to a production path. Omitting it,
+  or passing an unrecognized `metadata_source` string, raises `MetadataSourceConfigError`
+  (fail-closed; never silently falls back to `"database"`).
+- **`registry_shadow_gate=True`** (only meaningful with `metadata_source="registry_snapshot"`):
+  before trusting registry data for this ticker, runs
+  `metadata_registry_shadow_compare.check_registry_promotion_gate(ticker, db_path, snapshot)` --
+  the same `compare_ticker` logic the standalone CLI uses, not a separate implementation. Any
+  status other than `"compared"` with `is_fully_consistent: true` (a mismatch, or the ticker
+  missing from either source) raises `RegistryPromotionBlocked` rather than serving the registry
+  value. The gate reads the DB for comparison purposes only; it is not a fallback path, and a
+  blocked gate never results in DB data being silently substituted as a result -- the whole
+  metadata section fails closed instead (same per-section handling as any other loader failure).
+  Gate checks write nothing to disk by default; passing an explicit `output` path to
+  `check_registry_promotion_gate` directly (outside `build_context_package`) persists one report.
+
+### Rollback
+
+Rollback to the default is not a migration -- it is the resting state. Omit `metadata_source`
+entirely, or pass `metadata_source="database"` explicitly; either way every existing caller's
+behavior is unaffected, because `"database"` requires no other argument and ignores the other two
+if present.
+
+### Non-goals (this configuration)
+
+- The default has not changed and this milestone does not decide whether it ever will.
+- No scheduling or automatic invocation of `registry_shadow_gate` outside an explicit caller
+  request.
+- No Dashboard wiring; this is a Consumer-side (`ai-core-private`) function argument, not a
+  runtime/pipeline integration.
+- No retention/report-persistence policy beyond "nothing is written unless an explicit output
+  path is given" -- inherited unchanged from the shadow-comparison CLI.

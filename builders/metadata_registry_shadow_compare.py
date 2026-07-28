@@ -8,6 +8,10 @@ come from `build_ticker_context.py` / `metadata_registry_reader.py`.
 Never writes to any database or snapshot. Never chooses a production path implicitly: --db,
 --snapshot, and --output are all required. Not wired into `build_context_package`, the daily
 pipeline, or any scheduled job -- this is a standalone, manually-invoked tool.
+
+`check_registry_promotion_gate()` reuses `compare_ticker()` as a single-ticker preflight gate
+that `build_ticker_context.py`'s optional `registry_shadow_gate` calls before trusting registry
+data for one ticker; see that module for how a gate failure blocks the metadata section.
 """
 
 from __future__ import annotations
@@ -57,6 +61,32 @@ def compare_ticker(ticker: str, db_path: Path, snapshot: Path) -> dict[str, Any]
     if registry_missing:
         return {"status": "missing_in_registry", "comparison": None}
     return {"status": "compared", "comparison": compare_metadata_slices(db_slice, registry_slice)}
+
+
+def check_registry_promotion_gate(
+    ticker: str,
+    db_path: Path,
+    snapshot: Path,
+    output: Path | None = None,
+) -> dict[str, Any]:
+    """Preflight promotion gate for one ticker: reuses compare_ticker (the same logic the CLI
+    itself uses -- no separate comparison implementation) rather than deciding pass/fail on its
+    own terms. Never writes anything unless the caller passes an explicit output path, so this is
+    safe to call from inside a hot loader path (build_ticker_context.py's registry_shadow_gate)
+    with zero implicit file I/O, and equally usable standalone with a persisted report."""
+    result = compare_ticker(ticker, db_path, snapshot)
+    if output is not None:
+        report = {
+            "ticker": ticker,
+            "db_path": str(db_path),
+            "snapshot_path": str(snapshot),
+            **result,
+        }
+        output.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+        )
+    return result
 
 
 def run_shadow_comparison(

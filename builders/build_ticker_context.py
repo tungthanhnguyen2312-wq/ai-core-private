@@ -85,6 +85,12 @@ try:
 except ModuleNotFoundError:  # importlib-based tests load this file from the workspace root
     from builders.metadata_registry_reader import SnapshotError, read_snapshot
 
+# check_registry_promotion_gate is imported lazily inside _select_metadata_loader, not here:
+# metadata_registry_shadow_compare.py itself imports compare_metadata_slices/load_metadata_slice/
+# load_metadata_slice_from_registry_snapshot FROM this module, so a top-level import here would
+# be circular. Deferring it to call time (only reached when registry_shadow_gate=True) avoids
+# that entirely, in either module's import order.
+
 
 FINANCIAL_CONTRACT_METRICS = (
     "operating_cash_flow",
@@ -757,14 +763,71 @@ def compare_metadata_slices(db_slice: dict[str, Any], registry_slice: dict[str, 
     }
 
 
-def _select_metadata_loader(ticker: str, db_path: Path, metadata_registry_snapshot: Path | None):
-    """The one decision point for build_context_package's metadata section: DB by default,
-    registry snapshot only when the caller explicitly asks. No implicit fallback either
-    direction -- exactly one of the two loaders is chosen and returned, never both, never a
-    silent default to a production directory."""
-    if metadata_registry_snapshot is not None:
-        return lambda: load_metadata_slice_from_registry_snapshot(ticker, metadata_registry_snapshot)
-    return lambda: load_metadata_slice(ticker, db_path)
+# Explicit metadata source configuration. "database" is the only source requiring no extra
+# argument and is the default everywhere -- see build_context_package. Passing the string
+# "registry_snapshot" opts into the immutable-file source; the reverse (an unrecognized string,
+# or "registry_snapshot" without a path) is a config error, not a silent fallback to "database".
+METADATA_SOURCE_DATABASE = "database"
+METADATA_SOURCE_REGISTRY_SNAPSHOT = "registry_snapshot"
+VALID_METADATA_SOURCES = (METADATA_SOURCE_DATABASE, METADATA_SOURCE_REGISTRY_SNAPSHOT)
+
+
+class MetadataSourceConfigError(ValueError):
+    """Raised for an invalid or incomplete metadata source configuration -- e.g. an unrecognized
+    metadata_source string, or metadata_source='registry_snapshot' without an explicit snapshot
+    path. Fail-closed: never silently falls back to 'database'."""
+
+
+class RegistryPromotionBlocked(ValueError):
+    """Raised when registry_shadow_gate is enabled and metadata_registry_shadow_compare's
+    check_registry_promotion_gate finds this ticker's registry data missing relative to, or
+    disagreeing with, the live DB. Blocks using registry data for this one ticker rather than
+    silently serving a value that has just been shown to be questionable."""
+
+
+def _select_metadata_loader(
+    ticker: str,
+    db_path: Path,
+    metadata_source: str = METADATA_SOURCE_DATABASE,
+    metadata_registry_snapshot: Path | None = None,
+    registry_shadow_gate: bool = False,
+):
+    """The one decision point for build_context_package's metadata section. "database" (the
+    default) requires nothing further and behaves exactly as it always has. "registry_snapshot"
+    requires an explicit snapshot path -- never auto-discovered -- and, when registry_shadow_gate
+    is enabled, a passing preflight comparison against the live DB for this specific ticker
+    before its registry data is trusted. Exactly one loader is ever returned; there is no
+    fallback from a requested registry source back to the database."""
+    if metadata_source not in VALID_METADATA_SOURCES:
+        raise MetadataSourceConfigError(
+            f"unknown metadata_source {metadata_source!r}; must be one of {VALID_METADATA_SOURCES}"
+        )
+
+    if metadata_source == METADATA_SOURCE_DATABASE:
+        return lambda: load_metadata_slice(ticker, db_path)
+
+    if metadata_registry_snapshot is None:
+        raise MetadataSourceConfigError(
+            "metadata_source='registry_snapshot' requires an explicit metadata_registry_snapshot "
+            "path; it is never auto-discovered"
+        )
+
+    def _load_from_registry():
+        if registry_shadow_gate:
+            try:
+                from metadata_registry_shadow_compare import check_registry_promotion_gate
+            except ModuleNotFoundError:  # importlib-based tests load this file from the workspace root
+                from builders.metadata_registry_shadow_compare import check_registry_promotion_gate
+            gate = check_registry_promotion_gate(ticker, db_path, metadata_registry_snapshot)
+            gate_passed = gate["status"] == "compared" and gate["comparison"]["is_fully_consistent"]
+            if not gate_passed:
+                raise RegistryPromotionBlocked(
+                    f"ticker {ticker}: registry shadow gate blocked promotion "
+                    f"(status={gate['status']!r}, comparison={gate['comparison']})"
+                )
+        return load_metadata_slice_from_registry_snapshot(ticker, metadata_registry_snapshot)
+
+    return _load_from_registry
 
 
 def _period_key(period: str) -> tuple[int, int]:
@@ -1497,12 +1560,20 @@ def build_context_package(
     bundle_payload: Mapping[str, Any] | None = None,
     bundle_load_warning: str | None = None,
     metadata_registry_snapshot: Path | None = None,
+    metadata_source: str = METADATA_SOURCE_DATABASE,
+    registry_shadow_gate: bool = False,
 ) -> dict[str, Any]:
-    """metadata_registry_snapshot is opt-in and defaults to None, which preserves the exact
-    existing behavior: metadata is read from vn_stock.db via load_metadata_slice. Passing an
-    explicit snapshot file or directory switches the metadata section (only) to
-    load_metadata_slice_from_registry_snapshot instead -- see _select_metadata_loader. This
-    function never searches a production directory for a snapshot on its own."""
+    """metadata_source defaults to "database", which preserves the exact existing behavior:
+    metadata is read from vn_stock.db via load_metadata_slice, and metadata_registry_snapshot /
+    registry_shadow_gate are both ignored. Passing metadata_source="registry_snapshot" (with an
+    explicit metadata_registry_snapshot file or directory -- never auto-discovered) switches the
+    metadata section (only) to load_metadata_slice_from_registry_snapshot instead; setting
+    registry_shadow_gate=True on top of that additionally requires a passing shadow comparison
+    against the live DB for this ticker before its registry data is used -- see
+    _select_metadata_loader and metadata_registry_shadow_compare.check_registry_promotion_gate.
+    An invalid config (unknown metadata_source, or registry_snapshot without a path) or a blocked
+    gate raises (both are ValueError subclasses), which the existing per-section exception
+    handling below turns into a missing/warned metadata section unless strict=True."""
     db_path = VNSTOCK_ROOT / "vn_stock.db"
     context = copy.deepcopy(template)
     context["schema_version"] = "1.4.0"
@@ -1521,7 +1592,9 @@ def build_context_package(
 
     loaders = {
         "price_summary": lambda: load_price_slice(ticker, db_path),
-        "metadata": _select_metadata_loader(ticker, db_path, metadata_registry_snapshot),
+        "metadata": _select_metadata_loader(
+            ticker, db_path, metadata_source, metadata_registry_snapshot, registry_shadow_gate
+        ),
         "financial_summary": lambda: load_financial_slice(ticker),
         "news_summary": lambda: load_news_slice(ticker),
         "shareholder_summary": lambda: load_shareholder_slice(ticker, db_path),

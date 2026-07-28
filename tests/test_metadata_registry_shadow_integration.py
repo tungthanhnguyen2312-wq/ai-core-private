@@ -195,7 +195,9 @@ class SelectMetadataLoaderTests(unittest.TestCase):
     def test_default_none_uses_db_loader_only(self):
         with mock.patch.object(builder, "load_metadata_slice", return_value=({"source": "db"}, [])) as db_loader, \
              mock.patch.object(builder, "load_metadata_slice_from_registry_snapshot", return_value=({"source": "registry"}, [])) as registry_loader:
-            load = builder._select_metadata_loader("AAA", Path("unused/vn_stock.db"), None)
+            load = builder._select_metadata_loader(
+                "AAA", Path("unused/vn_stock.db"), metadata_source=builder.METADATA_SOURCE_DATABASE
+            )
             result, _ = load()
             db_loader.assert_called_once_with("AAA", Path("unused/vn_stock.db"))
             registry_loader.assert_not_called()
@@ -205,7 +207,11 @@ class SelectMetadataLoaderTests(unittest.TestCase):
         snapshot_path = Path("some/snapshot.jsonl")
         with mock.patch.object(builder, "load_metadata_slice", return_value=({"source": "db"}, [])) as db_loader, \
              mock.patch.object(builder, "load_metadata_slice_from_registry_snapshot", return_value=({"source": "registry"}, [])) as registry_loader:
-            load = builder._select_metadata_loader("AAA", Path("unused/vn_stock.db"), snapshot_path)
+            load = builder._select_metadata_loader(
+                "AAA", Path("unused/vn_stock.db"),
+                metadata_source=builder.METADATA_SOURCE_REGISTRY_SNAPSHOT,
+                metadata_registry_snapshot=snapshot_path,
+            )
             result, _ = load()
             registry_loader.assert_called_once_with("AAA", snapshot_path)
             db_loader.assert_not_called()  # no DB fallback once a snapshot is requested
