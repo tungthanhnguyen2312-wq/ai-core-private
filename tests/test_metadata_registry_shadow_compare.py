@@ -247,3 +247,46 @@ class ShadowCompareTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ContextSemanticInvarianceTests(unittest.TestCase):
+    def setUp(self):
+        self.db_path = "C:/runtime/vn_stock.db"
+        self.snapshot = Path("C:/snapshots/vnstock_metadata_snapshot_20260728T122548Z_16fe54ee3497.jsonl")
+        self.database = {
+            "ticker": "AAA", "metadata": {"ticker": "AAA", "pe": 8.38, "freshness": "current"},
+            "price_summary": {"close": 10.0}, "data_sources": [self.db_path, "C:/runtime/ta_signals.csv"],
+            "provenance": [
+                {"source_file": self.db_path, "source_dataset": "metadata", "source_keys": {"ticker": "AAA"}, "transformation": "Read-only primary-key query; -1 dividend sentinel normalized to null."},
+                {"source_file": "C:/runtime/ta_signals.csv", "source_dataset": "ta_signals", "source_keys": {"ticker": "AAA"}, "transformation": "unchanged"},
+            ],
+        }
+        self.registry = json.loads(json.dumps(self.database))
+        self.registry["data_sources"].append(str(self.snapshot))
+        self.registry["provenance"][0] = {
+            "source_file": str(self.snapshot), "source_dataset": shadow_cli.REGISTRY_METADATA_SOURCE_DATASET,
+            "source_keys": {"ticker": "AAA"}, "transformation": shadow_cli.REGISTRY_METADATA_TRANSFORMATION,
+        }
+
+    def test_allows_only_expected_registry_source_deltas(self):
+        report = shadow_cli.compare_context_semantic_invariance(self.database, self.registry, self.snapshot)
+        self.assertTrue(report["is_semantically_invariant"])
+        self.assertEqual([item["path"] for item in report["expected_deltas"]], ["$.data_sources", "$.provenance[0]"])
+        self.assertEqual(report["unexpected_deltas"], [])
+
+    def test_rejects_nonmetadata_business_change(self):
+        self.registry["price_summary"]["close"] = 11.0
+        report = shadow_cli.compare_context_semantic_invariance(self.database, self.registry, self.snapshot)
+        self.assertFalse(report["is_semantically_invariant"])
+        self.assertEqual(report["unexpected_deltas"][0]["path"], "$.price_summary")
+
+    def test_rejects_extra_or_wrong_provenance_delta(self):
+        self.registry["provenance"][1]["transformation"] = "changed"
+        report = shadow_cli.compare_context_semantic_invariance(self.database, self.registry, self.snapshot)
+        self.assertFalse(report["is_semantically_invariant"])
+        self.assertEqual(report["expected_deltas"][0]["path"], "$.data_sources")
+        self.assertEqual(report["unexpected_deltas"][0]["path"], "$.provenance")
+
+    def test_rejects_wrong_snapshot_path(self):
+        self.registry["data_sources"][-1] = "C:/snapshots/other.jsonl"
+        report = shadow_cli.compare_context_semantic_invariance(self.database, self.registry, self.snapshot)
+        self.assertFalse(report["is_semantically_invariant"])

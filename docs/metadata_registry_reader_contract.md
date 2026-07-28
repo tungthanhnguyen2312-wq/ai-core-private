@@ -173,3 +173,37 @@ the runtime retains current-UTC behavior. When supplied, it is validated as UTC 
 `generated_at`, the context-builder provenance entry's `generated_at`, and `news_summary.cutoff`.
 Frozen-clock execution does not read a global clock, alter metadata-source selection, or affect
 input-owned freshness values, scheduling, or Dashboard wiring.
+## Controlled Production Adoption Policy (manual/research tier)
+
+The approved production policy is deliberately narrow: `database` remains the unconditional default. `registry_snapshot` may be used only for an explicit, manually initiated research or controlled build; it is not approved for scheduled, pipeline, Dashboard, publisher, or unattended runtime use.
+
+### Mandatory acceptance gates
+
+- Supply `metadata_source="registry_snapshot"`, an explicit immutable snapshot file path (never directory discovery), and one explicit UTC `--frozen-clock` value.
+- Build the same ticker set first with `metadata_source="database"`, then with `registry_snapshot` and `--registry-shadow-gate`; the gate must pass for every ticker before its registry output is accepted.
+- Retain both isolated outputs through comparison. Accept only if all requested tickers are present, metadata values/null semantics/freshness and ticker fields match, non-metadata business content is semantically invariant, and one representative same-clock build is byte-deterministic. The only permitted root differences are the explicit snapshot path appended to `data_sources` and the single metadata provenance record replaced with the fixed registry source identifier/transformation; every other structural or provenance delta fails closed.
+- Any mismatch, missing/invalid snapshot, missing configuration, or failed gate is fail-closed: do not accept registry output and do not substitute DB data into that registry build.
+
+### Executable manual runbook
+
+From `ai-core-private`, choose an isolated **temporary** directory inside the Consumer output boundary (for example `exports/context_packages/_registry_canary_<UTC>`); `build_ticker_context.py` intentionally rejects output paths outside that boundary, including `C:\tmp`. Do not point this at `ai-runtime`, Dashboard, or any promoted runtime directory.
+
+1. Record DB and explicit snapshot fingerprints; select a fixed UTC clock.
+2. Run the requested tickers once with `--metadata-source database --frozen-clock <UTC> --no-dry-run --output <scratch>/database`.
+3. Run the same tickers once with `--metadata-source registry_snapshot --metadata-registry-snapshot <explicit-file> --registry-shadow-gate --frozen-clock <UTC> --no-dry-run --output <scratch>/registry`.
+4. Compare the retained outputs and run one representative registry build at the same frozen clock for determinism; record evidence only in an explicit local evidence directory.
+5. Roll back immediately by omitting the override or selecting `metadata_source="database"`; no data migration, cleanup, or scheduler change is required.
+
+### Deferred non-goals
+
+- Do not change the default source, add snapshot auto-discovery, fallback, scheduling, pipeline wiring, Dashboard wiring, publishing, or deployment.
+- A successful controlled build authorizes only that manual/research output under its evidence record; it does not promote registry mode to the production default.
+
+### Semantic provenance allowlist
+
+`compare_context_semantic_invariance(database_context, registry_context, snapshot_path)` is the required fail-closed acceptance comparison for retained manual/research outputs. It requires full equality of every root field except the following two source-attributable deltas:
+
+- `data_sources` must be the DB list unchanged plus exactly one final explicit snapshot path. The snapshot filename is contract-validated and embeds its UTC identity/hash; no substituted path, removed source, reordered item, or additional source is allowed.
+- `provenance` must have exactly one changed item: the DB `metadata` record is replaced in-place by the fixed `vnstock_metadata_snapshot registry` record with that same explicit snapshot path and fixed registry transformation. `source_keys` (including ticker) and every non-source field must remain equal.
+
+Metadata values, null semantics, freshness, ticker fields, business sections, generated/frozen-clock fields, and all remaining provenance must compare exactly. Any structural difference or provenance change outside this allowlist yields `is_semantically_invariant: false` and blocks acceptance. This comparator is read-only and does not alter default source selection.
