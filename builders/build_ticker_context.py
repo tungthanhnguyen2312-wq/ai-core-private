@@ -16,7 +16,7 @@ import math
 import re
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -909,6 +909,17 @@ def resolve_metadata_source_options(config: Mapping[str, Any], args: argparse.Na
     return str(source), snapshot, shadow_gate
 
 
+def resolve_build_clock(value: datetime | str) -> datetime:
+    """Validate an explicit reproducibility clock as an aware UTC instant."""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("frozen clock must be an ISO-8601 UTC timestamp") from exc
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() != timedelta(0):
+        raise ValueError("frozen clock must be timezone-aware UTC (Z or +00:00)")
+    return value.astimezone(timezone.utc)
+
 def _period_key(period: str) -> tuple[int, int]:
     match = re.fullmatch(r"(\d{4})(?:-Q([1-4]))?", period or "")
     return (int(match.group(1)), int(match.group(2) or 5)) if match else (-1, -1)
@@ -1351,7 +1362,7 @@ def load_vnstock_entity_type(ticker: str) -> str:
     return mapping_module.get_default_registry().entity_type_for(ticker)
 
 
-def load_news_slice(ticker: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def load_news_slice(ticker: str, *, now: datetime | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     path = VNSTOCK_ROOT / "news_latest.csv"
     provenance = [{"source_file": str(path), "source_dataset": "news_latest", "source_keys": {"ticker": ticker},
                    "transformation": "Deduplicate articles, apply versioned exact alias mapping, and keep company/sector/market news separate."}]
@@ -1383,6 +1394,7 @@ def load_news_slice(ticker: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     mapped = mapper.summarize_news(
         ticker, articles, registry,
         config=mapper.load_config(VNSTOCK_ROOT / "config" / "news_mapping_config.json"),
+        now=now,
     )
     company_count = int(mapped["company_news_count"])
     if company_count:
@@ -1641,6 +1653,7 @@ def build_context_package(
     metadata_registry_snapshot: Path | None = None,
     metadata_source: str = METADATA_SOURCE_DATABASE,
     registry_shadow_gate: bool = False,
+    build_clock: datetime | str | None = None,
 ) -> dict[str, Any]:
     """metadata_source defaults to "database", which preserves the exact existing behavior:
     metadata is read from vn_stock.db via load_metadata_slice, and metadata_registry_snapshot /
@@ -1654,11 +1667,12 @@ def build_context_package(
     gate raises (both are ValueError subclasses), which the existing per-section exception
     handling below turns into a missing/warned metadata section unless strict=True."""
     db_path = VNSTOCK_ROOT / "vn_stock.db"
+    frozen_clock = resolve_build_clock(build_clock) if build_clock is not None else None
     context = copy.deepcopy(template)
     context["schema_version"] = "1.4.0"
     context["mode"] = "test_context_package"
     context["ticker"] = ticker
-    context["generated_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    context["generated_at"] = (frozen_clock.isoformat(timespec="seconds").replace("+00:00", "Z") if frozen_clock is not None else datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"))
     context["analysis_cutoff"] = None
     context["identity"]["ticker"] = ticker
     context["data_sources"] = []
@@ -1675,7 +1689,7 @@ def build_context_package(
             ticker, db_path, metadata_source, metadata_registry_snapshot, registry_shadow_gate
         ),
         "financial_summary": lambda: load_financial_slice(ticker),
-        "news_summary": lambda: load_news_slice(ticker),
+        "news_summary": lambda: load_news_slice(ticker, now=frozen_clock),
         "shareholder_summary": lambda: load_shareholder_slice(ticker, db_path),
         "technical_summary": lambda: load_technical_slice(ticker),
         "share_reconciliation": lambda: load_share_reconciliation_slice(ticker, db_path),
@@ -1874,6 +1888,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Explicit registry snapshot file or directory; required for registry_snapshot mode.")
     parser.add_argument("--registry-shadow-gate", action=argparse.BooleanOptionalAction, default=None,
                         help="Require exact per-ticker registry-vs-DB comparison before registry use.")
+    parser.add_argument("--frozen-clock", help="Optional ISO-8601 UTC clock for reproducible context builds.")
     return parser.parse_args(argv)
 
 
@@ -1884,6 +1899,7 @@ def main() -> int:
         dry_run = config["dry_run_default"] if args.dry_run is None else args.dry_run
         strict = config["strict_mode_default"] if args.strict is None else args.strict
         metadata_source, metadata_registry_snapshot, registry_shadow_gate = resolve_metadata_source_options(config, args)
+        build_clock = resolve_build_clock(args.frozen_clock) if args.frozen_clock else None
         requested = ([args.positional_ticker] if args.positional_ticker else []) + list(args.ticker)
         if args.tickers:
             requested.extend(item for item in args.tickers.split(",") if item.strip())
@@ -1913,6 +1929,7 @@ def main() -> int:
                 metadata_source=metadata_source,
                 metadata_registry_snapshot=metadata_registry_snapshot,
                 registry_shadow_gate=registry_shadow_gate,
+                build_clock=build_clock,
             )
             validation = validate_context(
                 context,

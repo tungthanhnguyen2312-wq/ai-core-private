@@ -164,3 +164,12 @@ if present.
   runtime/pipeline integration.
 - No retention/report-persistence policy beyond "nothing is written unless an explicit output
   path is given" -- inherited unchanged from the shadow-comparison CLI.
+
+### Optional frozen build clock
+
+`build_context_package(..., build_clock=<UTC datetime or ISO-8601 Z string>)` and CLI
+`--frozen-clock <UTC timestamp>` are opt-in comparison/reproducibility controls. When omitted,
+the runtime retains current-UTC behavior. When supplied, it is validated as UTC and controls only
+`generated_at`, the context-builder provenance entry's `generated_at`, and `news_summary.cutoff`.
+Frozen-clock execution does not read a global clock, alter metadata-source selection, or affect
+input-owned freshness values, scheduling, or Dashboard wiring.
