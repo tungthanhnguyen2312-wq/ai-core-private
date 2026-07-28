@@ -11,6 +11,11 @@
   "strict_mode_default": false,
   "dry_run_default": true,
   "max_batch_size": 10,
+  "metadata_source": {
+    "mode": "database",
+    "registry_snapshot": null,
+    "shadow_gate": false
+  },
   "source_paths": {
     "database": "../dashboard-runtime/vn_stock.db",
     "financial_snapshot": "../dashboard-runtime/financial_snapshot.csv",

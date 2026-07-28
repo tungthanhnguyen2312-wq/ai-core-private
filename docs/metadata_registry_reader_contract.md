@@ -116,6 +116,15 @@ report file.
 
 ## Explicit metadata source configuration (`build_context_package`)
 
+### Runtime config and CLI
+
+`builders/build_ticker_context_config.json` explicitly defaults to
+`{"mode": "database", "registry_snapshot": null, "shadow_gate": false}` under
+`metadata_source`. The CLI accepts `--metadata-source database|registry_snapshot`,
+`--metadata-registry-snapshot <file-or-directory>`, and `--registry-shadow-gate`.
+Registry mode has no discovered path: its file/directory must be explicitly supplied by config or CLI.
+Rollback is setting (or omitting to use) `database`; this adds no scheduling, Dashboard wiring, or default-source change.
+
 `build_context_package(..., metadata_source: str = "database", metadata_registry_snapshot: Path
 | None = None, registry_shadow_gate: bool = False)`.
 

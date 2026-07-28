@@ -894,6 +894,21 @@ def _select_metadata_loader(
     return _load_from_registry
 
 
+def resolve_metadata_source_options(config: Mapping[str, Any], args: argparse.Namespace) -> tuple[str, Path | None, bool]:
+    """Resolve explicit Consumer metadata-source options without snapshot discovery."""
+    raw = config.get("metadata_source", {})
+    if not isinstance(raw, Mapping):
+        raise MetadataSourceConfigError("metadata_source config must be an object")
+    source = args.metadata_source if args.metadata_source is not None else raw.get("mode", METADATA_SOURCE_DATABASE)
+    snapshot_value = (args.metadata_registry_snapshot if args.metadata_registry_snapshot is not None
+                      else raw.get("registry_snapshot"))
+    shadow_gate = args.registry_shadow_gate if args.registry_shadow_gate is not None else raw.get("shadow_gate", False)
+    if not isinstance(shadow_gate, bool):
+        raise MetadataSourceConfigError("metadata_source.shadow_gate must be a boolean")
+    snapshot = None if snapshot_value in (None, "") else Path(str(snapshot_value))
+    return str(source), snapshot, shadow_gate
+
+
 def _period_key(period: str) -> tuple[int, int]:
     match = re.fullmatch(r"(\d{4})(?:-Q([1-4]))?", period or "")
     return (int(match.group(1)), int(match.group(2) or 5)) if match else (-1, -1)
@@ -1839,7 +1854,7 @@ def section_is_available(context: dict[str, Any], section: str) -> bool:
     return bool(value)
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build read-only VNSTOCK ticker context packages.")
     parser.add_argument("positional_ticker", nargs="?", help="Single ticker (backward-compatible shorthand)")
     parser.add_argument("--ticker", action="append", default=[], help="Ticker; repeat flag to build multiple tickers")
@@ -1853,7 +1868,13 @@ def _parse_args() -> argparse.Namespace:
                         help="Validation profile: current_snapshot, technical_analysis, valuation, forensic, or backtest")
     parser.add_argument("--coverage-report-json", help="Write one-ticker machine-readable report under reports/")
     parser.add_argument("--coverage-report-markdown", help="Write one-ticker human-readable report under reports/")
-    return parser.parse_args()
+    parser.add_argument("--metadata-source", choices=VALID_METADATA_SOURCES, default=None,
+                        help="Metadata source override; default remains configured database.")
+    parser.add_argument("--metadata-registry-snapshot",
+                        help="Explicit registry snapshot file or directory; required for registry_snapshot mode.")
+    parser.add_argument("--registry-shadow-gate", action=argparse.BooleanOptionalAction, default=None,
+                        help="Require exact per-ticker registry-vs-DB comparison before registry use.")
+    return parser.parse_args(argv)
 
 
 def main() -> int:
@@ -1862,6 +1883,7 @@ def main() -> int:
         config = load_json(CONFIG_PATH)
         dry_run = config["dry_run_default"] if args.dry_run is None else args.dry_run
         strict = config["strict_mode_default"] if args.strict is None else args.strict
+        metadata_source, metadata_registry_snapshot, registry_shadow_gate = resolve_metadata_source_options(config, args)
         requested = ([args.positional_ticker] if args.positional_ticker else []) + list(args.ticker)
         if args.tickers:
             requested.extend(item for item in args.tickers.split(",") if item.strip())
@@ -1888,6 +1910,9 @@ def main() -> int:
             context = build_context_package(
                 ticker, template, summaries, strict=strict,
                 bundle_payload=bundle_payload, bundle_load_warning=bundle_load_warning,
+                metadata_source=metadata_source,
+                metadata_registry_snapshot=metadata_registry_snapshot,
+                registry_shadow_gate=registry_shadow_gate,
             )
             validation = validate_context(
                 context,

@@ -128,6 +128,22 @@ class DefaultSourceUnchangedTests(unittest.TestCase):
             self.assertEqual(result["source"], "db")
 
 
+    def test_config_resolver_defaults_to_database_without_snapshot_discovery(self):
+        args = builder._parse_args(["--ticker", "AAA"])
+        source, snapshot, gate = builder.resolve_metadata_source_options({}, args)
+        self.assertEqual(source, "database")
+        self.assertIsNone(snapshot)
+        self.assertFalse(gate)
+
+    def test_config_resolver_uses_explicit_registry_snapshot(self):
+        args = builder._parse_args(["--ticker", "AAA", "--metadata-source", "registry_snapshot",
+                                   "--metadata-registry-snapshot", "fixtures/snapshot.jsonl", "--registry-shadow-gate"])
+        source, snapshot, gate = builder.resolve_metadata_source_options({}, args)
+        self.assertEqual(source, "registry_snapshot")
+        self.assertEqual(snapshot, Path("fixtures/snapshot.jsonl"))
+        self.assertTrue(gate)
+
+
 class RegistrySourceConfigTests(unittest.TestCase):
     def test_explicit_registry_source_succeeds(self):
         with tempfile.TemporaryDirectory() as raw:
