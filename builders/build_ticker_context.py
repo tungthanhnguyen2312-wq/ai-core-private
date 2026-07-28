@@ -155,26 +155,89 @@ def load_optional_analysis_bundle(config: Mapping[str, Any]) -> tuple[dict[str, 
 
 
 def normalize_price_basis_contract(bundle: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Read Phase 1's additive price-basis fields with a safe legacy fallback."""
+    """Read Phase 1's additive price-basis & volume-basis fields with safe legacy fallback."""
     bundle = bundle or {}
     raw_basis = bundle.get("price_basis")
     basis = str(raw_basis).strip().lower() if raw_basis is not None else ""
     verified = bundle.get("price_basis_verified") is True
+
+    raw_vol_basis = bundle.get("volume_basis")
+    vol_basis = str(raw_vol_basis).strip().lower() if raw_vol_basis is not None else "raw_shares_traded"
+    vol_verified = bundle.get("volume_basis_verified") is not False
+
+    adj_source = bundle.get("adjustment_source")
+    eff_date = bundle.get("effective_date")
+    provenance = bundle.get("price_basis_provenance")
+    limitations = bundle.get("limitations")
+
     if verified and basis in {"raw", "adjusted"}:
-        provenance = bundle.get("price_basis_provenance")
         return {
             "price_basis": basis,
             "price_basis_verified": True,
+            "is_actionable": True,
+            "volume_basis": vol_basis if vol_basis in {"raw_shares_traded", "adjusted_volume"} else "raw_shares_traded",
+            "volume_basis_verified": vol_verified,
+            "adjustment_source": str(adj_source) if adj_source else None,
+            "effective_date": str(eff_date) if eff_date else None,
+            "limitations": list(limitations) if isinstance(limitations, list) else [],
             "price_basis_provenance": dict(provenance) if isinstance(provenance, Mapping) else {},
         }
     return {
         "price_basis": "unknown",
         "price_basis_verified": False,
+        "is_actionable": False,
+        "volume_basis": vol_basis if vol_basis in {"raw_shares_traded", "adjusted_volume"} else "raw_shares_traded",
+        "volume_basis_verified": vol_verified,
+        "adjustment_source": None,
+        "effective_date": None,
+        "limitations": list(limitations) if isinstance(limitations, list) else [
+            "OHLCV price basis is unverified or unknown; corporate actions may affect return, MA, and RS."
+        ],
         "price_basis_provenance": (
             dict(bundle["price_basis_provenance"])
             if isinstance(bundle.get("price_basis_provenance"), Mapping)
             else {"source": "missing_or_unverified_bundle_price_basis"}
         ),
+    }
+
+
+def validate_context_basis_compatibility(
+    context_a: Mapping[str, Any],
+    context_b: Mapping[str, Any],
+    *,
+    strict: bool = True,
+) -> dict[str, Any]:
+    """Validate that two ticker context packages use compatible price bases before comparison."""
+    price_a = (context_a.get("price_summary") or {}).get("price_basis", "unknown")
+    price_b = (context_b.get("price_summary") or {}).get("price_basis", "unknown")
+
+    str_a = str(price_a).strip().lower()
+    str_b = str(price_b).strip().lower()
+
+    if str_a == "unknown" or str_b == "unknown":
+        return {
+            "is_compatible": False,
+            "reason": "unverified_or_unknown_basis",
+            "price_basis_a": str_a,
+            "price_basis_b": str_b,
+        }
+
+    if str_a != str_b:
+        msg = f"Cannot compare mixed price bases: context A is {str_a!r}, context B is {str_b!r}."
+        if strict:
+            raise ValueError(msg)
+        return {
+            "is_compatible": False,
+            "reason": "mixed_raw_and_adjusted_basis",
+            "price_basis_a": str_a,
+            "price_basis_b": str_b,
+        }
+
+    return {
+        "is_compatible": True,
+        "reason": "compatible_basis",
+        "price_basis_a": str_a,
+        "price_basis_b": str_b,
     }
 
 
@@ -220,7 +283,8 @@ def apply_bundle_price_basis_contract(
         "source_keys": {"ticker": context.get("ticker")},
         "transformation": "Propagate Phase 1 price-basis contract without changing OHLCV-derived calculations.",
         "price_basis": contract["price_basis"], "price_basis_verified": contract["price_basis_verified"],
-        "limitations": [] if contract["price_basis_verified"] else ["OHLCV basis is not verified"],
+        "volume_basis": contract["volume_basis"], "volume_basis_verified": contract["volume_basis_verified"],
+        "limitations": contract["limitations"],
     })
     return context
 
