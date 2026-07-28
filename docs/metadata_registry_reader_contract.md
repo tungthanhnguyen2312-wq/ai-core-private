@@ -89,3 +89,25 @@ each source) and reporting per-field `exact_match` / `null_mismatch` / `value_mi
 - No change to the default (DB) behavior for any existing caller.
 - No persistence of shadow-comparison reports; they are returned in memory only.
 - No decision here about whether/when the registry path should ever become the default.
+
+## Bounded shadow-comparison CLI (`builders/metadata_registry_shadow_compare.py`)
+
+A standalone script, not imported or invoked by anything else in this repo, that runs
+`load_metadata_slice` and `load_metadata_slice_from_registry_snapshot` side by side for a fixed
+set of tickers and reports `compare_metadata_slices`'s result for each, plus per-ticker
+`missing_in_db` / `missing_in_registry` / `missing_in_both` status when a ticker is absent from
+one source. `--db`, `--snapshot`, and `--output` are all required -- there is no default or
+auto-discovered path for any of the three, so an omitted flag is a hard argument error, never a
+silent fallback. The default ticker set is a fixed 9-ticker watchlist (a copy of
+`stock-core-private/daily_analysis_pipeline.py`'s `DEFAULT_TICKERS` as of 2026-07-27, not a live
+cross-repo import); `--tickers` overrides it. `run_shadow_comparison()` itself is pure and
+deterministic (no wall-clock); the CLI adds a `generated_at` timestamp only when writing the
+report file.
+
+### Non-goals (shadow-comparison CLI)
+
+- No scheduling or automatic invocation; a human runs this explicitly, once, when wanted.
+- No mismatch resolution -- the CLI only classifies and reports; it never edits `vn_stock.db`, a
+  registry snapshot, or any other file to reconcile a difference.
+- No wiring into `build_context_package`, the daily pipeline, or any other consumer.
+- No new registry storage/service decision; this only compares two already-existing sources.
