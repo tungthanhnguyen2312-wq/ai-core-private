@@ -80,6 +80,11 @@ except ModuleNotFoundError:  # importlib-based tests load this file from the wor
         set_metric_with_meta,
     )
 
+try:
+    from metadata_registry_reader import SnapshotError, read_snapshot
+except ModuleNotFoundError:  # importlib-based tests load this file from the workspace root
+    from builders.metadata_registry_reader import SnapshotError, read_snapshot
+
 
 FINANCIAL_CONTRACT_METRICS = (
     "operating_cash_flow",
@@ -631,6 +636,135 @@ def load_metadata_slice(ticker: str, db_path: Path) -> tuple[dict[str, Any], lis
     result["free_float_warning"] = "free_float_est is a proxy, not an official value."
     result["company_name_warning"] = "company_name is not available in the confirmed metadata schema."
     return result, provenance
+
+
+# The 11 vnstock_metadata_snapshot registry fields, in the same order load_metadata_slice's own
+# `fields` list uses them (excluding "ticker" and "updated", which are handled separately below).
+_REGISTRY_METADATA_FIELDS = (
+    "exchange", "industry", "foreign_room_pct", "pe", "pb", "roe", "market_cap",
+    "shares_outstanding", "free_float_est", "dividend_yield", "margin_status",
+)
+
+# dividend_yield/margin_status carry a field-specific annotation key when normalized; used by
+# both load_metadata_slice_from_registry_snapshot (to set it) and compare_metadata_slices (to
+# compare it). Not a generic {field}_suffix pattern -- these two are the only fields load_metadata_slice
+# itself annotates this way.
+_METADATA_PROVENANCE_ANNOTATION_KEYS = {
+    "dividend_yield": "dividend_yield_missing_reason",
+    "margin_status": "margin_status_meaning",
+}
+
+
+def load_metadata_slice_from_registry_snapshot(ticker: str, snapshot: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Opt-in alternative to load_metadata_slice(): reads ONE ticker's metadata from an immutable
+    vnstock_metadata_snapshot registry snapshot (see metadata_registry_reader.read_snapshot) and
+    converts it into the exact same slice shape load_metadata_slice produces from vn_stock.db --
+    same field names, same -1/margin_status normalization, same warning annotations -- so the two
+    sources are directly comparable (see compare_metadata_slices) and interchangeable to every
+    downstream consumer of context["metadata"].
+
+    Never touches vn_stock.db. Fails closed: any malformed/ambiguous/invalid snapshot (from
+    read_snapshot) or an internally inconsistent one (missing required field, or fields that
+    disagree on their own observed_at) raises SnapshotError rather than returning a partial or
+    fabricated result. A ticker simply absent from a *valid* snapshot returns ({}, provenance) --
+    the same "not present" shape load_metadata_slice returns for a missing DB row."""
+    grouped = read_snapshot(snapshot)  # SnapshotError propagates untouched -- fail closed
+    ticker_records = grouped.get(ticker, {})
+    provenance = [{
+        "source_file": str(snapshot), "source_dataset": "vnstock_metadata_snapshot registry",
+        "source_keys": {"ticker": ticker},
+        "transformation": "Registry snapshot record group converted to the standard metadata "
+                           "slice shape; -1 dividend sentinel normalized to null.",
+    }]
+    if not ticker_records:
+        return {}, provenance
+
+    missing_fields = [f for f in _REGISTRY_METADATA_FIELDS if f not in ticker_records]
+    if missing_fields:
+        raise SnapshotError(f"ticker {ticker}: registry snapshot is missing required field(s) {missing_fields}")
+
+    observed_at_values = {ticker_records[f]["timestamps"]["observed_at"] for f in _REGISTRY_METADATA_FIELDS}
+    if len(observed_at_values) != 1:
+        raise SnapshotError(
+            f"ticker {ticker}: inconsistent observed_at across fields in registry snapshot: "
+            f"{sorted(observed_at_values)}"
+        )
+
+    result: dict[str, Any] = {"ticker": ticker}
+    for field in _REGISTRY_METADATA_FIELDS:
+        result[field] = _clean(ticker_records[field]["value"])
+    result["updated"] = next(iter(observed_at_values))
+    result["company_name"] = None
+    if result.get("dividend_yield") == -1:
+        result["dividend_yield"] = None
+        result[_METADATA_PROVENANCE_ANNOTATION_KEYS["dividend_yield"]] = "queried_no_value"
+    if not result.get("margin_status"):
+        result["margin_status"] = None
+        result[_METADATA_PROVENANCE_ANNOTATION_KEYS["margin_status"]] = "no flagged status under project convention"
+    result["point_in_time_warning"] = "Current metadata snapshot; do not use directly for historical backtests."
+    result["free_float_warning"] = "free_float_est is a proxy, not an official value."
+    result["company_name_warning"] = "company_name is not available in the confirmed metadata schema."
+    return result, provenance
+
+
+def compare_metadata_slices(db_slice: dict[str, Any], registry_slice: dict[str, Any]) -> dict[str, Any]:
+    """Shadow-mode comparison between a DB-sourced and a registry-sourced metadata slice (both
+    already in the load_metadata_slice output shape -- see load_metadata_slice_from_registry_snapshot).
+    Pure and deterministic: same two inputs always produce the same report. In-memory only --
+    writes nothing, and is never called from build_context_package, so it cannot affect context
+    output on its own.
+
+    Reports, per field in _REGISTRY_METADATA_FIELDS:
+    - exact_match: identical value and identical provenance annotation (if any).
+    - null_mismatch: exactly one side is null.
+    - value_mismatch: both sides non-null but the values differ.
+    - provenance_mismatch: values agree (both null or equal) but the field-specific annotation
+      (dividend_yield_missing_reason / margin_status_meaning) differs.
+    """
+    exact_match: list[str] = []
+    null_mismatch: list[dict[str, Any]] = []
+    value_mismatch: list[dict[str, Any]] = []
+    provenance_mismatch: list[dict[str, Any]] = []
+
+    for field in _REGISTRY_METADATA_FIELDS:
+        db_value = db_slice.get(field)
+        registry_value = registry_slice.get(field)
+        db_is_null = db_value is None
+        registry_is_null = registry_value is None
+
+        if db_is_null != registry_is_null:
+            null_mismatch.append({"field": field, "db_value": db_value, "registry_value": registry_value})
+            continue
+        if not db_is_null and db_value != registry_value:
+            value_mismatch.append({"field": field, "db_value": db_value, "registry_value": registry_value})
+            continue
+
+        annotation_key = _METADATA_PROVENANCE_ANNOTATION_KEYS.get(field)
+        db_annotation = db_slice.get(annotation_key) if annotation_key else None
+        registry_annotation = registry_slice.get(annotation_key) if annotation_key else None
+        if db_annotation != registry_annotation:
+            provenance_mismatch.append({"field": field, "db_annotation": db_annotation, "registry_annotation": registry_annotation})
+            continue
+
+        exact_match.append(field)
+
+    return {
+        "exact_match": exact_match,
+        "null_mismatch": null_mismatch,
+        "value_mismatch": value_mismatch,
+        "provenance_mismatch": provenance_mismatch,
+        "is_fully_consistent": not (null_mismatch or value_mismatch or provenance_mismatch),
+    }
+
+
+def _select_metadata_loader(ticker: str, db_path: Path, metadata_registry_snapshot: Path | None):
+    """The one decision point for build_context_package's metadata section: DB by default,
+    registry snapshot only when the caller explicitly asks. No implicit fallback either
+    direction -- exactly one of the two loaders is chosen and returned, never both, never a
+    silent default to a production directory."""
+    if metadata_registry_snapshot is not None:
+        return lambda: load_metadata_slice_from_registry_snapshot(ticker, metadata_registry_snapshot)
+    return lambda: load_metadata_slice(ticker, db_path)
 
 
 def _period_key(period: str) -> tuple[int, int]:
@@ -1362,7 +1496,13 @@ def build_context_package(
     strict: bool = False,
     bundle_payload: Mapping[str, Any] | None = None,
     bundle_load_warning: str | None = None,
+    metadata_registry_snapshot: Path | None = None,
 ) -> dict[str, Any]:
+    """metadata_registry_snapshot is opt-in and defaults to None, which preserves the exact
+    existing behavior: metadata is read from vn_stock.db via load_metadata_slice. Passing an
+    explicit snapshot file or directory switches the metadata section (only) to
+    load_metadata_slice_from_registry_snapshot instead -- see _select_metadata_loader. This
+    function never searches a production directory for a snapshot on its own."""
     db_path = VNSTOCK_ROOT / "vn_stock.db"
     context = copy.deepcopy(template)
     context["schema_version"] = "1.4.0"
@@ -1381,7 +1521,7 @@ def build_context_package(
 
     loaders = {
         "price_summary": lambda: load_price_slice(ticker, db_path),
-        "metadata": lambda: load_metadata_slice(ticker, db_path),
+        "metadata": _select_metadata_loader(ticker, db_path, metadata_registry_snapshot),
         "financial_summary": lambda: load_financial_slice(ticker),
         "news_summary": lambda: load_news_slice(ticker),
         "shareholder_summary": lambda: load_shareholder_slice(ticker, db_path),
