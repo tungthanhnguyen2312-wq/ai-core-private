@@ -46,6 +46,15 @@ class FundamentalQualityContractTests(unittest.TestCase):
         received["models"]["financial_strength"]["used_input_facts"]["total_debt"]["value"] = 99
         self.assertEqual(bundle["tickers"]["HPG"]["fundamental_quality"]["models"]["financial_strength"]["used_input_facts"]["total_debt"]["value"], 3)
 
+    def test_opportunity_ranking_is_passed_through_without_recomputation(self):
+        dimensions={name:{"state":"available"} for name in ("financial_quality","valuation","technical_current_market_readiness","catalyst_evidence","downside_invalidation","data_confidence")}
+        raw={"state":"available","dimensions":dimensions,"facts":[{"citation_id":"cit-1"}],"data_warnings":[],"inferences":[],"hypotheses":[],"interpretation_limits":["no recommendation"]}
+        bundle={"tickers":{"HPG":{"opportunity_ranking":raw}}}
+        received=b.opportunity_ranking_contract(bundle,"HPG")
+        self.assertEqual(received["dimensions"],dimensions)
+        received["dimensions"]["valuation"]["state"]="unknown"
+        self.assertEqual(raw["dimensions"]["valuation"]["state"],"available")
+
     def test_vcb_bank_only_gating_is_preserved(self):
         models = {
             "bank_financial_quality": {"result_state": "available", "used_input_facts": {"net_income": {"citation_id": "cit-ni"}}},

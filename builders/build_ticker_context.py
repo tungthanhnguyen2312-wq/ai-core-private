@@ -430,6 +430,16 @@ def risk_analysis_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dic
 def apply_bundle_risk_analysis_contract(context:dict[str,Any],bundle:Mapping[str,Any]|None)->dict[str,Any]:
  value=risk_analysis_contract(bundle,str(context.get("ticker") or ""));context["risk_analysis"]=value;context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"risk_analysis","transformation":"Pass through producer risk metrics without recomputation.","limitations":["No position recommendation or expectancy."]});return context
 
+def opportunity_ranking_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+    entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None
+    raw=entry.get("opportunity_ranking") if isinstance(entry,Mapping) else None
+    if not isinstance(raw,Mapping) or not isinstance(raw.get("dimensions"),Mapping): return {"status":"unknown","reason":"opportunity_ranking_not_in_legacy_or_malformed_bundle","dimensions":{},"data_warnings":["Opportunity ranking is unavailable."]}
+    dimensions=copy.deepcopy(dict(raw["dimensions"])); expected={"financial_quality","valuation","technical_current_market_readiness","catalyst_evidence","downside_invalidation","data_confidence"}; allowed={"available","limited","partial","unavailable","unknown","incomparable","inapplicable","blocked"}
+    if set(dimensions)!=expected or any(not isinstance(v,Mapping) or v.get("state") not in allowed for v in dimensions.values()): return {"status":"unknown","reason":"opportunity_ranking_invalid","dimensions":{},"data_warnings":["Opportunity ranking is malformed."]}
+    return {"status":raw.get("state","unknown"),"dimensions":dimensions,"facts":copy.deepcopy(raw.get("facts",[])),"data_warnings":copy.deepcopy(raw.get("data_warnings",[])),"inferences":copy.deepcopy(raw.get("inferences",[])),"hypotheses":copy.deepcopy(raw.get("hypotheses",[])),"interpretation_limits":copy.deepcopy(raw.get("interpretation_limits",[]))}
+def apply_bundle_opportunity_ranking_contract(context:dict[str,Any],bundle:Mapping[str,Any]|None)->dict[str,Any]:
+    value=opportunity_ranking_contract(bundle,str(context.get("ticker") or ""));context["opportunity_ranking"]=value;context.setdefault("data_quality",{}).setdefault("warnings",[]).extend(value.get("data_warnings",[]));context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"opportunity_ranking","transformation":"Pass through producer evidence dimensions and ordering without recomputation.","limitations":["No recommendation, probability, target price, or portfolio sizing."]});return context
+
 def scenario_analysis_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
  entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None; raw=entry.get("scenario_analysis") if isinstance(entry,Mapping) else None
  if not isinstance(raw,Mapping) or not isinstance(raw.get("scenarios"),Mapping):return {"status":"unknown","reason":"scenario_analysis_not_in_legacy_or_malformed_bundle","scenarios":{},"warnings":["Scenario evidence is unavailable."]}
@@ -1794,6 +1804,7 @@ def build_context_package(
     apply_bundle_analysis_readiness_contract(context, bundle_payload)
     apply_bundle_financial_canonical_contract(context, bundle_payload)
     apply_bundle_fundamental_quality_contract(context, bundle_payload)
+    apply_bundle_opportunity_ranking_contract(context, bundle_payload)
     apply_bundle_relative_valuation_contract(context, bundle_payload)
     apply_bundle_intrinsic_valuation_contract(context, bundle_payload)
     apply_bundle_scenario_analysis_contract(context, bundle_payload)
