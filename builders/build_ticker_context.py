@@ -1664,6 +1664,8 @@ def build_context_package(
     metadata_source: str = METADATA_SOURCE_DATABASE,
     registry_shadow_gate: bool = False,
     build_clock: datetime | str | None = None,
+    cited_document_query: Mapping[str, Any] | None = None,
+    cited_document_result: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """metadata_source defaults to "database", which preserves the exact existing behavior:
     metadata is read from vn_stock.db via load_metadata_slice, and metadata_registry_snapshot /
@@ -1809,6 +1811,9 @@ def build_context_package(
     apply_bundle_intrinsic_valuation_contract(context, bundle_payload)
     apply_bundle_scenario_analysis_contract(context, bundle_payload)
     apply_bundle_risk_analysis_contract(context, bundle_payload)
+    if cited_document_query is not None or cited_document_result is not None:
+        from builders.cited_document_evidence import attach as attach_cited_document_evidence
+        attach_cited_document_evidence(context, cited_document_query or {}, cited_document_result or {"state": "unavailable", "reason": "missing_document"})
     context["warnings"] = context["data_quality"]["warnings"]
     context["data_sources"] = sorted(set(context["data_sources"]))
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
