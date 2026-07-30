@@ -1666,6 +1666,7 @@ def build_context_package(
     build_clock: datetime | str | None = None,
     cited_document_query: Mapping[str, Any] | None = None,
     cited_document_result: Mapping[str, Any] | None = None,
+    sector_aware_downstream_facts: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """metadata_source defaults to "database", which preserves the exact existing behavior:
     metadata is read from vn_stock.db via load_metadata_slice, and metadata_registry_snapshot /
@@ -1811,6 +1812,7 @@ def build_context_package(
     apply_bundle_intrinsic_valuation_contract(context, bundle_payload)
     apply_bundle_scenario_analysis_contract(context, bundle_payload)
     apply_bundle_risk_analysis_contract(context, bundle_payload)
+    attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence
         attach_cited_document_evidence(context, cited_document_query or {}, cited_document_result or {"state": "unavailable", "reason": "missing_document"})
@@ -1819,6 +1821,25 @@ def build_context_package(
     attach_provenance(context, ["summary layer", "Phase 5 read-only adapters"])
     return context
 
+
+def attach_sector_aware_downstream_facts(context: dict[str, Any], section: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Attach a caller-supplied, same-ticker official-fact section verbatim.
+
+    This is deliberately a read-only pass-through: it performs no calculation,
+    aliasing, scaling, conflict resolution, or inference. Omitting ``section``
+    leaves legacy contexts byte-compatible because no new key is added.
+    """
+    if section is None:
+        return context
+    if not isinstance(section, Mapping) or section.get("contract_version") != "1.0.0" or section.get("section") != "sector_aware_downstream_facts":
+        raise ValueError("sector_aware_downstream_facts_contract_invalid")
+    facts = section.get("facts")
+    if not isinstance(facts, list) or any(not isinstance(fact, Mapping) or fact.get("ticker") != context.get("ticker") for fact in facts):
+        raise ValueError("sector_aware_downstream_facts_ticker_isolation_invalid")
+    if any(any("path" in str(key).lower() for key in fact) for fact in facts):
+        raise ValueError("sector_aware_downstream_facts_path_invalid")
+    context["sector_aware_downstream_facts"] = copy.deepcopy(dict(section))
+    return context
 
 def attach_provenance(context: dict[str, Any], sources: list[str]) -> dict[str, Any]:
     context["provenance"].append({
