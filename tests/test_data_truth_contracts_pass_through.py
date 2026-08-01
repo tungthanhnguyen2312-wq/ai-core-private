@@ -11,11 +11,14 @@ ticker context packages:
 - opportunity_ranking (verbatim Producer dict including schema_version, ticker, entity_type, state, ranking_key)
 - ta_signal_semantics
 - news_window_semantics (nested under news_related, not top-level)
+- analysis_lane_eligibility (optional Phase 4B/4C lane-eligibility result list, verbatim
+  pass-through; absent in every current bundle -- legacy-compatible by construction)
 """
 
 from __future__ import annotations
 
 import copy
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -28,6 +31,7 @@ if str(BUILDERS_DIR) not in sys.path:
     sys.path.insert(0, str(BUILDERS_DIR))
 
 from build_ticker_context import (
+    apply_bundle_analysis_lane_eligibility_contract,
     apply_bundle_earnings_anomaly_contract,
     apply_bundle_financial_period_coverage_contract,
     apply_bundle_news_window_semantics_contract,
@@ -202,6 +206,7 @@ class DataTruthContractsPassThroughTests(unittest.TestCase):
         apply_bundle_ta_signal_semantics_contract(context, bundle)
         apply_bundle_news_window_semantics_contract(context, bundle)
         apply_bundle_risk_semantics_contract(context, bundle)
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
 
         self.assertNotIn("financial_period_coverage", context)
         self.assertNotIn("valuation_namespaces", context)
@@ -210,6 +215,7 @@ class DataTruthContractsPassThroughTests(unittest.TestCase):
         self.assertNotIn("news_related", context)
         self.assertNotIn("news_window_semantics", context)
         self.assertNotIn("risk_semantics", context)
+        self.assertNotIn("analysis_lane_eligibility", context)
 
     # ── 4. Malformed data does not corrupt unrelated context ─────────────────
 
@@ -448,6 +454,133 @@ class DataTruthContractsPassThroughTests(unittest.TestCase):
         context = {"ticker": "HPG", "provenance": []}
         apply_bundle_risk_semantics_contract(context, bundle)
         self.assertEqual(bundle["tickers"]["HPG"]["analysis_score"], original_analysis_score)
+
+    # ── 8. analysis_lane_eligibility (Phase 4B/4C) verbatim pass-through ─────
+
+    # Real Phase 4C shadow-evaluation result for PNJ, taken verbatim from
+    # operations-review/phase_4c_lane_shadow_20260801T081307Z/lane_results.json
+    # ("tickers[ticker].analysis_lane_eligibility" is not wired into any Producer bundle
+    # yet -- this is the exact list shape a future Producer milestone would place there).
+    # Chosen over another ticker specifically because its real blocked_avoid result is
+    # eligible_for_analysis, needed to test that this is preserved as a classification only.
+    _REAL_PNJ_LANE_ELIGIBILITY = json.loads(r'''
+    [{"lane": "quality_growth", "status": "insufficient_evidence", "eligible": false, "blocking_reasons": ["entity_type_unknown"], "data_warnings": ["adjusted_return_claims_blocked:price_basis='unknown':tickers.PNJ.price_basis_provenance.price_basis", "liquidity_claims_blocked:volume_basis='unknown':tickers.PNJ.price_basis_provenance.volume_basis", "backtest_claims_blocked:price_or_volume_basis_unverified:tickers.PNJ.price_basis_provenance", "valuation_change_claims_blocked:pe:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pe", "valuation_change_claims_blocked:pb:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pb", "ta_signal_present_not_a_signal:Presence of a TA signal record indicates signal availability, not an investment action or complete technical conclusion.", "zero_or_partial_news_mapping_is_not_a_no_news_claim"], "required_evidence": ["confirmed corporate entity_type"], "supporting_paths": ["tickers.PNJ.entity_type"], "limitations": ["entity_type is unknown/unclassified; corporate quality/growth framing is not confirmed applicable.", "risk_semantics, opportunity_ranking, ta_signal_semantics, and news_window_semantics are evidence-availability / fail-closed metadata, not investment signals; this evaluator's evidence-availability ordering must not be read as investment attractiveness (Phase 4A Principles 1 and 5; Phase 4B gates 6 and 9)."], "is_actionable": false}, {"lane": "income_defensive", "status": "insufficient_evidence", "eligible": false, "blocking_reasons": ["distribution_evidence_contract_not_available_to_this_evaluator", "share_basis_identity_not_available:current_vs_period_end", "share_basis_identity_not_available:current_vs_weighted_average", "share_basis_identity_not_available:period_end_vs_weighted_average"], "data_warnings": ["entity_type_unknown", "risk_semantics_present_no_safety_threshold_defined_yet", "adjusted_return_claims_blocked:price_basis='unknown':tickers.PNJ.price_basis_provenance.price_basis", "liquidity_claims_blocked:volume_basis='unknown':tickers.PNJ.price_basis_provenance.volume_basis", "backtest_claims_blocked:price_or_volume_basis_unverified:tickers.PNJ.price_basis_provenance", "valuation_change_claims_blocked:pe:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pe", "valuation_change_claims_blocked:pb:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pb", "ta_signal_present_not_a_signal:Presence of a TA signal record indicates signal availability, not an investment action or complete technical conclusion.", "zero_or_partial_news_mapping_is_not_a_no_news_claim"], "required_evidence": ["corporate_action_distribution_evidence (not a named input to this milestone)"], "supporting_paths": ["tickers.PNJ.entity_type", "tickers.PNJ.risk_semantics", "tickers.PNJ.share_basis_identities", "tickers.PNJ.financial_period_coverage"], "limitations": ["income_defensive eligibility fundamentally requires distribution/dividend evidence, which is not among the ten Phase 4A/4B named input contracts; this result never reaches eligible_for_analysis in this milestone.", "risk_semantics.score_value polarity is higher_is_safer (legacy field name 'risk' must not be read as higher-means-more-risk); no safety threshold is defined yet, so this evaluator does not classify the numeric value.", "risk_semantics, opportunity_ranking, ta_signal_semantics, and news_window_semantics are evidence-availability / fail-closed metadata, not investment signals; this evaluator's evidence-availability ordering must not be read as investment attractiveness (Phase 4A Principles 1 and 5; Phase 4B gates 6 and 9)."], "is_actionable": false}, {"lane": "structural_catalyst", "status": "insufficient_evidence", "eligible": false, "blocking_reasons": ["opportunity_ranking_dimension_state:unknown"], "data_warnings": ["adjusted_return_claims_blocked:price_basis='unknown':tickers.PNJ.price_basis_provenance.price_basis", "liquidity_claims_blocked:volume_basis='unknown':tickers.PNJ.price_basis_provenance.volume_basis", "backtest_claims_blocked:price_or_volume_basis_unverified:tickers.PNJ.price_basis_provenance", "valuation_change_claims_blocked:pe:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pe", "valuation_change_claims_blocked:pb:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pb", "ta_signal_present_not_a_signal:Presence of a TA signal record indicates signal availability, not an investment action or complete technical conclusion.", "zero_or_partial_news_mapping_is_not_a_no_news_claim"], "required_evidence": ["opportunity_ranking.dimensions.catalyst_evidence"], "supporting_paths": ["tickers.PNJ.opportunity_ranking.dimensions.catalyst_evidence"], "limitations": ["Catalyst *evidence-availability* only; naming or tagging an actual catalyst against the Phase 4A Section 5 taxonomy is a separate, not-yet-implemented step.", "risk_semantics, opportunity_ranking, ta_signal_semantics, and news_window_semantics are evidence-availability / fail-closed metadata, not investment signals; this evaluator's evidence-availability ordering must not be read as investment attractiveness (Phase 4A Principles 1 and 5; Phase 4B gates 6 and 9)."], "is_actionable": false}, {"lane": "distressed_high_risk", "status": "insufficient_evidence", "eligible": false, "blocking_reasons": ["no_evidenced_stress_signal_found"], "data_warnings": ["risk_semantics present but no safety threshold is defined in this milestone; not used to trigger or exclude this lane.", "adjusted_return_claims_blocked:price_basis='unknown':tickers.PNJ.price_basis_provenance.price_basis", "liquidity_claims_blocked:volume_basis='unknown':tickers.PNJ.price_basis_provenance.volume_basis", "backtest_claims_blocked:price_or_volume_basis_unverified:tickers.PNJ.price_basis_provenance", "valuation_change_claims_blocked:pe:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pe", "valuation_change_claims_blocked:pb:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pb", "ta_signal_present_not_a_signal:Presence of a TA signal record indicates signal availability, not an investment action or complete technical conclusion.", "zero_or_partial_news_mapping_is_not_a_no_news_claim"], "required_evidence": [], "supporting_paths": ["tickers.PNJ.risk_semantics.score_value"], "limitations": ["risk_semantics.score_value polarity is higher_is_safer (legacy field name 'risk' must not be read as higher-means-more-risk).", "risk_semantics, opportunity_ranking, ta_signal_semantics, and news_window_semantics are evidence-availability / fail-closed metadata, not investment signals; this evaluator's evidence-availability ordering must not be read as investment attractiveness (Phase 4A Principles 1 and 5; Phase 4B gates 6 and 9)."], "is_actionable": false}, {"lane": "blocked_avoid", "status": "eligible_for_analysis", "eligible": true, "blocking_reasons": [], "data_warnings": ["blocked_avoid_trigger:entity_type_unknown", "adjusted_return_claims_blocked:price_basis='unknown':tickers.PNJ.price_basis_provenance.price_basis", "liquidity_claims_blocked:volume_basis='unknown':tickers.PNJ.price_basis_provenance.volume_basis", "backtest_claims_blocked:price_or_volume_basis_unverified:tickers.PNJ.price_basis_provenance", "valuation_change_claims_blocked:pe:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pe", "valuation_change_claims_blocked:pb:insufficient_identity:tickers.PNJ.valuation_namespaces.comparability.metrics.pb", "ta_signal_present_not_a_signal:Presence of a TA signal record indicates signal availability, not an investment action or complete technical conclusion.", "zero_or_partial_news_mapping_is_not_a_no_news_claim"], "required_evidence": [], "supporting_paths": ["tickers.PNJ.entity_type"], "limitations": ["blocked_avoid membership reflects evidence insufficiency, not a judgment on the underlying company; a caller integrating this evaluator should treat blocked_avoid eligibility as overriding membership in the other four lanes for the same ticker/cutoff -- this pure per-lane evaluator does not enforce that override itself.", "risk_semantics, opportunity_ranking, ta_signal_semantics, and news_window_semantics are evidence-availability / fail-closed metadata, not investment signals; this evaluator's evidence-availability ordering must not be read as investment attractiveness (Phase 4A Principles 1 and 5; Phase 4B gates 6 and 9)."], "is_actionable": false}]
+    ''')
+
+    def test_analysis_lane_eligibility_passes_through_verbatim(self):
+        """A complete five-lane contract must pass through byte-identical."""
+        bundle = {"tickers": {"PNJ": {"analysis_lane_eligibility": copy.deepcopy(self._REAL_PNJ_LANE_ELIGIBILITY)}}}
+        context = {"ticker": "PNJ", "provenance": []}
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        self.assertEqual(context["analysis_lane_eligibility"], self._REAL_PNJ_LANE_ELIGIBILITY)
+
+    def test_analysis_lane_eligibility_statuses_and_supporting_paths_unchanged(self):
+        bundle = {"tickers": {"PNJ": {"analysis_lane_eligibility": copy.deepcopy(self._REAL_PNJ_LANE_ELIGIBILITY)}}}
+        context = {"ticker": "PNJ", "provenance": []}
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        result = context["analysis_lane_eligibility"]
+        self.assertEqual([r["lane"] for r in result], [r["lane"] for r in self._REAL_PNJ_LANE_ELIGIBILITY])
+        for expected, actual in zip(self._REAL_PNJ_LANE_ELIGIBILITY, result):
+            self.assertEqual(actual["status"], expected["status"])
+            self.assertEqual(actual["supporting_paths"], expected["supporting_paths"])
+
+    def test_analysis_lane_eligibility_is_actionable_false_for_every_lane(self):
+        bundle = {"tickers": {"PNJ": {"analysis_lane_eligibility": copy.deepcopy(self._REAL_PNJ_LANE_ELIGIBILITY)}}}
+        context = {"ticker": "PNJ", "provenance": []}
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        for lane_result in context["analysis_lane_eligibility"]:
+            self.assertIs(lane_result["is_actionable"], False)
+
+    def test_blocked_avoid_eligible_remains_classification_not_recommendation(self):
+        """blocked_avoid.status == eligible_for_analysis must not be reinterpreted as a
+        recommendation; the module's own disclaiming limitation text must survive verbatim,
+        and no score/rank/recommendation field is added alongside it."""
+        bundle = {"tickers": {"PNJ": {"analysis_lane_eligibility": copy.deepcopy(self._REAL_PNJ_LANE_ELIGIBILITY)}}}
+        context = {"ticker": "PNJ", "provenance": []}
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        blocked_avoid = next(r for r in context["analysis_lane_eligibility"] if r["lane"] == "blocked_avoid")
+        self.assertEqual(blocked_avoid["status"], "eligible_for_analysis")
+        self.assertTrue(blocked_avoid["eligible"])
+        self.assertFalse(blocked_avoid["is_actionable"])
+        self.assertTrue(any("not a judgment on the underlying company" in lim for lim in blocked_avoid["limitations"]))
+        self.assertEqual(set(blocked_avoid.keys()), {
+            "lane", "status", "eligible", "blocking_reasons", "data_warnings",
+            "required_evidence", "supporting_paths", "limitations", "is_actionable",
+        })
+
+    def test_analysis_lane_eligibility_no_score_or_ranking_fields_introduced(self):
+        """No universal score or ticker ranking is created by the pass-through; lane order
+        is preserved exactly as supplied (never re-sorted by any derived attractiveness)."""
+        bundle = {"tickers": {"PNJ": {"analysis_lane_eligibility": copy.deepcopy(self._REAL_PNJ_LANE_ELIGIBILITY)}}}
+        context = {"ticker": "PNJ", "provenance": []}
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        result = context["analysis_lane_eligibility"]
+        self.assertIsInstance(result, list)
+        for lane_result in result:
+            self.assertNotIn("score", lane_result)
+            self.assertNotIn("rank", lane_result)
+            self.assertNotIn("recommendation", lane_result)
+        self.assertEqual(
+            [r["lane"] for r in result],
+            ["quality_growth", "income_defensive", "structural_catalyst", "distressed_high_risk", "blocked_avoid"],
+        )
+
+    def test_analysis_lane_eligibility_missing_remains_absent(self):
+        bundle = {"tickers": {"HPG": {}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        self.assertNotIn("analysis_lane_eligibility", context)
+
+    def test_analysis_lane_eligibility_malformed_fails_closed_without_corrupting_context(self):
+        bundle = {"tickers": {"TEST": {"analysis_lane_eligibility": "not_a_list"}}}
+        context = {"ticker": "TEST", "provenance": [], "metadata": {"ticker": "TEST"}}
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        self.assertEqual(context["analysis_lane_eligibility"]["status"], "malformed")
+        self.assertEqual(context["metadata"]["ticker"], "TEST")
+
+    def test_analysis_lane_eligibility_does_not_disturb_existing_data_truth_contracts(self):
+        bundle = {
+            "tickers": {
+                "PNJ": {
+                    "financial_period_coverage": {"latest_raw_period": "2026-Q1", "is_actionable": False},
+                    "earnings_anomaly": {"status": "not_observed", "is_actionable": False},
+                    "analysis_lane_eligibility": copy.deepcopy(self._REAL_PNJ_LANE_ELIGIBILITY),
+                }
+            }
+        }
+        context = {"ticker": "PNJ", "provenance": []}
+        apply_bundle_financial_period_coverage_contract(context, bundle)
+        apply_bundle_earnings_anomaly_contract(context, bundle)
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        self.assertEqual(context["financial_period_coverage"]["latest_raw_period"], "2026-Q1")
+        self.assertEqual(context["earnings_anomaly"]["status"], "not_observed")
+        self.assertIn("analysis_lane_eligibility", context)
+
+    def test_analysis_lane_eligibility_source_input_not_mutated(self):
+        source_list = copy.deepcopy(self._REAL_PNJ_LANE_ELIGIBILITY)
+        original = copy.deepcopy(source_list)
+        bundle = {"tickers": {"PNJ": {"analysis_lane_eligibility": source_list}}}
+        context = {"ticker": "PNJ", "provenance": []}
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        context["analysis_lane_eligibility"][0]["status"] = "mutated_for_test"
+        self.assertEqual(source_list, original)
+        self.assertEqual(bundle["tickers"]["PNJ"]["analysis_lane_eligibility"], original)
+
+    def test_analysis_lane_eligibility_legacy_bundle_without_field_unaffected(self):
+        """Legacy bundles (no analysis_lane_eligibility key at all -- every current real
+        bundle) must keep building all other contracts normally with no such key added."""
+        bundle = {
+            "tickers": {
+                "PNJ": {
+                    "financial_period_coverage": {"latest_raw_period": "2026-Q1", "is_actionable": False},
+                }
+            }
+        }
+        context = {"ticker": "PNJ", "provenance": []}
+        apply_bundle_financial_period_coverage_contract(context, bundle)
+        apply_bundle_analysis_lane_eligibility_contract(context, bundle)
+        self.assertEqual(context["financial_period_coverage"]["latest_raw_period"], "2026-Q1")
+        self.assertNotIn("analysis_lane_eligibility", context)
 
 
 if __name__ == "__main__":

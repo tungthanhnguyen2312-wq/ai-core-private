@@ -706,6 +706,40 @@ def apply_bundle_risk_semantics_contract(context: dict[str, Any], bundle: Mappin
     return context
 
 
+def analysis_lane_eligibility_contract(bundle: Mapping[str, Any] | None, ticker: str) -> list[Any] | dict[str, Any] | None:
+    """Pass through the optional Phase 4B/4C analysis-lane eligibility result verbatim.
+
+    Canonical location: tickers[ticker].analysis_lane_eligibility -- the exact list
+    stock-core-private/analysis_lane_eligibility.py::evaluate_ticker_lanes() returns (one
+    dict per lane: lane, status, eligible, blocking_reasons, data_warnings,
+    required_evidence, supporting_paths, limitations, is_actionable). No Producer
+    milestone wires this into analysis_bundle.json yet, so this is legacy-compatible by
+    construction: absent in every current bundle, and simply returns None until it exists.
+    This function never recalculates eligibility, ranks lanes/tickers, suppresses
+    blocked_avoid, or adds a score -- it is a byte-identical pass-through, same as every
+    other contract in this module. Missing input remains missing; malformed input fails
+    closed locally without touching any other context field."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("analysis_lane_eligibility") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        return {"status": "malformed", "limitations": ["Analysis lane eligibility contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(list(raw))
+
+
+def apply_bundle_analysis_lane_eligibility_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = analysis_lane_eligibility_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["analysis_lane_eligibility"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "analysis_lane_eligibility",
+            "transformation": "Pass through producer analysis lane eligibility result verbatim; Consumer does not recalculate, rank, or interpret lane results.",
+            "limitations": ["Optional field; absent until a future Producer milestone wires lane evaluation into analysis_bundle.json."],
+        })
+    return context
+
+
 def save_json(path: Path, payload: Any) -> None:
     safe = validate_safe_output_path(path)
     if safe.exists():
@@ -2025,6 +2059,7 @@ def build_context_package(
     apply_bundle_ta_signal_semantics_contract(context, bundle_payload)
     apply_bundle_news_window_semantics_contract(context, bundle_payload)
     apply_bundle_risk_semantics_contract(context, bundle_payload)
+    apply_bundle_analysis_lane_eligibility_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence
