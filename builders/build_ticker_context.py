@@ -740,6 +740,42 @@ def apply_bundle_analysis_lane_eligibility_contract(context: dict[str, Any], bun
     return context
 
 
+def distribution_evidence_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional Phase 5D distribution_evidence contract verbatim.
+
+    Canonical location: tickers[ticker].distribution_evidence -- the exact dict
+    stock-core-private/distribution_evidence.py::build_distribution_evidence_for_ticker()
+    returns (schema_version, ticker, coverage_status, cash_distributions,
+    non_cash_distributions, latest_cash_distribution, qualified_cash_event_count,
+    covered_periods, history_status, blocking_reasons, limitations, provenance,
+    is_actionable). No default Producer invocation attaches this yet (opt-in only, same
+    flag as analysis_lane_eligibility), so this is legacy-compatible by construction:
+    absent in every current bundle, and simply returns None until it exists. This
+    function never recalculates coverage, derives yield/payout ratio/CAGR/return, or
+    reclassifies cash vs non-cash -- it is a byte-identical pass-through, same as every
+    other contract in this module. Missing input remains missing; malformed input fails
+    closed locally without touching any other context field."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("distribution_evidence") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "limitations": ["Distribution evidence contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_distribution_evidence_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = distribution_evidence_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["distribution_evidence"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "distribution_evidence",
+            "transformation": "Pass through producer distribution evidence contract verbatim; Consumer does not recalculate coverage, derive yield/payout ratio/CAGR/return, or reclassify cash vs non-cash events.",
+            "limitations": ["Optional field; absent until a future Producer milestone wires distribution evidence into analysis_bundle.json by default."],
+        })
+    return context
+
+
 def save_json(path: Path, payload: Any) -> None:
     safe = validate_safe_output_path(path)
     if safe.exists():
@@ -2060,6 +2096,7 @@ def build_context_package(
     apply_bundle_news_window_semantics_contract(context, bundle_payload)
     apply_bundle_risk_semantics_contract(context, bundle_payload)
     apply_bundle_analysis_lane_eligibility_contract(context, bundle_payload)
+    apply_bundle_distribution_evidence_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence

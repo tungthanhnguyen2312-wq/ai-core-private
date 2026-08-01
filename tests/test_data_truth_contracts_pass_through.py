@@ -32,6 +32,7 @@ if str(BUILDERS_DIR) not in sys.path:
 
 from build_ticker_context import (
     apply_bundle_analysis_lane_eligibility_contract,
+    apply_bundle_distribution_evidence_contract,
     apply_bundle_earnings_anomaly_contract,
     apply_bundle_financial_period_coverage_contract,
     apply_bundle_news_window_semantics_contract,
@@ -581,6 +582,154 @@ class DataTruthContractsPassThroughTests(unittest.TestCase):
         apply_bundle_analysis_lane_eligibility_contract(context, bundle)
         self.assertEqual(context["financial_period_coverage"]["latest_raw_period"], "2026-Q1")
         self.assertNotIn("analysis_lane_eligibility", context)
+
+    # ── 9. distribution_evidence (Phase 5D) verbatim pass-through ────────────
+
+    # Shape matches stock-core-private/distribution_evidence.py::build_distribution_evidence_for_ticker()
+    # exactly (schema_version, ticker, coverage_status, cash_distributions, non_cash_distributions,
+    # latest_cash_distribution, qualified_cash_event_count, covered_periods, history_status,
+    # blocking_reasons, limitations, provenance, is_actionable) -- not wired into any Producer
+    # bundle by default (opt-in only), so this is legacy-compatible by construction.
+    _REAL_VNM_DISTRIBUTION_EVIDENCE = {
+        "schema_version": "1.0.0", "ticker": "VNM", "coverage_status": "available",
+        "cash_distributions": [
+            {"event_id": "e2024", "distribution_type": "cash_distribution", "ticker": "VNM",
+             "issuer": "Vietnam Dairy Products Joint Stock Company", "declaration_date": "2024-12-05",
+             "record_date": "2024-12-27", "ex_date": None, "payment_date": "2025-02-28",
+             "effective_date": None, "amount": 500, "currency": "VND", "unit": "per_share",
+             "per_share_basis": "common", "event_status": "completed",
+             "source_authority": "KPMG Limited Vietnam / Issuer IR Portal",
+             "evidence": {"evidence_id": "ev1", "citation_id": "c1", "document_sha256": "abc123"},
+             "qualification_state": "qualified", "ledger_entry_id": "le1"},
+            {"event_id": "e2023", "distribution_type": "cash_distribution", "ticker": "VNM",
+             "issuer": "Vietnam Dairy Products Joint Stock Company", "declaration_date": "2023-08-10",
+             "record_date": "2023-09-05", "ex_date": None, "payment_date": "2023-10-20",
+             "effective_date": None, "amount": 1500, "currency": "VND", "unit": "per_share",
+             "per_share_basis": "common", "event_status": "completed",
+             "source_authority": "KPMG Limited Vietnam / Issuer IR Portal",
+             "evidence": {"evidence_id": "ev1", "citation_id": "c2", "document_sha256": "abc123"},
+             "qualification_state": "qualified", "ledger_entry_id": "le2"},
+        ],
+        "non_cash_distributions": [
+            {"event_id": "e2021", "distribution_type": "stock_dividend", "ticker": "VNM",
+             "issuer": "Vietnam Dairy Products Joint Stock Company", "declaration_date": "2021-06-15",
+             "record_date": "2021-07-20", "ex_date": None, "distribution_date": None, "effective_date": None,
+             "entitlement_ratio": {"new_shares": 1, "existing_shares": 10, "ratio_float": 0.1},
+             "funding_source": "undistributed_earnings", "share_class": "common", "event_status": "completed",
+             "source_authority": "KPMG Limited Vietnam / Issuer IR Portal",
+             "evidence": {"evidence_id": "ev1", "citation_id": "c3", "document_sha256": "abc123"},
+             "qualification_state": "qualified", "ledger_entry_id": "le3"},
+        ],
+        "latest_cash_distribution": {"event_id": "e2024", "record_date": "2024-12-27", "amount": 500},
+        "qualified_cash_event_count": 2, "covered_periods": ["2023", "2024"],
+        "history_status": "multi_period_available", "blocking_reasons": [],
+        "limitations": ["No dividend yield, payout ratio, CAGR, total return, or adjusted return is derived by this contract."],
+        "provenance": {"source": "corporate_action_ledger.build_corporate_action_ledger", "ledger_version": "1.0.0"},
+        "is_actionable": False,
+    }
+
+    def test_distribution_evidence_passes_through_verbatim(self):
+        bundle = {"tickers": {"VNM": {"distribution_evidence": copy.deepcopy(self._REAL_VNM_DISTRIBUTION_EVIDENCE)}}}
+        context = {"ticker": "VNM", "provenance": []}
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        self.assertEqual(context["distribution_evidence"], self._REAL_VNM_DISTRIBUTION_EVIDENCE)
+
+    def test_distribution_evidence_cash_and_non_cash_lists_unchanged(self):
+        bundle = {"tickers": {"VNM": {"distribution_evidence": copy.deepcopy(self._REAL_VNM_DISTRIBUTION_EVIDENCE)}}}
+        context = {"ticker": "VNM", "provenance": []}
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        result = context["distribution_evidence"]
+        self.assertEqual(len(result["cash_distributions"]), 2)
+        self.assertEqual(len(result["non_cash_distributions"]), 1)
+        self.assertEqual(result["cash_distributions"][0]["distribution_type"], "cash_distribution")
+        self.assertEqual(result["non_cash_distributions"][0]["distribution_type"], "stock_dividend")
+
+    def test_distribution_evidence_is_actionable_false(self):
+        bundle = {"tickers": {"VNM": {"distribution_evidence": copy.deepcopy(self._REAL_VNM_DISTRIBUTION_EVIDENCE)}}}
+        context = {"ticker": "VNM", "provenance": []}
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        self.assertIs(context["distribution_evidence"]["is_actionable"], False)
+
+    def test_distribution_evidence_no_yield_payout_or_return_field_introduced(self):
+        """Consumer pass-through must not add or compute any derived income metric."""
+        bundle = {"tickers": {"VNM": {"distribution_evidence": copy.deepcopy(self._REAL_VNM_DISTRIBUTION_EVIDENCE)}}}
+        context = {"ticker": "VNM", "provenance": []}
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        result = context["distribution_evidence"]
+        for forbidden in ("dividend_yield", "yield", "payout_ratio", "cagr", "total_return", "adjusted_return"):
+            self.assertNotIn(forbidden, result)
+
+    def test_distribution_evidence_missing_remains_absent(self):
+        bundle = {"tickers": {"HPG": {}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        self.assertNotIn("distribution_evidence", context)
+
+    def test_distribution_evidence_hpg_missing_coverage_status_passes_through(self):
+        """HPG negative-control shape: coverage_status='missing' passes through unchanged --
+        Consumer never upgrades or reinterprets it."""
+        hpg_missing = {
+            "schema_version": "1.0.0", "ticker": "HPG", "coverage_status": "missing",
+            "cash_distributions": [], "non_cash_distributions": [], "latest_cash_distribution": None,
+            "qualified_cash_event_count": 0, "covered_periods": [], "history_status": "no_qualified_events",
+            "blocking_reasons": [], "limitations": [], "provenance": {}, "is_actionable": False,
+        }
+        bundle = {"tickers": {"HPG": {"distribution_evidence": copy.deepcopy(hpg_missing)}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        self.assertEqual(context["distribution_evidence"], hpg_missing)
+
+    def test_distribution_evidence_malformed_fails_closed_without_corrupting_context(self):
+        bundle = {"tickers": {"TEST": {"distribution_evidence": "not_a_dict"}}}
+        context = {"ticker": "TEST", "provenance": [], "metadata": {"ticker": "TEST"}}
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        self.assertEqual(context["distribution_evidence"]["status"], "malformed")
+        self.assertEqual(context["metadata"]["ticker"], "TEST")
+
+    def test_distribution_evidence_does_not_disturb_existing_data_truth_contracts(self):
+        bundle = {
+            "tickers": {
+                "VNM": {
+                    "financial_period_coverage": {"latest_raw_period": "2024", "is_actionable": False},
+                    "earnings_anomaly": {"status": "not_observed", "is_actionable": False},
+                    "distribution_evidence": copy.deepcopy(self._REAL_VNM_DISTRIBUTION_EVIDENCE),
+                }
+            }
+        }
+        context = {"ticker": "VNM", "provenance": []}
+        apply_bundle_financial_period_coverage_contract(context, bundle)
+        apply_bundle_earnings_anomaly_contract(context, bundle)
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        self.assertEqual(context["financial_period_coverage"]["latest_raw_period"], "2024")
+        self.assertEqual(context["earnings_anomaly"]["status"], "not_observed")
+        self.assertIn("distribution_evidence", context)
+
+    def test_distribution_evidence_source_input_not_mutated(self):
+        source = copy.deepcopy(self._REAL_VNM_DISTRIBUTION_EVIDENCE)
+        original = copy.deepcopy(source)
+        bundle = {"tickers": {"VNM": {"distribution_evidence": source}}}
+        context = {"ticker": "VNM", "provenance": []}
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        context["distribution_evidence"]["coverage_status"] = "mutated_for_test"
+        context["distribution_evidence"]["cash_distributions"].append({"injected": True})
+        self.assertEqual(source, original)
+        self.assertEqual(bundle["tickers"]["VNM"]["distribution_evidence"], original)
+
+    def test_distribution_evidence_legacy_bundle_without_field_unaffected(self):
+        """Legacy bundles (no distribution_evidence key at all -- every current real bundle)
+        must keep building all other contracts normally with no such key added."""
+        bundle = {
+            "tickers": {
+                "VNM": {
+                    "financial_period_coverage": {"latest_raw_period": "2024", "is_actionable": False},
+                }
+            }
+        }
+        context = {"ticker": "VNM", "provenance": []}
+        apply_bundle_financial_period_coverage_contract(context, bundle)
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        self.assertEqual(context["financial_period_coverage"]["latest_raw_period"], "2024")
+        self.assertNotIn("distribution_evidence", context)
 
 
 if __name__ == "__main__":
