@@ -499,6 +499,147 @@ def apply_bundle_corporate_intelligence_contract(
     return context
 
 
+def financial_period_coverage_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("financial_period_coverage") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"coverage_status": "malformed", "limitations": ["Financial period coverage contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+def apply_bundle_financial_period_coverage_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = financial_period_coverage_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["financial_period_coverage"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "financial_period_coverage",
+            "transformation": "Pass through producer per-ticker financial period coverage contract.",
+            "limitations": contract.get("limitations", []),
+        })
+    return context
+
+def valuation_namespaces_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("valuation_namespaces") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "reasons": ["Valuation namespaces contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+def apply_bundle_valuation_namespaces_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = valuation_namespaces_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["valuation_namespaces"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "valuation_namespaces",
+            "transformation": "Pass through producer valuation namespaces contract.",
+            "limitations": ["Live-vendor and historical-calculated valuation metrics are not interchangeable."],
+        })
+    return context
+
+def share_basis_identities_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("share_basis_identities") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "reasons": ["Share basis identities contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+def apply_bundle_share_basis_identities_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = share_basis_identities_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["share_basis_identities"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "share_basis_identities",
+            "transformation": "Pass through producer share basis identities contract.",
+            "limitations": ["Share counts from different dates or basis types must not be treated as interchangeable."],
+        })
+    return context
+
+def earnings_anomaly_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("earnings_anomaly") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "limitations": ["Earnings anomaly contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+def apply_bundle_earnings_anomaly_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = earnings_anomaly_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["earnings_anomaly"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "earnings_anomaly",
+            "transformation": "Pass through producer earnings anomaly semantic contract.",
+            "limitations": contract.get("limitations", []),
+        })
+    return context
+
+def ta_signal_semantics_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("ta_signal_semantics") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "limitations": ["TA signal semantics contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+def apply_bundle_ta_signal_semantics_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = ta_signal_semantics_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["ta_signal_semantics"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "ta_signal_semantics",
+            "transformation": "Pass through producer technical signal semantics contract.",
+            "limitations": contract.get("limitations", []),
+        })
+    return context
+
+def news_window_semantics_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("news_window_semantics") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "limitations": ["News window semantics contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+def apply_bundle_news_window_semantics_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = news_window_semantics_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["news_window_semantics"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "news_window_semantics",
+            "transformation": "Pass through producer news window semantics contract.",
+            "limitations": contract.get("limitations", []),
+        })
+    return context
+
+def risk_semantics_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("risk_semantics") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "limitations": ["Risk semantics contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+def apply_bundle_risk_semantics_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = risk_semantics_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["risk_semantics"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "risk_semantics",
+            "transformation": "Pass through producer risk semantics contract.",
+            "limitations": contract.get("limitations", []),
+        })
+    return context
+
+
 def save_json(path: Path, payload: Any) -> None:
     safe = validate_safe_output_path(path)
     if safe.exists():
@@ -1810,8 +1951,14 @@ def build_context_package(
     apply_bundle_opportunity_ranking_contract(context, bundle_payload)
     apply_bundle_relative_valuation_contract(context, bundle_payload)
     apply_bundle_intrinsic_valuation_contract(context, bundle_payload)
-    apply_bundle_scenario_analysis_contract(context, bundle_payload)
     apply_bundle_risk_analysis_contract(context, bundle_payload)
+    apply_bundle_financial_period_coverage_contract(context, bundle_payload)
+    apply_bundle_valuation_namespaces_contract(context, bundle_payload)
+    apply_bundle_share_basis_identities_contract(context, bundle_payload)
+    apply_bundle_earnings_anomaly_contract(context, bundle_payload)
+    apply_bundle_ta_signal_semantics_contract(context, bundle_payload)
+    apply_bundle_news_window_semantics_contract(context, bundle_payload)
+    apply_bundle_risk_semantics_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence
