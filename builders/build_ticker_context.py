@@ -848,6 +848,17 @@ def apply_bundle_fundamental_quality_evidence_contract(context: dict[str, Any], 
     return context
 
 
+def apply_bundle_historical_capital_structure_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    entry = ((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle, Mapping) else None
+    raw = entry.get("historical_capital_structure") if isinstance(entry, Mapping) else None
+    if raw is not None:
+        context["historical_capital_structure"] = copy.deepcopy(dict(raw)) if isinstance(raw, Mapping) else {
+            "status": "malformed", "historical_only": True, "market_dependent": False, "is_actionable": False,
+            "blocking_reasons": ["historical_capital_structure_malformed"],
+        }
+    return context
+
+
 def save_json(path: Path, payload: Any) -> None:
     safe = validate_safe_output_path(path)
     if safe.exists():
@@ -2170,6 +2181,7 @@ def build_context_package(
     apply_bundle_analysis_lane_eligibility_contract(context, bundle_payload)
     apply_bundle_distribution_evidence_contract(context, bundle_payload)
     apply_bundle_fundamental_quality_evidence_contract(context, bundle_payload)
+    apply_bundle_historical_capital_structure_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence

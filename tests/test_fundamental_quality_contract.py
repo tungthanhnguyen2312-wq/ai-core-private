@@ -66,6 +66,15 @@ class FundamentalQualityContractTests(unittest.TestCase):
         self.assertEqual(received["models"]["bank_financial_quality"]["result_state"], "available")
         self.assertEqual(received["models"]["financial_strength"]["result_state"], "inapplicable")
 
+    def test_historical_capital_structure_is_passed_through_and_never_sets_readiness(self):
+        raw = {"status": "available", "historical_only": True, "market_dependent": False,
+               "is_actionable": False, "data_warnings": ["price_basis_unknown_or_unverified"],
+               "metrics": {"net_debt": {"value": -1, "qualification_status": "qualified"}}}
+        context = {"ticker": "HPG", "analysis_readiness": {"analysis_ready": False}, "provenance": []}
+        b.apply_bundle_historical_capital_structure_contract(context, {"tickers": {"HPG": {"historical_capital_structure": raw}}})
+        self.assertEqual(context["historical_capital_structure"], raw)
+        self.assertFalse(context["analysis_readiness"]["analysis_ready"])
+
 
 if __name__ == "__main__":
     unittest.main()
