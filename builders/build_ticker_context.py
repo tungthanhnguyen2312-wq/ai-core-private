@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import copy
 import csv
+import hashlib
 import importlib.util
 import json
 import math
@@ -151,7 +152,35 @@ def load_optional_analysis_bundle(config: Mapping[str, Any]) -> tuple[dict[str, 
         return {}, "analysis_bundle_invalid_json"
     if not isinstance(payload, dict):
         return {}, "analysis_bundle_invalid_payload"
-    return payload, None
+    manifest_path = path.with_name("bundle_manifest.json")
+    if not manifest_path.exists():
+        payload["trusted_subset_validation"] = {"state": "legacy_untrusted", "reason": "manifest_missing", "warnings": []}
+        return payload, "trusted_subset_legacy_untrusted"
+    try:
+        proof = load_json(manifest_path).get("trusted_subset")
+        session = proof.get("session_identity") if isinstance(proof, Mapping) else None
+        structurally_valid = (
+            isinstance(proof, Mapping)
+            and proof.get("schema_version") == "1.0.0"
+            and proof.get("tickers") == ["HPG", "VNM"]
+            and proof.get("bundle_filename") == path.name
+            and proof.get("bundle_sha256") == hashlib.sha256(path.read_bytes()).hexdigest()
+            and bool(session)
+            and all((proof.get("per_ticker") or {}).get(ticker, {}).get("session_identity") == session for ticker in ("HPG", "VNM"))
+            and (proof.get("price_basis") or {}).get("verified") is True
+            and (proof.get("volume_basis") or {}).get("verified") is True
+        )
+        valid = structurally_valid and proof.get("trust_state") == "exact_session_qualified"
+        reason = None if valid else "basis_unqualified" if structurally_valid and proof.get("trust_state") == "untrusted_basis" else "manifest_invalid"
+    except (OSError, ValueError, AttributeError):
+        valid = False
+        reason = "manifest_invalid"
+    payload["trusted_subset_validation"] = {
+        "state": "exact_session_trusted" if valid else "untrusted",
+        "reason": reason,
+        "warnings": [] if valid else ["trusted_subset_basis_unqualified" if reason == "basis_unqualified" else "trusted_subset_manifest_invalid"],
+    }
+    return payload, None if valid else "trusted_subset_untrusted"
 
 
 def normalize_price_basis_contract(bundle: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -367,6 +396,9 @@ READINESS_STATES = frozenset({"ready", "degraded", "blocked", "unknown"})
 
 def analysis_readiness_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
     """Pass through producer readiness without turning it into a business fact."""
+    trust = (bundle or {}).get("trusted_subset_validation") if isinstance(bundle, Mapping) else None
+    if isinstance(trust, Mapping) and trust.get("state") != "exact_session_trusted":
+        return {"status": "unknown", "reason": str(trust.get("reason") or trust.get("state")), "domains": {}, "inferences_allowed": False}
     entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
     raw = entry.get("analysis_readiness") if isinstance(entry, Mapping) else None
     if raw is None:
@@ -719,6 +751,9 @@ def analysis_lane_eligibility_contract(bundle: Mapping[str, Any] | None, ticker:
     blocked_avoid, or adds a score -- it is a byte-identical pass-through, same as every
     other contract in this module. Missing input remains missing; malformed input fails
     closed locally without touching any other context field."""
+    trust = (bundle or {}).get("trusted_subset_validation") if isinstance(bundle, Mapping) else None
+    if isinstance(trust, Mapping) and trust.get("state") != "exact_session_trusted":
+        return {"status": "untrusted", "limitations": [str(trust.get("reason") or trust.get("state"))], "is_actionable": False}
     entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
     raw = entry.get("analysis_lane_eligibility") if isinstance(entry, Mapping) else None
     if raw is None:
