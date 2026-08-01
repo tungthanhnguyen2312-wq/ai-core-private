@@ -431,14 +431,34 @@ def apply_bundle_risk_analysis_contract(context:dict[str,Any],bundle:Mapping[str
  value=risk_analysis_contract(bundle,str(context.get("ticker") or ""));context["risk_analysis"]=value;context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"risk_analysis","transformation":"Pass through producer risk metrics without recomputation.","limitations":["No position recommendation or expectancy."]});return context
 
 def opportunity_ranking_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
-    entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None
-    raw=entry.get("opportunity_ranking") if isinstance(entry,Mapping) else None
-    if not isinstance(raw,Mapping) or not isinstance(raw.get("dimensions"),Mapping): return {"status":"unknown","reason":"opportunity_ranking_not_in_legacy_or_malformed_bundle","dimensions":{},"data_warnings":["Opportunity ranking is unavailable."]}
-    dimensions=copy.deepcopy(dict(raw["dimensions"])); expected={"financial_quality","valuation","technical_current_market_readiness","catalyst_evidence","downside_invalidation","data_confidence"}; allowed={"available","limited","partial","unavailable","unknown","incomparable","inapplicable","blocked"}
-    if set(dimensions)!=expected or any(not isinstance(v,Mapping) or v.get("state") not in allowed for v in dimensions.values()): return {"status":"unknown","reason":"opportunity_ranking_invalid","dimensions":{},"data_warnings":["Opportunity ranking is malformed."]}
-    return {"status":raw.get("state","unknown"),"dimensions":dimensions,"facts":copy.deepcopy(raw.get("facts",[])),"data_warnings":copy.deepcopy(raw.get("data_warnings",[])),"inferences":copy.deepcopy(raw.get("inferences",[])),"hypotheses":copy.deepcopy(raw.get("hypotheses",[])),"interpretation_limits":copy.deepcopy(raw.get("interpretation_limits",[]))}
-def apply_bundle_opportunity_ranking_contract(context:dict[str,Any],bundle:Mapping[str,Any]|None)->dict[str,Any]:
-    value=opportunity_ranking_contract(bundle,str(context.get("ticker") or ""));context["opportunity_ranking"]=value;context.setdefault("data_quality",{}).setdefault("warnings",[]).extend(value.get("data_warnings",[]));context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"opportunity_ranking","transformation":"Pass through producer evidence dimensions and ordering without recomputation.","limitations":["No recommendation, probability, target price, or portfolio sizing."]});return context
+    """Pass through the full Producer opportunity_ranking dict verbatim.
+
+    The Producer contract includes schema_version, ticker, entity_type, state,
+    ranking_key and other fields beyond the legacy dimensions subset. All must be
+    preserved without reduction, renaming, or re-validation.
+    Missing or malformed input fails closed without corrupting unrelated context.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("opportunity_ranking") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return {"status": "unknown", "reason": "opportunity_ranking_not_in_bundle", "dimensions": {},
+                "data_warnings": ["Opportunity ranking is unavailable."]}
+    if not isinstance(raw, Mapping):
+        return {"status": "unknown", "reason": "opportunity_ranking_malformed", "dimensions": {},
+                "data_warnings": ["Opportunity ranking is malformed."]}
+    # Pass through the complete Producer dict verbatim, without field selection or renaming.
+    return copy.deepcopy(dict(raw))
+
+def apply_bundle_opportunity_ranking_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    value = opportunity_ranking_contract(bundle, str(context.get("ticker") or ""))
+    context["opportunity_ranking"] = value
+    context.setdefault("data_quality", {}).setdefault("warnings", []).extend(value.get("data_warnings", []))
+    context.setdefault("provenance", []).append({
+        "source_file": "analysis_bundle.json", "source_dataset": "opportunity_ranking",
+        "transformation": "Pass through producer opportunity_ranking contract verbatim without recomputation.",
+        "limitations": ["No recommendation, probability, target price, or portfolio sizing."],
+    })
+    return context
 
 def scenario_analysis_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
  entry=((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle,Mapping) else None; raw=entry.get("scenario_analysis") if isinstance(entry,Mapping) else None
@@ -600,23 +620,58 @@ def apply_bundle_ta_signal_semantics_contract(context: dict[str, Any], bundle: M
     return context
 
 def news_window_semantics_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the Producer news_window_semantics nested under news_related verbatim.
+
+    The Producer stores news_window_semantics at:
+        tickers[ticker].news_related.news_window_semantics
+    not at the top-level ticker entry. Missing semantics remain missing.
+    """
     entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
-    raw = entry.get("news_window_semantics") if isinstance(entry, Mapping) else None
+    news_rel = entry.get("news_related") if isinstance(entry, Mapping) else None
+    if not isinstance(news_rel, Mapping):
+        return None
+    raw = news_rel.get("news_window_semantics")
     if raw is None:
         return None
     if not isinstance(raw, Mapping):
         return {"status": "malformed", "limitations": ["News window semantics contract is malformed."], "is_actionable": False}
     return copy.deepcopy(dict(raw))
 
+def news_related_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the full Producer news_related dict verbatim, including nested news_window_semantics.
+
+    Preserves all raw news_related fields (counts, items, metadata) and the
+    nested news_window_semantics sub-contract without modification.
+    Missing input remains missing; malformed input fails closed locally.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("news_related") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return None
+    return copy.deepcopy(dict(raw))
+
 def apply_bundle_news_window_semantics_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
-    contract = news_window_semantics_contract(bundle, str(context.get("ticker") or ""))
-    if contract is not None:
-        context["news_window_semantics"] = contract
+    """Apply news_related pass-through (including nested news_window_semantics) to context.
+
+    Sets context['news_related'] to the full Producer news_related dict verbatim.
+    Also sets context['news_window_semantics'] as a top-level compatibility alias
+    when present, without replacing or reducing the canonical nested contract.
+    """
+    ticker = str(context.get("ticker") or "")
+    news_rel = news_related_contract(bundle, ticker)
+    if news_rel is not None:
+        context["news_related"] = news_rel
         context.setdefault("provenance", []).append({
-            "source_file": "analysis_bundle.json", "source_dataset": "news_window_semantics",
-            "transformation": "Pass through producer news window semantics contract.",
-            "limitations": contract.get("limitations", []),
+            "source_file": "analysis_bundle.json", "source_dataset": "news_related",
+            "transformation": "Pass through producer news_related contract verbatim including nested news_window_semantics.",
+            "limitations": [],
         })
+        # Top-level alias for news_window_semantics — canonical value is news_related.news_window_semantics.
+        nws = news_rel.get("news_window_semantics")
+        if isinstance(nws, Mapping):
+            context["news_window_semantics"] = nws
     return context
 
 def risk_semantics_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
