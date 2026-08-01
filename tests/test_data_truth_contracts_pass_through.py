@@ -35,6 +35,7 @@ from build_ticker_context import (
     apply_bundle_distribution_evidence_contract,
     apply_bundle_earnings_anomaly_contract,
     apply_bundle_financial_period_coverage_contract,
+    apply_bundle_fundamental_quality_evidence_contract,
     apply_bundle_news_window_semantics_contract,
     apply_bundle_opportunity_ranking_contract,
     apply_bundle_risk_semantics_contract,
@@ -730,6 +731,147 @@ class DataTruthContractsPassThroughTests(unittest.TestCase):
         apply_bundle_distribution_evidence_contract(context, bundle)
         self.assertEqual(context["financial_period_coverage"]["latest_raw_period"], "2024")
         self.assertNotIn("distribution_evidence", context)
+
+    # ── 10. fundamental_quality_evidence (Phase 6A) verbatim pass-through ────
+
+    # Shape matches stock-core-private/fundamental_quality_evidence.py::
+    # build_fundamental_quality_evidence_for_ticker() exactly. Distinct field from the
+    # separate, always-present legacy "fundamental_quality" multi-model dict -- not wired
+    # into any Producer bundle by default (opt-in only), so this is legacy-compatible by
+    # construction.
+    _REAL_HPG_FUNDAMENTAL_QUALITY_EVIDENCE = {
+        "schema_version": "1.0.0", "ticker": "HPG", "model": "earnings_quality_cash_conversion",
+        "model_version": "1.0.0", "status": "available", "applicability": "applicable",
+        "reporting_period": "2024", "statement_scope": "consolidated",
+        "inputs": [
+            {"canonical_field_identity": "operating_cash_flow", "ticker": "HPG", "reporting_period": "2024",
+             "reporting_frequency": "annual", "statement_scope": "consolidated", "currency": "VND", "scale": 1,
+             "observation_id": ["a486f2957b63bef716a8db6ae33a46bb539306256976bc866e1da5fee5845282"],
+             "citation_id": "11ac48d5cb813ac6e531bf51f3baf652914683c15ed03140a1227ebc31c9b642",
+             "evidence_id": "a7c3711d1b02c131a87fef4a0f5bd4d5fbd780bbb0c07665111a358a2ddcd2a8",
+             "source_hash": "304a93a65e1587f625e0045d6ec9bcfba6647d19df4034cfd8fc1ec7b62eeb64",
+             "qualification_status": "qualified", "rejection_reason": None},
+            {"canonical_field_identity": "net_income", "ticker": "HPG", "reporting_period": "2024",
+             "reporting_frequency": "annual", "statement_scope": "consolidated", "currency": "VND", "scale": 1,
+             "observation_id": ["176f95f0873710e18ab6dd3cb65b337d53746e11da708796657ee65016bc5ebe"],
+             "citation_id": "802d2394d85e6eb065133976f2f4530fcc31fed9feea1dcdcc5f1882e0e7c763",
+             "evidence_id": "a7c3711d1b02c131a87fef4a0f5bd4d5fbd780bbb0c07665111a358a2ddcd2a8",
+             "source_hash": "304a93a65e1587f625e0045d6ec9bcfba6647d19df4034cfd8fc1ec7b62eeb64",
+             "qualification_status": "qualified", "rejection_reason": None},
+        ],
+        "metrics": {"cash_conversion_ratio": 0.5497110617765166, "operating_cash_flow_less_net_income": -5413123180859},
+        "data_warnings": [], "blocking_reasons": [],
+        "limitations": ["This contract reports a single-period cash-conversion ratio and accrual gap only."],
+        "provenance": {"source": "financial_canonical", "evidence_manifest_path": "data/official-evidence/manifest.json"},
+        "is_actionable": False,
+    }
+
+    def test_fundamental_quality_evidence_passes_through_verbatim(self):
+        bundle = {"tickers": {"HPG": {"fundamental_quality_evidence": copy.deepcopy(self._REAL_HPG_FUNDAMENTAL_QUALITY_EVIDENCE)}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        self.assertEqual(context["fundamental_quality_evidence"], self._REAL_HPG_FUNDAMENTAL_QUALITY_EVIDENCE)
+
+    def test_fundamental_quality_evidence_distinct_from_legacy_fundamental_quality_field(self):
+        """The new opt-in contract must never read, overwrite, or merge with the separate,
+        always-present legacy fundamental_quality multi-model field."""
+        legacy = {"schema_version": "1.2.0", "entity_type": "corporate", "models": {"dupont_roe": {"score_or_value": 0.1}}}
+        bundle = {"tickers": {"HPG": {
+            "fundamental_quality": copy.deepcopy(legacy),
+            "fundamental_quality_evidence": copy.deepcopy(self._REAL_HPG_FUNDAMENTAL_QUALITY_EVIDENCE),
+        }}}
+        context = {"ticker": "HPG", "provenance": [], "fundamental_quality": copy.deepcopy(legacy)}
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        self.assertEqual(context["fundamental_quality"], legacy)
+        self.assertEqual(context["fundamental_quality_evidence"]["model"], "earnings_quality_cash_conversion")
+
+    def test_fundamental_quality_evidence_is_actionable_false(self):
+        bundle = {"tickers": {"HPG": {"fundamental_quality_evidence": copy.deepcopy(self._REAL_HPG_FUNDAMENTAL_QUALITY_EVIDENCE)}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        self.assertIs(context["fundamental_quality_evidence"]["is_actionable"], False)
+
+    def test_fundamental_quality_evidence_no_score_rank_or_recommendation_field_introduced(self):
+        bundle = {"tickers": {"HPG": {"fundamental_quality_evidence": copy.deepcopy(self._REAL_HPG_FUNDAMENTAL_QUALITY_EVIDENCE)}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        result = context["fundamental_quality_evidence"]
+        for forbidden in ("score", "rank", "recommendation", "rating", "target_price"):
+            self.assertNotIn(forbidden, result)
+            self.assertNotIn(forbidden, result["metrics"])
+
+    def test_fundamental_quality_evidence_missing_remains_absent(self):
+        bundle = {"tickers": {"PAN": {}}}
+        context = {"ticker": "PAN", "provenance": []}
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        self.assertNotIn("fundamental_quality_evidence", context)
+
+    def test_fundamental_quality_evidence_unavailable_status_passes_through(self):
+        """Negative-control shape: status='unavailable' passes through unchanged -- Consumer
+        never upgrades or reinterprets it."""
+        unavailable = {
+            "schema_version": "1.0.0", "ticker": "PAN", "model": "earnings_quality_cash_conversion",
+            "model_version": "1.0.0", "status": "unavailable", "applicability": "applicable",
+            "reporting_period": None, "statement_scope": None, "inputs": [], "metrics": {},
+            "data_warnings": [], "blocking_reasons": ["no_verified_financial_period"],
+            "limitations": [], "provenance": {}, "is_actionable": False,
+        }
+        bundle = {"tickers": {"PAN": {"fundamental_quality_evidence": copy.deepcopy(unavailable)}}}
+        context = {"ticker": "PAN", "provenance": []}
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        self.assertEqual(context["fundamental_quality_evidence"], unavailable)
+
+    def test_fundamental_quality_evidence_malformed_fails_closed_without_corrupting_context(self):
+        bundle = {"tickers": {"TEST": {"fundamental_quality_evidence": "not_a_dict"}}}
+        context = {"ticker": "TEST", "provenance": [], "metadata": {"ticker": "TEST"}}
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        self.assertEqual(context["fundamental_quality_evidence"]["status"], "malformed")
+        self.assertEqual(context["metadata"]["ticker"], "TEST")
+
+    def test_fundamental_quality_evidence_does_not_disturb_existing_data_truth_contracts(self):
+        bundle = {
+            "tickers": {
+                "HPG": {
+                    "financial_period_coverage": {"latest_raw_period": "2024", "is_actionable": False},
+                    "distribution_evidence": copy.deepcopy(self._REAL_VNM_DISTRIBUTION_EVIDENCE),
+                    "fundamental_quality_evidence": copy.deepcopy(self._REAL_HPG_FUNDAMENTAL_QUALITY_EVIDENCE),
+                }
+            }
+        }
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_financial_period_coverage_contract(context, bundle)
+        apply_bundle_distribution_evidence_contract(context, bundle)
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        self.assertEqual(context["financial_period_coverage"]["latest_raw_period"], "2024")
+        self.assertIn("distribution_evidence", context)
+        self.assertIn("fundamental_quality_evidence", context)
+
+    def test_fundamental_quality_evidence_source_input_not_mutated(self):
+        source = copy.deepcopy(self._REAL_HPG_FUNDAMENTAL_QUALITY_EVIDENCE)
+        original = copy.deepcopy(source)
+        bundle = {"tickers": {"HPG": {"fundamental_quality_evidence": source}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        context["fundamental_quality_evidence"]["status"] = "mutated_for_test"
+        context["fundamental_quality_evidence"]["inputs"].append({"injected": True})
+        self.assertEqual(source, original)
+        self.assertEqual(bundle["tickers"]["HPG"]["fundamental_quality_evidence"], original)
+
+    def test_fundamental_quality_evidence_legacy_bundle_without_field_unaffected(self):
+        """Legacy bundles (no fundamental_quality_evidence key at all -- every current real
+        bundle) must keep building all other contracts, including the separate legacy
+        fundamental_quality field, normally with no new key added."""
+        legacy = {"schema_version": "1.2.0", "entity_type": "corporate", "models": {}}
+        bundle = {"tickers": {"HPG": {
+            "financial_period_coverage": {"latest_raw_period": "2024", "is_actionable": False},
+            "fundamental_quality": copy.deepcopy(legacy),
+        }}}
+        context = {"ticker": "HPG", "provenance": [], "fundamental_quality": copy.deepcopy(legacy)}
+        apply_bundle_financial_period_coverage_contract(context, bundle)
+        apply_bundle_fundamental_quality_evidence_contract(context, bundle)
+        self.assertEqual(context["financial_period_coverage"]["latest_raw_period"], "2024")
+        self.assertEqual(context["fundamental_quality"], legacy)
+        self.assertNotIn("fundamental_quality_evidence", context)
 
 
 if __name__ == "__main__":

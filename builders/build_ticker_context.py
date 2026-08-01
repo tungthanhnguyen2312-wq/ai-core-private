@@ -776,6 +776,43 @@ def apply_bundle_distribution_evidence_contract(context: dict[str, Any], bundle:
     return context
 
 
+def fundamental_quality_evidence_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional Phase 6A fundamental_quality_evidence contract verbatim.
+
+    Canonical location: tickers[ticker].fundamental_quality_evidence -- the exact dict
+    stock-core-private/fundamental_quality_evidence.py::build_fundamental_quality_evidence_for_ticker()
+    returns (schema_version, ticker, model, model_version, status, applicability,
+    reporting_period, statement_scope, inputs, metrics, data_warnings, blocking_reasons,
+    limitations, provenance, is_actionable). Distinct from the separate, always-present
+    legacy tickers[ticker].fundamental_quality field (a different, multi-model shape) --
+    this function never reads that field and never merges the two. No default Producer
+    invocation attaches this yet (opt-in only), so this is legacy-compatible by
+    construction: absent in every current bundle, and simply returns None until it exists.
+    This function never recalculates a metric, derives yield/payout ratio/CAGR/return,
+    ranks, scores, or rates -- it is a byte-identical pass-through, same as every other
+    contract in this module. Missing input remains missing; malformed input fails closed
+    locally without touching any other context field."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("fundamental_quality_evidence") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "limitations": ["Fundamental quality evidence contract is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_fundamental_quality_evidence_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = fundamental_quality_evidence_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["fundamental_quality_evidence"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "fundamental_quality_evidence",
+            "transformation": "Pass through producer fundamental quality evidence contract verbatim; Consumer does not recalculate metrics, derive yield/payout ratio/CAGR/return, or rank/score/rate the ticker.",
+            "limitations": ["Optional field; absent until a future Producer milestone wires fundamental quality evidence into analysis_bundle.json by default."],
+        })
+    return context
+
+
 def save_json(path: Path, payload: Any) -> None:
     safe = validate_safe_output_path(path)
     if safe.exists():
@@ -2097,6 +2134,7 @@ def build_context_package(
     apply_bundle_risk_semantics_contract(context, bundle_payload)
     apply_bundle_analysis_lane_eligibility_contract(context, bundle_payload)
     apply_bundle_distribution_evidence_contract(context, bundle_payload)
+    apply_bundle_fundamental_quality_evidence_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence
