@@ -6,7 +6,8 @@ ticker context packages:
 - valuation_namespaces
 - share_basis_identities
 - earnings_anomaly
-- risk_semantics
+- risk_semantics (canonical nested tickers[ticker].analysis_score.risk_semantics, with a
+  legacy top-level tickers[ticker].risk_semantics fallback used only when canonical is absent)
 - opportunity_ranking (verbatim Producer dict including schema_version, ticker, entity_type, state, ranking_key)
 - ta_signal_semantics
 - news_window_semantics (nested under news_related, not top-level)
@@ -208,6 +209,7 @@ class DataTruthContractsPassThroughTests(unittest.TestCase):
         self.assertNotIn("earnings_anomaly", context)
         self.assertNotIn("news_related", context)
         self.assertNotIn("news_window_semantics", context)
+        self.assertNotIn("risk_semantics", context)
 
     # ── 4. Malformed data does not corrupt unrelated context ─────────────────
 
@@ -341,6 +343,111 @@ class DataTruthContractsPassThroughTests(unittest.TestCase):
             context.get("news_window_semantics"),
             _FULL_PRODUCER_NEWS_RELATED["news_window_semantics"],
         )
+
+    # ── 7. risk_semantics canonical nested path (analysis_score.risk_semantics) ──
+
+    _CANONICAL_RISK_SEMANTICS = {
+        "legacy_field": "risk",
+        "legacy_field_ambiguity": "The field name 'risk' is legacy nomenclature and must not be interpreted as higher-means-more-risk.",
+        "polarity": "higher_is_safer",
+        "score_value": 100,
+        "interpretation": "100 means no configured penalty flags were triggered (maximum configured safety score). 0 means all penalty flags were triggered.",
+        "limitations": [
+            "100 means no configured penalty flags were triggered; it is not a calibrated probability of loss.",
+            "It is not an investment-attractiveness score.",
+        ],
+        "is_actionable": False,
+    }
+
+    def test_risk_semantics_nested_canonical_passes_through_verbatim(self):
+        """context['risk_semantics'] must equal the full nested analysis_score.risk_semantics dict verbatim."""
+        bundle = {
+            "tickers": {
+                "HPG": {
+                    "analysis_score": {
+                        "session_date": "2026-Q1", "regime": "neutral", "values": {"risk": 100},
+                        "risk_semantics": copy.deepcopy(self._CANONICAL_RISK_SEMANTICS),
+                    },
+                }
+            }
+        }
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_risk_semantics_contract(context, bundle)
+        self.assertEqual(context["risk_semantics"], self._CANONICAL_RISK_SEMANTICS)
+
+    def test_risk_semantics_canonical_nested_overrides_conflicting_legacy_top_level(self):
+        """When both a canonical nested and a conflicting legacy top-level value are present,
+        the canonical nested value must win."""
+        legacy_conflicting = {
+            "legacy_field": "risk", "legacy_field_ambiguity": "stale copy", "polarity": "higher_is_safer",
+            "score_value": 0, "interpretation": "stale legacy copy", "limitations": [], "is_actionable": False,
+        }
+        bundle = {
+            "tickers": {
+                "HPG": {
+                    "risk_semantics": legacy_conflicting,
+                    "analysis_score": {"risk_semantics": copy.deepcopy(self._CANONICAL_RISK_SEMANTICS)},
+                }
+            }
+        }
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_risk_semantics_contract(context, bundle)
+        self.assertEqual(context["risk_semantics"], self._CANONICAL_RISK_SEMANTICS)
+        self.assertEqual(context["risk_semantics"]["score_value"], 100)
+
+    def test_risk_semantics_legacy_top_level_fallback_when_canonical_absent(self):
+        """A legacy top-level risk_semantics is still honored when analysis_score.risk_semantics
+        is absent (backward-compatible fallback only, not the canonical source)."""
+        legacy_only = {
+            "legacy_field": "risk", "legacy_field_ambiguity": "...", "polarity": "higher_is_safer",
+            "score_value": 55, "interpretation": "...", "limitations": [], "is_actionable": False,
+        }
+        bundle = {"tickers": {"HPG": {"risk_semantics": legacy_only}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_risk_semantics_contract(context, bundle)
+        self.assertEqual(context["risk_semantics"], legacy_only)
+
+    def test_risk_semantics_missing_from_both_locations_remains_missing(self):
+        bundle = {
+            "tickers": {
+                "HPG": {
+                    "analysis_score": {"session_date": "2026-Q1", "regime": None, "values": None, "risk_semantics": None},
+                }
+            }
+        }
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_risk_semantics_contract(context, bundle)
+        self.assertNotIn("risk_semantics", context)
+
+    def test_risk_semantics_malformed_canonical_fails_closed_without_corrupting_context(self):
+        bundle = {"tickers": {"TEST": {"analysis_score": {"risk_semantics": "not_a_dict"}}}}
+        context = {"ticker": "TEST", "provenance": [], "metadata": {"ticker": "TEST"}}
+        apply_bundle_risk_semantics_contract(context, bundle)
+        self.assertEqual(context["risk_semantics"]["status"], "malformed")
+        self.assertEqual(context["metadata"]["ticker"], "TEST")
+
+    def test_risk_semantics_preserves_all_required_subfields(self):
+        bundle = {"tickers": {"HPG": {"analysis_score": {"risk_semantics": copy.deepcopy(self._CANONICAL_RISK_SEMANTICS)}}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_risk_semantics_contract(context, bundle)
+        result = context["risk_semantics"]
+        for field in ("legacy_field", "legacy_field_ambiguity", "polarity", "score_value", "interpretation", "limitations", "is_actionable"):
+            self.assertIn(field, result)
+        self.assertEqual(result["polarity"], "higher_is_safer")
+        self.assertEqual(result["score_value"], 100)
+        self.assertFalse(result["is_actionable"])
+
+    def test_analysis_score_structure_unchanged_by_risk_semantics_read(self):
+        """Reading risk_semantics must not mutate the source analysis_score dict in the bundle."""
+        analysis_score = {
+            "session_date": "2026-Q1", "regime": "neutral", "values": {"risk": 100},
+            "risk_semantics": copy.deepcopy(self._CANONICAL_RISK_SEMANTICS),
+        }
+        original_analysis_score = copy.deepcopy(analysis_score)
+        bundle = {"tickers": {"HPG": {"analysis_score": analysis_score}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_risk_semantics_contract(context, bundle)
+        self.assertEqual(bundle["tickers"]["HPG"]["analysis_score"], original_analysis_score)
 
 
 if __name__ == "__main__":

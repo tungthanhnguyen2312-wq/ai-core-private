@@ -675,8 +675,19 @@ def apply_bundle_news_window_semantics_contract(context: dict[str, Any], bundle:
     return context
 
 def risk_semantics_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Read risk_semantics from its canonical Producer location -- nested at
+    tickers[ticker].analysis_score.risk_semantics, matching where
+    build_analysis_score_contract() in export_ai_bundle.py actually places it -- with a
+    legacy top-level tickers[ticker].risk_semantics used only as a fallback when the
+    canonical nested value is absent. The canonical value always takes precedence over a
+    conflicting legacy value. Neither entry nor entry['analysis_score'] is mutated; the
+    full matched dict is passed through verbatim (no field selection)."""
     entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
-    raw = entry.get("risk_semantics") if isinstance(entry, Mapping) else None
+    if not isinstance(entry, Mapping):
+        return None
+    analysis_score = entry.get("analysis_score")
+    canonical_raw = analysis_score.get("risk_semantics") if isinstance(analysis_score, Mapping) else None
+    raw = canonical_raw if canonical_raw is not None else entry.get("risk_semantics")
     if raw is None:
         return None
     if not isinstance(raw, Mapping):
