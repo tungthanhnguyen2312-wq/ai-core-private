@@ -75,6 +75,15 @@ class FundamentalQualityContractTests(unittest.TestCase):
         self.assertEqual(context["historical_capital_structure"], raw)
         self.assertFalse(context["analysis_readiness"]["analysis_ready"])
 
+    def test_historical_fundamental_brief_is_verbatim_and_does_not_change_readiness(self):
+        raw = {"status": "available", "historical_only": True, "market_dependent": False,
+               "is_actionable": False, "facts": [], "data_warnings": ["price_basis_unknown_or_unverified"],
+               "supported_inferences": [], "hypotheses": []}
+        context = {"ticker": "VNM", "analysis_readiness": {"analysis_ready": False}, "provenance": []}
+        b.apply_bundle_historical_fundamental_brief_contract(context, {"tickers": {"VNM": {"historical_fundamental_brief": raw}}})
+        self.assertEqual(context["historical_fundamental_brief"], raw)
+        self.assertFalse(context["analysis_readiness"]["analysis_ready"])
+
 
 if __name__ == "__main__":
     unittest.main()
