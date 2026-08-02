@@ -1,5 +1,7 @@
 # AI ANALYZE v1.0
 
+Codex is the active executor. Consumer is the fail-closed context, AI-contract, and validation layer; it must not infer missing source semantics. Canonical governance is maintained by Producer at `../stock-core-private/docs/`.
+
 AI ANALYZE chuẩn bị các **context package có kiểm soát** từ nguồn VNSTOCK để người dùng làm việc với ChatGPT, Claude hoặc Codex. Hệ thống giúp AI biết dữ liệu nào đang có, dữ liệu nào thiếu, nguồn ở đâu và giới hạn nào phải giữ.
 
 > **[DEPRECATED 2026-07-17]** Gemini đã bị loại khỏi luồng khuyến nghị sau 2 lần kiểm toán độc lập phát hiện lỗi tự bịa/bỏ sót dữ liệu lặp lại dù input đúng chuẩn (`STOCK_ANALYSIS_MASTER_PLAN.md`, `FINAL_STOCK_ANALYSIS_20260717.md`, được lưu ngoài repository trong hồ sơ vận hành nội bộ). `operating_pack/gemini/` vẫn giữ nguyên trên đĩa làm lịch sử/audit trail, không dùng cho tác vụ mới — xem `docs/v1_0_DailyWorkflow.md` mục D.
@@ -20,7 +22,7 @@ AI ANALYZE không chạy crawler, không tự cập nhật thị trường và k
 2. Chọn context package đã có hoặc chạy builder ở chế độ `--dry-run`.
 3. Nếu cần file mới, dùng `--no-dry-run` với tên output mới trong `exports/context_packages/`.
 4. Kiểm tra `generated_at`, ngày dữ liệu mới nhất, `missing_sections`, `warnings`, `not_fully_confirmed` và `provenance`.
-5. Đưa đúng Project Knowledge và context package vào ChatGPT hoặc Claude theo `operating_pack/<platform>/upload_manifest.json` (Codex/Claude Code: đọc trực tiếp `analysis_bundle.json`, không cần upload manifest — xem `docs/v1_0_DailyWorkflow.md` mục D).
+5. Use the approved Project Knowledge and context package through Codex; do not treat any assistant workflow as a source of truth.
 6. Chọn template phân tích một mã, so sánh hoặc screening trong `prompts/ai_analysis_templates.md`.
 7. Chỉ chấp nhận câu trả lời khi AI nêu cutoff, nguồn, dữ liệu thiếu và tách rõ Fact/Derived/Inference/Unknown.
 
