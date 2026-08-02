@@ -26,11 +26,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-BUILDERS_DIR = ROOT / "builders"
-if str(BUILDERS_DIR) not in sys.path:
-    sys.path.insert(0, str(BUILDERS_DIR))
+# Imported through the package path, not by putting `builders/` on sys.path: a bare
+# `import build_ticker_context` creates a SECOND module object distinct from
+# `builders.build_ticker_context`, and every exception class it defines or imports is
+# then a different class. That made `except SnapshotError` miss in
+# test_metadata_registry_shadow_compare whenever these modules were collected first --
+# a suite that passed alone and failed together.
 
-from build_ticker_context import (
+from builders.build_ticker_context import (
     apply_bundle_analysis_lane_eligibility_contract,
     apply_bundle_distribution_evidence_contract,
     apply_bundle_earnings_anomaly_contract,

@@ -10,13 +10,18 @@ import unittest
 from pathlib import Path
 import sys
 
-# Ensure builders directory is in path
 WORKTREE = Path(__file__).resolve().parent.parent
-BUILDERS_DIR = WORKTREE / "builders"
-if str(BUILDERS_DIR) not in sys.path:
-    sys.path.insert(0, str(BUILDERS_DIR))
+if str(WORKTREE) not in sys.path:
+    sys.path.insert(0, str(WORKTREE))
 
-from build_ticker_context import (
+# Imported through the package path, not by putting `builders/` on sys.path: a bare
+# `import build_ticker_context` creates a SECOND module object distinct from
+# `builders.build_ticker_context`, and every exception class it defines or imports is
+# then a different class. That made `except SnapshotError` miss in
+# test_metadata_registry_shadow_compare whenever these modules were collected first --
+# a suite that passed alone and failed together.
+
+from builders.build_ticker_context import (
     apply_bundle_price_basis_contract,
     normalize_price_basis_contract,
     validate_context_basis_compatibility,

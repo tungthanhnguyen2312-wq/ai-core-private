@@ -139,8 +139,158 @@ def resolve_optional_source_path(configured: str) -> Path:
     return VNSTOCK_ROOT / Path(*path.parts[2:])
 
 
+# ==========================================================================
+# Exact-session trusted-subset verification (Producer contract 1.1.0)
+# ==========================================================================
+# A bundle is only trusted when its manifest proves it describes THIS export session --
+# not merely that the manifest is well-shaped JSON. Schema 1.0.0 checked the bundle's own
+# hash and nothing else, so a manifest paired with a different bundle body, an artifact
+# rewritten after manifest generation, an undeclared trusted artifact sitting next to the
+# bundle, or a bundle from an older Producer all passed. Each of those is now a distinct,
+# named rejection.
+#
+# These values are pinned, not ranged. An older Producer's output is legacy, and legacy is
+# never current trusted output.
+PRODUCER_BUNDLE_CONTRACT_VERSION = "stocklookup-producer/2026.08.03"
+TRUSTED_SUBSET_SCHEMA_VERSION = "1.1.0"
+# Exactly the filenames that carry export-session trust. The Consumer scans only these
+# names beside the bundle, so an unrelated file in the runtime root is never mistaken for
+# an undeclared session artifact.
+TRUSTED_ARTIFACT_NAMESPACE = (
+    "analysis_bundle.json", "bundle_manifest.json", "focus_extract.json",
+    "statement_taxonomy_sidecar.json",
+)
+BUNDLE_MANIFEST_FILENAME = "bundle_manifest.json"
+
+
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_exact_session_bundle(bundle_path: Path, payload: Mapping[str, Any],
+                                manifest: Any) -> tuple[bool, str | None]:
+    """Return (integrity_verified, rejection_reason).
+
+    Every rejection names one precise cause. Diagnostics carry filenames only -- never a
+    filesystem path, a secret, or any bundle content -- so a rejection reason is safe to
+    surface in a context package.
+    """
+    if not isinstance(manifest, Mapping):
+        return False, "manifest_invalid_payload"
+    proof = manifest.get("trusted_subset")
+    if not isinstance(proof, Mapping):
+        return False, "manifest_proof_missing"
+    if proof.get("schema_version") != TRUSTED_SUBSET_SCHEMA_VERSION:
+        return False, "manifest_schema_unsupported"
+    if proof.get("producer_contract_version") != PRODUCER_BUNDLE_CONTRACT_VERSION:
+        return False, "producer_contract_version_unsupported"
+    proven = proof.get("tickers")
+    if not isinstance(proven, list) or not proven or sorted(proven) != list(proven):
+        return False, "proven_ticker_set_invalid"
+    unproven = proof.get("unproven_tickers")
+    if not isinstance(unproven, list):
+        return False, "unproven_ticker_set_missing"
+    covered = proof.get("bundle_ticker_set")
+    if not isinstance(covered, list) or not covered:
+        return False, "bundle_ticker_set_missing"
+    # Complete accounting: every exported ticker is either proven for this session or
+    # explicitly listed as unproven with a reason. A ticker silently absent from both is
+    # exactly the case an "it looked schema-valid" check would wave through.
+    unproven_names = {str((row or {}).get("ticker")) for row in unproven if isinstance(row, Mapping)}
+    if set(covered) != set(proven) | unproven_names:
+        return False, "ticker_accounting_incomplete"
+    if any(not (row or {}).get("reason") for row in unproven if isinstance(row, Mapping)):
+        return False, "unproven_ticker_missing_reason"
+    if set(covered) != set(payload.get("tickers_requested") or covered):
+        return False, "bundle_ticker_set_mismatch"
+    if proof.get("bundle_filename") != bundle_path.name:
+        return False, "bundle_filename_mismatch"
+
+    session = proof.get("session_identity")
+    if not session:
+        return False, "session_identity_missing"
+
+    # The manifest must describe THIS bundle body, not merely a bundle that hashes to
+    # whatever the manifest happens to record.
+    try:
+        if proof.get("bundle_sha256") != _sha256_path(bundle_path):
+            return False, "bundle_hash_mismatch"
+    except OSError:
+        return False, "bundle_unreadable"
+    if proof.get("bundle_reference_session_date") != payload.get("reference_session_date"):
+        return False, "bundle_session_mismatch"
+    if proof.get("bundle_generated_at") != payload.get("generated_at"):
+        return False, "bundle_generated_at_mismatch"
+    if proof.get("generated_at") != payload.get("generated_at"):
+        return False, "manifest_generated_at_mismatch"
+    if manifest.get("generated_at") != payload.get("generated_at"):
+        return False, "manifest_bundle_generated_at_mismatch"
+
+    per_ticker = proof.get("per_ticker")
+    if not isinstance(per_ticker, Mapping):
+        return False, "per_ticker_proof_missing"
+    if sorted(per_ticker) != list(proven):
+        return False, "per_ticker_set_mismatch"
+    for ticker in proven:
+        entry = per_ticker.get(ticker)
+        if not isinstance(entry, Mapping) or entry.get("session_identity") != session:
+            return False, "per_ticker_session_mismatch"
+        body = (payload.get("tickers") or {}).get(ticker)
+        body_session = (body or {}).get("snapshot", {}).get("date") if isinstance(body, Mapping) else None
+        if body_session != session:
+            return False, "bundle_ticker_session_mismatch"
+
+    # Required artifact set: every declared artifact must exist beside the bundle and still
+    # hash to what the manifest recorded, and nothing in the trusted namespace may exist
+    # that the manifest did not declare.
+    required = proof.get("required_artifacts")
+    if not isinstance(required, list) or not required:
+        return False, "required_artifacts_missing"
+    declared: dict[str, str] = {}
+    for item in required:
+        if not isinstance(item, Mapping) or not item.get("file") or not item.get("sha256"):
+            return False, "required_artifacts_malformed"
+        declared[str(item["file"])] = str(item["sha256"])
+    if "analysis_bundle.json" not in declared:
+        return False, "required_artifacts_missing_bundle"
+    for filename, expected in sorted(declared.items()):
+        artifact = bundle_path.with_name(filename)
+        if not artifact.exists():
+            return False, f"required_artifact_missing:{filename}"
+        try:
+            if _sha256_path(artifact) != expected:
+                return False, f"required_artifact_hash_mismatch:{filename}"
+        except OSError:
+            return False, f"required_artifact_unreadable:{filename}"
+
+    expected_set = proof.get("expected_artifact_filenames")
+    if not isinstance(expected_set, list) or not expected_set:
+        return False, "expected_artifact_set_missing"
+    expected_names = {str(name) for name in expected_set}
+    if expected_names != set(declared) | {BUNDLE_MANIFEST_FILENAME}:
+        return False, "expected_artifact_set_inconsistent"
+    for filename in TRUSTED_ARTIFACT_NAMESPACE:
+        if bundle_path.with_name(filename).exists() and filename not in expected_names:
+            return False, f"unexpected_trusted_artifact:{filename}"
+
+    return True, None
+
+
 def load_optional_analysis_bundle(config: Mapping[str, Any]) -> tuple[dict[str, Any], str | None]:
-    """Load the configured Phase 1 bundle without making it a required runtime input."""
+    """Load the configured Phase 1 bundle without making it a required runtime input.
+
+    Sets `trusted_subset_validation` with two independent axes:
+      integrity_state -- did this bundle prove exact-session association? Structural and
+                         cryptographic only; nothing about market data quality.
+      basis_state     -- are price AND volume basis verified? Market-data qualification
+                         only; nothing about integrity.
+    `state` stays the pre-existing single verdict (both axes must pass), so every existing
+    consumer of it is unchanged.
+    """
     configured = (config.get("source_paths") or {}).get("analysis_bundle")
     if not configured:
         return {}, "analysis_bundle_not_configured"
@@ -153,42 +303,84 @@ def load_optional_analysis_bundle(config: Mapping[str, Any]) -> tuple[dict[str, 
         return {}, "analysis_bundle_invalid_json"
     if not isinstance(payload, dict):
         return {}, "analysis_bundle_invalid_payload"
-    manifest_path = path.with_name("bundle_manifest.json")
+    manifest_path = path.with_name(BUNDLE_MANIFEST_FILENAME)
     if not manifest_path.exists():
-        payload["trusted_subset_validation"] = {"state": "legacy_untrusted", "reason": "manifest_missing", "warnings": []}
+        payload["trusted_subset_validation"] = {
+            "state": "legacy_untrusted", "reason": "manifest_missing", "warnings": [],
+            "integrity_state": "legacy_unverified", "integrity_reason": "manifest_missing",
+            "basis_state": "unknown",
+        }
         return payload, "trusted_subset_legacy_untrusted"
     try:
-        proof = load_json(manifest_path).get("trusted_subset")
-        session = proof.get("session_identity") if isinstance(proof, Mapping) else None
-        structurally_valid = (
-            isinstance(proof, Mapping)
-            and proof.get("schema_version") == "1.0.0"
-            and proof.get("tickers") == ["HPG", "VNM"]
-            and proof.get("bundle_filename") == path.name
-            and proof.get("bundle_sha256") == hashlib.sha256(path.read_bytes()).hexdigest()
-            and bool(session)
-            and all((proof.get("per_ticker") or {}).get(ticker, {}).get("session_identity") == session for ticker in ("HPG", "VNM"))
-        )
-        basis_qualified = (
-            (proof.get("price_basis") or {}).get("verified") is True
-            and (proof.get("volume_basis") or {}).get("verified") is True
-        ) if isinstance(proof, Mapping) else False
-        valid = structurally_valid and basis_qualified and proof.get("trust_state") == "exact_session_qualified"
-        reason = (
-            None if valid
-            else "basis_unqualified"
-            if structurally_valid and not basis_qualified and proof.get("trust_state") == "untrusted_basis"
-            else "manifest_invalid"
-        )
-    except (OSError, ValueError, AttributeError):
-        valid = False
-        reason = "manifest_invalid"
+        manifest = load_json(manifest_path)
+    except (OSError, ValueError):
+        manifest = None
+    try:
+        integrity_ok, integrity_reason = verify_exact_session_bundle(path, payload, manifest)
+    except (OSError, ValueError, AttributeError, TypeError):
+        integrity_ok, integrity_reason = False, "manifest_invalid"
+
+    proof = manifest.get("trusted_subset") if isinstance(manifest, Mapping) else None
+    basis_qualified = (
+        (proof.get("price_basis") or {}).get("verified") is True
+        and (proof.get("volume_basis") or {}).get("verified") is True
+        and proof.get("trust_state") == "exact_session_qualified"
+    ) if isinstance(proof, Mapping) else False
+
+    valid = integrity_ok and basis_qualified
+    if valid:
+        reason = None
+    elif integrity_ok:
+        reason = "basis_unqualified"
+    else:
+        reason = integrity_reason or "manifest_invalid"
+
+    warnings: list[str] = []
+    if not integrity_ok:
+        warnings.append("trusted_subset_manifest_invalid")
+    elif not basis_qualified:
+        warnings.append("trusted_subset_basis_unqualified")
+
+    proven = sorted(proof.get("tickers") or []) if isinstance(proof, Mapping) else []
+    unproven = {str((row or {}).get("ticker")): str((row or {}).get("reason"))
+                for row in (proof.get("unproven_tickers") or []) if isinstance(row, Mapping)} \
+        if isinstance(proof, Mapping) else {}
+
     payload["trusted_subset_validation"] = {
         "state": "exact_session_trusted" if valid else "untrusted",
         "reason": reason,
-        "warnings": [] if valid else ["trusted_subset_basis_unqualified" if reason == "basis_unqualified" else "trusted_subset_manifest_invalid"],
+        "warnings": warnings,
+        "integrity_state": "exact_session_verified" if integrity_ok else "unverified",
+        "integrity_reason": integrity_reason,
+        "basis_state": "qualified" if basis_qualified else "unqualified",
+        "proven_tickers": proven if integrity_ok else [],
+        "unproven_tickers": unproven if integrity_ok else {},
     }
     return payload, None if valid else "trusted_subset_untrusted"
+
+
+def _bundle_integrity_verified(bundle: Mapping[str, Any] | None,
+                               ticker: str | None = None) -> tuple[bool, str | None]:
+    """Exact-session integrity for the whole bundle and, when given, for `ticker`.
+
+    A legacy bundle carrying no validation block at all is left to the caller's own legacy
+    path, exactly as before. A ticker the proof did not cover is never exact-session
+    trusted even when the bundle as a whole verified -- that is the entire point of the
+    proof listing an explicit proven set.
+    """
+    trust = (bundle or {}).get("trusted_subset_validation") if isinstance(bundle, Mapping) else None
+    if not isinstance(trust, Mapping):
+        return True, None
+    if trust.get("integrity_state") != "exact_session_verified":
+        reason = trust.get("integrity_reason") or trust.get("reason") or trust.get("state")
+        return False, str(reason)
+    if ticker:
+        proven = trust.get("proven_tickers")
+        if isinstance(proven, list) and str(ticker) not in proven:
+            unproven = trust.get("unproven_tickers")
+            detail = unproven.get(str(ticker)) if isinstance(unproven, Mapping) else None
+            return False, f"ticker_not_session_proven:{detail or 'not_in_proof'}"
+    return True, None
 
 
 def normalize_price_basis_contract(bundle: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -419,10 +611,19 @@ def apply_bundle_freshness_history_contract(context: dict[str, Any], bundle: Map
 READINESS_STATES = frozenset({"ready", "degraded", "blocked", "unknown"})
 
 def analysis_readiness_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
-    """Pass through producer readiness without turning it into a business fact."""
+    """Pass through producer readiness without turning it into a business fact.
+
+    Gated on exact-session INTEGRITY, not on market-basis qualification: readiness reports
+    per-domain states the Producer already computed with the basis contract in hand, so
+    suppressing all of them because prices are basis-unverified discards honest information
+    about domains that never depended on a price. An unqualified basis instead forces
+    `inferences_allowed` to False and adds an explicit warning, so nothing market-dependent
+    can become actionable through this path."""
+    integrity_ok, integrity_reason = _bundle_integrity_verified(bundle, ticker)
+    if not integrity_ok:
+        return {"status": "unknown", "reason": integrity_reason, "domains": {}, "inferences_allowed": False}
     trust = (bundle or {}).get("trusted_subset_validation") if isinstance(bundle, Mapping) else None
-    if isinstance(trust, Mapping) and trust.get("state") != "exact_session_trusted":
-        return {"status": "unknown", "reason": str(trust.get("reason") or trust.get("state")), "domains": {}, "inferences_allowed": False}
+    basis_unqualified = isinstance(trust, Mapping) and trust.get("basis_state") == "unqualified"
     entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
     raw = entry.get("analysis_readiness") if isinstance(entry, Mapping) else None
     if raw is None:
@@ -434,7 +635,9 @@ def analysis_readiness_contract(bundle: Mapping[str, Any] | None, ticker: str) -
     if invalid:
         return {"status": "unknown", "reason": "analysis_readiness_domain_invalid", "invalid_domains": invalid, "domains": {}}
     warnings = [f"analysis readiness {name}: {value.get('state')} ? {value.get('reason')}" for name, value in domains.items() if value.get("state") != "ready"]
-    return {"status": "available", "reference_at": raw.get("reference_at"), "domains": domains, "data_warnings": warnings, "unknowns": [name for name, value in domains.items() if value.get("state") in {"unknown", "blocked"}], "inferences_allowed": all(value.get("state") == "ready" for value in domains.values())}
+    if basis_unqualified:
+        warnings = warnings + ["analysis readiness: price/volume basis is unverified; no market-dependent inference is permitted."]
+    return {"status": "available", "reference_at": raw.get("reference_at"), "domains": domains, "data_warnings": warnings, "unknowns": [name for name, value in domains.items() if value.get("state") in {"unknown", "blocked"}], "inferences_allowed": (not basis_unqualified) and all(value.get("state") == "ready" for value in domains.values())}
 
 def apply_bundle_analysis_readiness_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     readiness = analysis_readiness_contract(bundle, str(context.get("ticker") or ""))
@@ -775,9 +978,13 @@ def analysis_lane_eligibility_contract(bundle: Mapping[str, Any] | None, ticker:
     blocked_avoid, or adds a score -- it is a byte-identical pass-through, same as every
     other contract in this module. Missing input remains missing; malformed input fails
     closed locally without touching any other context field."""
-    trust = (bundle or {}).get("trusted_subset_validation") if isinstance(bundle, Mapping) else None
-    if isinstance(trust, Mapping) and trust.get("state") != "exact_session_trusted":
-        return {"status": "untrusted", "limitations": [str(trust.get("reason") or trust.get("state"))], "is_actionable": False}
+    integrity_ok, integrity_reason = _bundle_integrity_verified(bundle, ticker)
+    if not integrity_ok:
+        return {"status": "untrusted", "limitations": [integrity_reason], "is_actionable": False}
+    # Basis qualification is NOT gated here: evaluate_ticker_lanes() already blocks the
+    # adjusted-return, liquidity and backtest claims on an unverified basis, per lane, with
+    # its own reasons. Re-suppressing the whole result would hide the lanes it correctly
+    # allows (which never touch a price) behind a market-data limitation.
     entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
     raw = entry.get("analysis_lane_eligibility") if isinstance(entry, Mapping) else None
     if raw is None:
@@ -903,10 +1110,25 @@ def apply_bundle_historical_fundamental_brief_contract(context: dict[str, Any], 
     return context
 
 
-def save_json(path: Path, payload: Any) -> None:
+def save_json(path: Path, payload: Any, *, rotate_existing: bool = False) -> None:
+    """Write a context package. Never overwrites an existing export.
+
+    `rotate_existing` does not relax that rule: the previous export is renamed to
+    `<stem>_superseded_<UTC timestamp>.json` beside itself and kept, and only then is the
+    canonical name written fresh. Without it, a daily refresh had no supported path at all
+    -- the Producer reads the canonical `<TICKER>_context.json`, so leaving the previous
+    one in place meant the bundle silently consumed a context package several sessions old,
+    which the export's own session-scoped freshness gate then correctly refused.
+    """
     safe = validate_safe_output_path(path)
     if safe.exists():
-        raise FileExistsError(f"Refusing to overwrite existing output: {safe}")
+        if not rotate_existing:
+            raise FileExistsError(f"Refusing to overwrite existing output: {safe}")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        superseded = safe.with_name(f"{safe.stem}_superseded_{stamp}{safe.suffix}")
+        if superseded.exists():
+            raise FileExistsError(f"Refusing to overwrite existing rotation target: {superseded}")
+        safe.rename(superseded)
     safe.parent.mkdir(parents=True, exist_ok=True)
     with safe.open("x", encoding="utf-8", newline="\n") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2, allow_nan=False)
@@ -2341,6 +2563,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--registry-shadow-gate", action=argparse.BooleanOptionalAction, default=None,
                         help="Require exact per-ticker registry-vs-DB comparison before registry use.")
     parser.add_argument("--frozen-clock", help="Optional ISO-8601 UTC clock for reproducible context builds.")
+    parser.add_argument("--rotate-existing", action="store_true",
+                        help="Rename an existing export to <name>_superseded_<UTC>.json and keep it, "
+                             "then write the canonical name fresh. Still never overwrites anything.")
     return parser.parse_args(argv)
 
 
@@ -2405,7 +2630,7 @@ def main() -> int:
                 output = output_dir / f"{ticker}_context.json"
             safe_output = validate_safe_output_path(output, config)
             if not dry_run:
-                save_json(safe_output, context)
+                save_json(safe_output, context, rotate_existing=bool(args.rotate_existing))
             if coverage_json_path:
                 save_coverage_report(coverage_json_path, validation)
             if coverage_markdown_path:

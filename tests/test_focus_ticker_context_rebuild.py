@@ -16,7 +16,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGES_DIR = ROOT / "exports" / "context_packages"
-VNSTOCK_ROOT = (ROOT.parent / "VNSTOCK").resolve()
+# The runtime root moved from a sibling `VNSTOCK` directory to `dashboard-runtime` during
+# the workspace migration; `builders/build_ticker_context.py::resolve_dashboard_runtime_root`
+# already prefers the new location. Pinning this to the old name made every freshly rebuilt
+# package fail an assertion about the *old* layout, which said nothing about whether the
+# package still pointed somewhere it should not.
+def _runtime_root() -> Path:
+    for name in ("dashboard-runtime", "VNSTOCK"):
+        candidate = (ROOT.parent / name)
+        if candidate.is_dir():
+            return candidate.resolve()
+    return (ROOT.parent / "dashboard-runtime").resolve()
+
+
+VNSTOCK_ROOT = _runtime_root()
 FOCUS_TICKERS = ["POW", "SSI", "HPG", "EVF", "PAN"]
 
 # The stale phase6_test_batch packages this replaces were generated 2026-07-13 and pointed at
@@ -60,6 +73,12 @@ class FocusTickerContextPackageTests(unittest.TestCase):
                 source_file = entry.get("source_file")
                 if not source_file or not isinstance(source_file, str):
                     continue  # some provenance entries (e.g. context_builder) list sources, not a path
+                if not Path(source_file).is_absolute():
+                    # Bundle pass-through contracts name their source artifact logically
+                    # ("analysis_bundle.json"), not by location. Resolving that against the
+                    # process CWD and then asserting on the result tests the CWD, not the
+                    # package. Only real absolute paths can leak a wrong root.
+                    continue
                 resolved = Path(source_file).resolve()
                 self.assertTrue(
                     resolved.is_relative_to(VNSTOCK_ROOT),
