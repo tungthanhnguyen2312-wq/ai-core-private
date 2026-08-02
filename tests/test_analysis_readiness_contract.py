@@ -33,4 +33,13 @@ class AnalysisReadinessConsumerTests(unittest.TestCase):
             (root / "bundle_manifest.json").write_text(json.dumps({"trusted_subset": proof}), encoding="utf-8")
             payload, warning = builder.load_optional_analysis_bundle({"source_paths": {"analysis_bundle": str(bundle)}})
             self.assertEqual(payload["trusted_subset_validation"]["state"], "exact_session_trusted"); self.assertIsNone(warning)
+    def test_valid_proof_with_unqualified_basis_has_precise_fail_closed_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); bundle = root / "analysis_bundle.json"
+            bundle.write_text(json.dumps({"tickers": {"HPG": {}, "VNM": {}}}), encoding="utf-8")
+            proof = {"schema_version": "1.0.0", "tickers": ["HPG", "VNM"], "session_identity": "2026-07-30", "bundle_filename": "analysis_bundle.json", "bundle_sha256": __import__("hashlib").sha256(bundle.read_bytes()).hexdigest(), "per_ticker": {"HPG": {"session_identity": "2026-07-30"}, "VNM": {"session_identity": "2026-07-30"}}, "price_basis": {"verified": False}, "volume_basis": {"verified": False}, "trust_state": "untrusted_basis"}
+            (root / "bundle_manifest.json").write_text(json.dumps({"trusted_subset": proof}), encoding="utf-8")
+            payload, warning = builder.load_optional_analysis_bundle({"source_paths": {"analysis_bundle": str(bundle)}})
+            self.assertEqual(payload["trusted_subset_validation"], {"state": "untrusted", "reason": "basis_unqualified", "warnings": ["trusted_subset_basis_unqualified"]})
+            self.assertEqual(warning, "trusted_subset_untrusted")
 if __name__ == "__main__": unittest.main()

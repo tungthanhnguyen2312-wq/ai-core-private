@@ -168,11 +168,18 @@ def load_optional_analysis_bundle(config: Mapping[str, Any]) -> tuple[dict[str, 
             and proof.get("bundle_sha256") == hashlib.sha256(path.read_bytes()).hexdigest()
             and bool(session)
             and all((proof.get("per_ticker") or {}).get(ticker, {}).get("session_identity") == session for ticker in ("HPG", "VNM"))
-            and (proof.get("price_basis") or {}).get("verified") is True
-            and (proof.get("volume_basis") or {}).get("verified") is True
         )
-        valid = structurally_valid and proof.get("trust_state") == "exact_session_qualified"
-        reason = None if valid else "basis_unqualified" if structurally_valid and proof.get("trust_state") == "untrusted_basis" else "manifest_invalid"
+        basis_qualified = (
+            (proof.get("price_basis") or {}).get("verified") is True
+            and (proof.get("volume_basis") or {}).get("verified") is True
+        ) if isinstance(proof, Mapping) else False
+        valid = structurally_valid and basis_qualified and proof.get("trust_state") == "exact_session_qualified"
+        reason = (
+            None if valid
+            else "basis_unqualified"
+            if structurally_valid and not basis_qualified and proof.get("trust_state") == "untrusted_basis"
+            else "manifest_invalid"
+        )
     except (OSError, ValueError, AttributeError):
         valid = False
         reason = "manifest_invalid"
