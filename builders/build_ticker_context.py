@@ -107,6 +107,7 @@ FINANCIAL_CONTRACT_METRICS = (
 # name does not establish whether prices include corporate-action adjustments.
 PRICE_BASIS_VALUES = frozenset({"raw", "adjusted", "unknown"})
 PRICE_BASIS_UNVERIFIED_CODE = "price_basis_unverified"
+VOLUME_BASIS_UNVERIFIED_CODE = "volume_basis_unverified"
 CORPORATE_INTELLIGENCE_SECTIONS = (
     "company_profile",
     "company_subsidiaries",
@@ -191,8 +192,12 @@ def normalize_price_basis_contract(bundle: Mapping[str, Any] | None = None) -> d
     verified = bundle.get("price_basis_verified") is True
 
     raw_vol_basis = bundle.get("volume_basis")
-    vol_basis = str(raw_vol_basis).strip().lower() if raw_vol_basis is not None else "raw_shares_traded"
-    vol_verified = bundle.get("volume_basis_verified") is not False
+    candidate_vol_basis = str(raw_vol_basis).strip().lower() if raw_vol_basis is not None else "unknown"
+    vol_verified = (
+        bundle.get("volume_basis_verified") is True
+        and candidate_vol_basis in {"raw_shares_traded", "adjusted_volume"}
+    )
+    vol_basis = candidate_vol_basis if vol_verified else "unknown"
 
     adj_source = bundle.get("adjustment_source")
     eff_date = bundle.get("effective_date")
@@ -204,7 +209,7 @@ def normalize_price_basis_contract(bundle: Mapping[str, Any] | None = None) -> d
             "price_basis": basis,
             "price_basis_verified": True,
             "is_actionable": True,
-            "volume_basis": vol_basis if vol_basis in {"raw_shares_traded", "adjusted_volume"} else "raw_shares_traded",
+            "volume_basis": vol_basis,
             "volume_basis_verified": vol_verified,
             "adjustment_source": str(adj_source) if adj_source else None,
             "effective_date": str(eff_date) if eff_date else None,
@@ -215,7 +220,7 @@ def normalize_price_basis_contract(bundle: Mapping[str, Any] | None = None) -> d
         "price_basis": "unknown",
         "price_basis_verified": False,
         "is_actionable": False,
-        "volume_basis": vol_basis if vol_basis in {"raw_shares_traded", "adjusted_volume"} else "raw_shares_traded",
+        "volume_basis": vol_basis,
         "volume_basis_verified": vol_verified,
         "adjustment_source": None,
         "effective_date": None,
@@ -285,12 +290,15 @@ def apply_bundle_price_basis_contract(
     price_summary.update(contract)
 
     quality = context.setdefault("data_quality", {})
+    basis_warning_codes = {PRICE_BASIS_UNVERIFIED_CODE, VOLUME_BASIS_UNVERIFIED_CODE}
     flags = [flag for flag in quality.get("flags", [])
-             if not (isinstance(flag, Mapping) and flag.get("code") == PRICE_BASIS_UNVERIFIED_CODE)]
+             if not (isinstance(flag, Mapping) and flag.get("code") in basis_warning_codes)]
     warnings = list(quality.get("warnings", []))
-    warnings = [warning for warning in warnings if "price basis is unverified" not in str(warning).lower()]
+    warnings = [warning for warning in warnings
+                if "price basis is unverified" not in str(warning).lower()
+                and "volume basis is unverified" not in str(warning).lower()]
     not_confirmed = list(quality.get("not_fully_confirmed", []))
-    not_confirmed = [item for item in not_confirmed if item != "OHLCV price basis"]
+    not_confirmed = [item for item in not_confirmed if item not in {"OHLCV price basis", "OHLCV volume basis"}]
 
     if not contract["price_basis_verified"]:
         flags.append({
@@ -301,6 +309,15 @@ def apply_bundle_price_basis_contract(
         })
         warnings.append("OHLCV price basis is unverified; corporate actions may affect return, MA, and RS.")
         not_confirmed.append("OHLCV price basis")
+    if not contract["volume_basis_verified"]:
+        flags.append({
+            "scope": "pipeline", "ticker": context.get("ticker"), "code": VOLUME_BASIS_UNVERIFIED_CODE,
+            "severity": "warning", "metric": "volume_basis", "evidence": contract,
+            "message": "OHLCV volume basis is unverified; liquidity conclusions are unavailable.",
+            "consumer_action": "Do not infer shares, lots, adjusted volume, or liquidity from unqualified volume values.",
+        })
+        warnings.append("OHLCV volume basis is unverified; liquidity conclusions are unavailable.")
+        not_confirmed.append("OHLCV volume basis")
     if bundle_load_warning:
         warnings.append(f"analysis_bundle fallback: {bundle_load_warning}.")
 

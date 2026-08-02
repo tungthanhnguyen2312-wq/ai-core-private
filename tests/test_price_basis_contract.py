@@ -65,7 +65,18 @@ class ConsumerPriceBasisIntegrationTests(unittest.TestCase):
         self.assertFalse(contract["price_basis_verified"])
         self.assertFalse(contract["is_actionable"])
         self.assertIsNone(contract["adjustment_source"])
+        self.assertEqual(contract["volume_basis"], "unknown")
+        self.assertFalse(contract["volume_basis_verified"])
         self.assertTrue(len(contract["limitations"]) > 0)
+
+    def test_volume_basis_requires_explicit_valid_basis_and_true_verification(self):
+        missing_verification = normalize_price_basis_contract({"volume_basis": "raw_shares_traded"})
+        string_verification = normalize_price_basis_contract({
+            "volume_basis": "raw_shares_traded", "volume_basis_verified": "true",
+        })
+        for contract in (missing_verification, string_verification):
+            self.assertEqual(contract["volume_basis"], "unknown")
+            self.assertFalse(contract["volume_basis_verified"])
 
     def test_independent_volume_basis_handling(self):
         bundle = {
@@ -114,7 +125,9 @@ class ConsumerPriceBasisIntegrationTests(unittest.TestCase):
         updated = apply_bundle_price_basis_contract(context, {})
         self.assertEqual(updated["price_summary"]["price_basis"], "unknown")
         self.assertFalse(updated["price_summary"]["price_basis_verified"])
-        self.assertEqual(updated["price_summary"]["volume_basis"], "raw_shares_traded")
+        self.assertEqual(updated["price_summary"]["volume_basis"], "unknown")
+        self.assertFalse(updated["price_summary"]["volume_basis_verified"])
+        self.assertIn("OHLCV volume basis", updated["data_quality"]["not_fully_confirmed"])
 
     def test_deterministic_repeated_output(self):
         bundle = {

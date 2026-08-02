@@ -15,7 +15,7 @@ Key Guarantees:
 2. **Fail-Closed on Unknown:** Missing or unverified price basis defaults to `unknown` with `price_basis_verified=False` and `is_actionable=False`.
 3. **Decoupled Volume Semantics:** Historical volume is maintained as an independent metadata field (`volume_basis`). A price adjustment claim does not imply volume adjustment.
 4. **Compatibility Guardrails:** `validate_context_basis_compatibility()` detects and rejects attempts to compare or combine `raw` and `adjusted` price packages in strict mode.
-5. **Backward Compatibility:** Older context packages or bundles without Phase 1D fields parse safely without error, defaulting to `unknown` price basis and `raw_shares_traded` volume basis.
+5. **Backward Compatibility:** Older context packages or bundles without Phase 1D fields parse safely without error, defaulting to `unknown` price basis and `unknown` volume basis, both unverified.
 6. **AI Prompt Structuring:** AI prompt templates classify verified basis metadata as Fact, and unverified or unknown basis as Data Warnings/Unknown.
 
 ---
