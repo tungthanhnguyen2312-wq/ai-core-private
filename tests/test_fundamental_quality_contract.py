@@ -77,12 +77,20 @@ class FundamentalQualityContractTests(unittest.TestCase):
 
     def test_historical_fundamental_brief_is_verbatim_and_does_not_change_readiness(self):
         raw = {"status": "available", "historical_only": True, "market_dependent": False,
-               "is_actionable": False, "facts": [], "data_warnings": ["price_basis_unknown_or_unverified"],
-               "supported_inferences": [], "hypotheses": []}
+               "is_actionable": False, "facts": [], "data_warnings": ["price_basis_unknown_or_unverified", "volume_basis_unknown_or_unverified", "current_shares_unqualified"],
+               "supported_inferences": [], "hypotheses": [], "missing_evidence": [], "invalidation_conditions": [],
+               "provenance_references": {"capital_structure": "historical_capital_structure"}}
         context = {"ticker": "VNM", "analysis_readiness": {"analysis_ready": False}, "provenance": []}
         b.apply_bundle_historical_fundamental_brief_contract(context, {"tickers": {"VNM": {"historical_fundamental_brief": raw}}})
         self.assertEqual(context["historical_fundamental_brief"], raw)
         self.assertFalse(context["analysis_readiness"]["analysis_ready"])
+        self.assertEqual(context["provenance"][-1]["source_dataset"], "historical_fundamental_brief")
+
+    def test_historical_fundamental_brief_missing_category_fails_closed(self):
+        raw = {"historical_only": True, "facts": [], "data_warnings": ["price_basis_unknown_or_unverified", "volume_basis_unknown_or_unverified", "current_shares_unqualified"]}
+        context = {"ticker": "HPG", "provenance": []}
+        b.apply_bundle_historical_fundamental_brief_contract(context, {"tickers": {"HPG": {"historical_fundamental_brief": raw}}})
+        self.assertEqual(context["historical_fundamental_brief"]["status"], "malformed")
 
 
 if __name__ == "__main__":

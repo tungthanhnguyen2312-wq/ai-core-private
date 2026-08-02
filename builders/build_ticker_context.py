@@ -862,11 +862,20 @@ def apply_bundle_historical_capital_structure_contract(context: dict[str, Any], 
 def apply_bundle_historical_fundamental_brief_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     entry = ((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle, Mapping) else None
     raw = entry.get("historical_fundamental_brief") if isinstance(entry, Mapping) else None
+    required_categories = {"facts", "data_warnings", "supported_inferences", "hypotheses", "missing_evidence", "invalidation_conditions"}
+    required_warnings = {"price_basis_unknown_or_unverified", "volume_basis_unknown_or_unverified", "current_shares_unqualified"}
+    valid = isinstance(raw, Mapping) and required_categories <= set(raw) and raw.get("historical_only") is True
+    valid = valid and isinstance(raw.get("data_warnings"), list) and required_warnings <= set(raw["data_warnings"])
     if raw is not None:
-        context["historical_fundamental_brief"] = copy.deepcopy(dict(raw)) if isinstance(raw, Mapping) else {
+        context["historical_fundamental_brief"] = copy.deepcopy(dict(raw)) if valid else {
             "status": "malformed", "historical_only": True, "market_dependent": False, "is_actionable": False,
             "data_warnings": ["historical_fundamental_brief_malformed"],
         }
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "historical_fundamental_brief",
+            "transformation": "Pass through the qualified FY2024 historical brief verbatim; Consumer does not recompute metrics, merge facts with inferences, or create interpretation.",
+            "limitations": ["Historical-only; does not establish current-market trust, valuation, ranking, recommendation, sizing, adjusted-return, or backtest readiness."],
+        })
     return context
 
 
