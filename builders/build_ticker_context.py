@@ -1079,6 +1079,38 @@ def apply_bundle_fundamental_quality_evidence_contract(context: dict[str, Any], 
     return context
 
 
+def canonical_financial_facts_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional P1F canonical_financial_facts section verbatim.
+
+    Canonical location: tickers[ticker].canonical_financial_facts -- the exact dict
+    canonical_financial_bundle_section.py attaches from the layer 3 fact store.
+    Distinct from legacy tickers[ticker].financial_canonical. Does not recalculate,
+    derive, rank, or score. Malformed sections fail closed.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("canonical_financial_facts") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "limitations": ["Canonical financial facts section is malformed."], "is_actionable": False}
+    status = raw.get("section_status") or raw.get("status")
+    if isinstance(status, str) and status.lower() in ("malformed", "corrupt", "invalid"):
+        return {"status": "malformed", "limitations": ["Canonical financial facts status is malformed."], "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_canonical_financial_facts_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = canonical_financial_facts_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["canonical_financial_facts"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "canonical_financial_facts",
+            "transformation": "Pass through producer canonical financial facts contract verbatim; Consumer does not recalculate metrics, derive yield/payout ratio/CAGR/return, or rank/score/rate the ticker.",
+            "limitations": ["P1F opt-in canonical financial facts section from market-wide layer 3 store."],
+        })
+    return context
+
+
 def apply_bundle_historical_capital_structure_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     entry = ((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle, Mapping) else None
     raw = entry.get("historical_capital_structure") if isinstance(entry, Mapping) else None
@@ -2447,6 +2479,7 @@ def build_context_package(
     apply_bundle_analysis_lane_eligibility_contract(context, bundle_payload)
     apply_bundle_distribution_evidence_contract(context, bundle_payload)
     apply_bundle_fundamental_quality_evidence_contract(context, bundle_payload)
+    apply_bundle_canonical_financial_facts_contract(context, bundle_payload)
     apply_bundle_historical_capital_structure_contract(context, bundle_payload)
     apply_bundle_historical_fundamental_brief_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
