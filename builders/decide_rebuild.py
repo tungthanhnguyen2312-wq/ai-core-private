@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vn_time import vn_now_iso  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_ROOT = (ROOT / "exports" / "context_packages").resolve()
@@ -28,7 +29,7 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def decide(staleness: dict[str, Any], validation: dict[str, Any]) -> dict[str, Any]:
-    now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    now = vn_now_iso()
     package_status = {str(item.get("ticker")): item.get("status") for item in staleness.get("package_changes", [])}
     validation_status = {str(item.get("ticker")): item for item in validation.get("results", [])}
     source_statuses = {item.get("status") for item in staleness.get("source_changes", [])}

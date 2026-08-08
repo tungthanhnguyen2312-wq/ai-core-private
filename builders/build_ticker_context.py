@@ -21,6 +21,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vn_time import vn_now_iso  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -2343,7 +2345,7 @@ def build_context_package(
     context["schema_version"] = "1.4.0"
     context["mode"] = "test_context_package"
     context["ticker"] = ticker
-    context["generated_at"] = (frozen_clock.isoformat(timespec="seconds").replace("+00:00", "Z") if frozen_clock is not None else datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"))
+    context["generated_at"] = (frozen_clock.isoformat(timespec="seconds").replace("+00:00", "Z") if frozen_clock is not None else vn_now_iso())
     context["analysis_cutoff"] = None
     context["identity"]["ticker"] = ticker
     context["data_sources"] = []

@@ -11,10 +11,11 @@ import hashlib
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vn_time import vn_now_iso  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE_ROOT = SCRIPT_DIR.parent
@@ -167,7 +168,7 @@ def discover_packages(package_dir: Path, tickers: Iterable[str] | None = None) -
 
 
 def build_artifacts(paths: list[Path]) -> tuple[dict[str, Any], dict[str, Any], str]:
-    now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    now = vn_now_iso()
     package_entries = []
     validation_results = []
     all_source_paths: list[Path] = []

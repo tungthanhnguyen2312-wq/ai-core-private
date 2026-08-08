@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vn_time import vn_now_iso  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_ROOT = (ROOT / "exports" / "operating_pack").resolve()
@@ -31,7 +32,7 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def validate_pack() -> dict[str, Any]:
-    now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    now = vn_now_iso()
     issues: list[dict[str, str]] = []
     pack_manifest = load_json(ROOT / "operating_pack" / "operating_pack_manifest.json")
     budget = load_json(ROOT / "operating_pack" / "common" / "context_budget_policy.json")

@@ -6,10 +6,11 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vn_time import vn_now_iso  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPORT_ROOT = (ROOT / "exports" / "context_packages").resolve()
@@ -50,7 +51,7 @@ def build_catalog(manifest_path: Path, validation_path: Path, staleness_path: Pa
     manifest = load_json(manifest_path)
     validation = load_json(validation_path)
     staleness = load_json(staleness_path)
-    now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    now = vn_now_iso()
     artifacts: list[dict[str, Any]] = []
     relationships: list[dict[str, str]] = []
     for package in manifest.get("packages", []):

@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vn_time import vn_now_iso  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_ROOT = (ROOT / "exports" / "context_packages").resolve()
@@ -61,7 +62,7 @@ def _index(manifest: dict[str, Any], key: str, path_field: str) -> dict[str, dic
 
 
 def compare(previous: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
-    now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    now = vn_now_iso()
     previous_packages = _index(previous, "packages", "ticker")
     current_packages = _index(current, "packages", "ticker")
     package_changes = []

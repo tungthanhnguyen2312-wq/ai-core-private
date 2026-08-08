@@ -11,10 +11,11 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vn_time import vn_now_iso  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 RELEASE_ROOT = (ROOT / "release" / "v1.0").resolve()
@@ -67,7 +68,7 @@ def build_release(qa_path: Path, operating_path: Path) -> tuple[dict[str, Any], 
     if operating.get("status") != "pass":
         raise ValueError("Operating pack validation is not PASS")
     inventory = collect_inventory()
-    now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    now = vn_now_iso()
     inventory_payload = {
         "inventory_version":"1.0.0","release":"v1.0","generated_at":now,
         "scope":"Managed AI ANALYZE payload excluding release/ control files and VNSTOCK",

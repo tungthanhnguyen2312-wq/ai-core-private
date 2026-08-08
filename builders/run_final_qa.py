@@ -14,10 +14,11 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vn_time import vn_now_iso  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_ROOT = (ROOT / "exports" / "qa").resolve()
@@ -57,7 +58,7 @@ def issue(rule_id: str, severity: str, message: str, path: Path | None = None) -
 
 
 def run_checks() -> dict[str, Any]:
-    started = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    started = vn_now_iso()
     files = managed_files()
     issues: list[dict[str, Any]] = []
     checks: list[dict[str, Any]] = []
