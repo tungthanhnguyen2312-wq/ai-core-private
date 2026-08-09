@@ -1208,6 +1208,52 @@ def apply_bundle_qualified_market_observations_contract(context: dict[str, Any],
         context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"qualified_market_observations","transformation":"Verbatim Producer provider-scoped price/volume observations; Consumer performs no recomputation, narrowing, widening, or basis re-derivation.","limitations":["Provider-scoped descriptive/technical only; not a generic market basis, not liquidity, not a current valuation."]})
     return context
 
+
+def apply_bundle_ticker_capability_matrix_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Preserve the Producer's P1.5 capability projection without interpretation.
+
+    The Consumer validates only the safety envelope (same ticker, known semantic status,
+    and no actionable flag) before deep-copying the complete matrix.  It never derives a
+    capability from a fact, a provider observation, or its own entity lookup.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle, Mapping) else None
+    raw = entry.get("ticker_capability_matrix") if isinstance(entry, Mapping) else None
+    states = {"available", "descriptive_only", "partial", "blocked", "blocked_input", "unavailable", "not_applicable", "unknown"}
+    sections = ("fundamental_data", "market_descriptive", "market_actionable", "research", "portfolio")
+    required = {"schema_version", "ticker", "identity", *sections, "market_data_authority", "summary", "is_actionable"}
+    valid = isinstance(raw, Mapping) and required <= set(raw) and raw.get("ticker") == context.get("ticker") and raw.get("is_actionable") is False
+    if valid:
+        identity = raw.get("identity")
+        archetype = identity.get("analysis_archetype_qualification") if isinstance(identity, Mapping) else None
+        valid = (isinstance(identity, Mapping) and isinstance(identity.get("entity_type"), str)
+                 and isinstance(archetype, Mapping) and archetype.get("status") in states
+                 and archetype.get("is_actionable") is False)
+    if valid:
+        for section_name in sections:
+            section = raw.get(section_name)
+            if not isinstance(section, Mapping):
+                valid = False
+                break
+            for capability in section.values():
+                if (not isinstance(capability, Mapping) or capability.get("status") not in states
+                        or capability.get("is_actionable") is not False
+                        or not isinstance(capability.get("descriptive_only"), bool)):
+                    valid = False
+                    break
+            if not valid:
+                break
+    if raw is not None:
+        context["ticker_capability_matrix"] = copy.deepcopy(dict(raw)) if valid else {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["ticker_capability_matrix_malformed"],
+        }
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "ticker_capability_matrix",
+            "transformation": "Verbatim Producer capability/trust matrix; Consumer performs no eligibility, market-basis, research, or portfolio recomputation.",
+            "limitations": ["Capability-specific only: provider-scoped descriptive observations never open generic valuation, liquidity, sizing, execution, or backtest claims."],
+        })
+    return context
+
 def apply_bundle_qualified_research_delta_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Pass through the Producer-owned snapshot delta; never re-diff the brief here."""
     entry=((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle,Mapping) else None;raw=entry.get("qualified_research_delta") if isinstance(entry,Mapping) else None
@@ -2564,6 +2610,7 @@ def build_context_package(
     apply_bundle_qualified_research_brief_contract(context, bundle_payload)
     apply_bundle_qualified_research_delta_contract(context, bundle_payload)
     apply_bundle_qualified_market_observations_contract(context, bundle_payload)
+    apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence
