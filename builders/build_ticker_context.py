@@ -1187,6 +1187,16 @@ def apply_bundle_qualified_research_brief_contract(context: dict[str, Any], bund
         context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"qualified_research_brief","transformation":"Verbatim Producer brief; Consumer performs no analysis recomputation.","limitations":["Historical-only; no recommendation, valuation, ranking, sizing, or allocation."]})
     return context
 
+def apply_bundle_qualified_research_delta_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Pass through the Producer-owned snapshot delta; never re-diff the brief here."""
+    entry=((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle,Mapping) else None;raw=entry.get("qualified_research_delta") if isinstance(entry,Mapping) else None
+    if raw is not None:
+        states={"comparable","partially_comparable","incomparable","blocked"}
+        valid=isinstance(raw,Mapping) and raw.get("ticker")==context.get("ticker") and raw.get("historical_only") is True and raw.get("is_actionable") is False and raw.get("analysis_mode")=="historical_only_qualified_data" and raw.get("comparison_status") in states
+        context["qualified_research_delta"]=copy.deepcopy(dict(raw)) if valid else {"status":"malformed","historical_only":True,"is_actionable":False,"reason_codes":["qualified_research_delta_malformed"]}
+        context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"qualified_research_delta","transformation":"Verbatim Producer snapshot delta; Consumer performs no metric, quality, risk, scenario, invalidation, or conclusion recomputation.","limitations":["Historical-only comparison; no recommendation, valuation, ranking, sizing, allocation, prediction, or current-market claim."]})
+    return context
+
 
 def save_json(path: Path, payload: Any, *, rotate_existing: bool = False) -> None:
     """Write a context package. Never overwrites an existing export.
@@ -2531,6 +2541,7 @@ def build_context_package(
     apply_bundle_historical_decision_analysis_contract(context, bundle_payload)
     apply_bundle_portfolio_risk_analysis_contract(context, bundle_payload)
     apply_bundle_qualified_research_brief_contract(context, bundle_payload)
+    apply_bundle_qualified_research_delta_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence
