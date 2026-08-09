@@ -1187,6 +1187,35 @@ def apply_bundle_qualified_research_brief_contract(context: dict[str, Any], bund
         context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"qualified_research_brief","transformation":"Verbatim Producer brief; Consumer performs no analysis recomputation.","limitations":["Historical-only; no recommendation, valuation, ranking, sizing, or allocation."]})
     return context
 
+
+def apply_bundle_qualified_cohort_comparison_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Pass through the fixed qualified-cohort comparison without any comparison logic.
+
+    The Producer owns metric selection, descriptive positions, provenance, and every
+    limitation.  Consumer only checks the non-actionable historical envelope and preserves
+    the complete section verbatim for AI grounding.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle, Mapping) else None
+    raw = entry.get("qualified_cohort_comparison") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return context
+    required = {"schema_version", "status", "cohort_name", "cohort_tickers", "historical_only", "market_dependent",
+                "is_actionable", "cross_sectional_comparison", "multi_period_trend", "ranking_prohibited", "rows"}
+    valid = (isinstance(raw, Mapping) and required <= set(raw) and raw.get("historical_only") is True
+             and raw.get("market_dependent") is False and raw.get("is_actionable") is False
+             and raw.get("ranking_prohibited") is True and isinstance(raw.get("cohort_tickers"), list)
+             and str(context.get("ticker") or "") in raw["cohort_tickers"] and isinstance(raw.get("rows"), list))
+    context["qualified_cohort_comparison"] = copy.deepcopy(dict(raw)) if valid else {
+        "status": "malformed", "historical_only": True, "market_dependent": False, "is_actionable": False,
+        "reason_codes": ["qualified_cohort_comparison_malformed"],
+    }
+    context.setdefault("provenance", []).append({
+        "source_file": "analysis_bundle.json", "source_dataset": "qualified_cohort_comparison",
+        "transformation": "Verbatim Producer qualified-cohort comparison; Consumer performs no metric calculation, currency conversion, position calculation, ranking, or interpretation.",
+        "limitations": ["Historical-only descriptive cohort context; not a peer group, recommendation, valuation, liquidity, sizing, or allocation input."],
+    })
+    return context
+
 def apply_bundle_qualified_market_observations_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Pass through the Producer's provider-scoped market observations verbatim.
 
@@ -2608,6 +2637,7 @@ def build_context_package(
     apply_bundle_historical_decision_analysis_contract(context, bundle_payload)
     apply_bundle_portfolio_risk_analysis_contract(context, bundle_payload)
     apply_bundle_qualified_research_brief_contract(context, bundle_payload)
+    apply_bundle_qualified_cohort_comparison_contract(context, bundle_payload)
     apply_bundle_qualified_research_delta_contract(context, bundle_payload)
     apply_bundle_qualified_market_observations_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
