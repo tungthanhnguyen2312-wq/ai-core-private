@@ -1294,6 +1294,16 @@ def apply_bundle_qualified_research_delta_contract(context: dict[str, Any], bund
     return context
 
 
+def apply_bundle_qualified_research_change_events_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Verbatim Producer change events; Consumer never compares or assigns importance."""
+    entry=((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle,Mapping) else None; raw=entry.get("qualified_research_change_events") if isinstance(entry,Mapping) else None
+    if raw is not None:
+        valid=isinstance(raw,Mapping) and isinstance(raw.get("status"),str) and isinstance(raw.get("events"),list) and all(isinstance(event,Mapping) and isinstance(event.get("event_id"),str) and isinstance(event.get("provenance_references"),list) for event in raw.get("events",[]))
+        context["qualified_research_change_events"]=copy.deepcopy(dict(raw)) if valid else {"status":"malformed","events":[],"historical_only":True,"is_actionable":False,"reason_codes":["qualified_research_change_events_malformed"]}
+        context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"qualified_research_change_events","transformation":"Verbatim Producer events; Consumer performs no diff, identity, provenance, or importance recomputation.","limitations":["Historical-only; events are not investment signals, recommendations, valuation, allocation, or market claims."]})
+    return context
+
+
 def save_json(path: Path, payload: Any, *, rotate_existing: bool = False) -> None:
     """Write a context package. Never overwrites an existing export.
 
@@ -2639,6 +2649,7 @@ def build_context_package(
     apply_bundle_qualified_research_brief_contract(context, bundle_payload)
     apply_bundle_qualified_cohort_comparison_contract(context, bundle_payload)
     apply_bundle_qualified_research_delta_contract(context, bundle_payload)
+    apply_bundle_qualified_research_change_events_contract(context, bundle_payload)
     apply_bundle_qualified_market_observations_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)

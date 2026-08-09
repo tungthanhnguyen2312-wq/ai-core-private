@@ -10,3 +10,7 @@ class T(unittest.TestCase):
  def test_malformed_delta_fails_closed(self):
   c={"ticker":"HPG","provenance":[]};b.apply_bundle_qualified_research_delta_contract(c,{"tickers":{"HPG":{"qualified_research_delta":{"ticker":"HPG"}}}})
   self.assertEqual(c["qualified_research_delta"]["status"],"malformed")
+
+ def test_change_events_pass_through_and_malformed_fails_closed(self):
+  x={"status":"events_available","events":[{"event_id":"qrc-x","provenance_references":["identity.eligibility"]}]};c={"ticker":"HPG","provenance":[]};b.apply_bundle_qualified_research_change_events_contract(c,{"tickers":{"HPG":{"qualified_research_change_events":x}}});self.assertEqual(c["qualified_research_change_events"],x)
+  c={"ticker":"HPG","provenance":[]};b.apply_bundle_qualified_research_change_events_contract(c,{"tickers":{"HPG":{"qualified_research_change_events":{"events":[]}}}});self.assertEqual(c["qualified_research_change_events"]["status"],"malformed")
