@@ -1187,6 +1187,27 @@ def apply_bundle_qualified_research_brief_contract(context: dict[str, Any], bund
         context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"qualified_research_brief","transformation":"Verbatim Producer brief; Consumer performs no analysis recomputation.","limitations":["Historical-only; no recommendation, valuation, ranking, sizing, or allocation."]})
     return context
 
+def apply_bundle_qualified_market_observations_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Pass through the Producer's provider-scoped market observations verbatim.
+
+    Independent of the qualified-research-brief lane above: Producer gates this on a
+    single-provider retained OHLCV window (market_basis_capability_registry.py), not on the
+    fundamental-evidence pilot set, so it may be present for any ticker with enough history,
+    not just HPG/VNM/VCB. Consumer performs no recomputation and never widens a Producer
+    ``unavailable`` into an ``available`` result -- an ``unavailable`` verdict is itself a
+    valid, non-malformed pass-through, not something to fall back from.
+    """
+    entry=((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle,Mapping) else None;raw=entry.get("qualified_market_observations") if isinstance(entry,Mapping) else None
+    if raw is not None:
+        states={"available","unavailable"}
+        structurally_valid=isinstance(raw,Mapping) and raw.get("ticker")==context.get("ticker") and raw.get("is_actionable") is False and raw.get("liquidity_actionable") is False and raw.get("status") in states
+        # Short-circuits on structurally_valid first so a non-Mapping raw (already False
+        # above) never reaches a second .get() call here.
+        valid=structurally_valid and (raw.get("status")!="available" or (raw.get("descriptive_only") is True and raw.get("namespace")=="provider_scoped"))
+        context["qualified_market_observations"]=copy.deepcopy(dict(raw)) if valid else {"status":"malformed","is_actionable":False,"liquidity_actionable":False,"reason_codes":["qualified_market_observations_malformed"]}
+        context.setdefault("provenance",[]).append({"source_file":"analysis_bundle.json","source_dataset":"qualified_market_observations","transformation":"Verbatim Producer provider-scoped price/volume observations; Consumer performs no recomputation, narrowing, widening, or basis re-derivation.","limitations":["Provider-scoped descriptive/technical only; not a generic market basis, not liquidity, not a current valuation."]})
+    return context
+
 def apply_bundle_qualified_research_delta_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Pass through the Producer-owned snapshot delta; never re-diff the brief here."""
     entry=((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle,Mapping) else None;raw=entry.get("qualified_research_delta") if isinstance(entry,Mapping) else None
@@ -2542,6 +2563,7 @@ def build_context_package(
     apply_bundle_portfolio_risk_analysis_contract(context, bundle_payload)
     apply_bundle_qualified_research_brief_contract(context, bundle_payload)
     apply_bundle_qualified_research_delta_contract(context, bundle_payload)
+    apply_bundle_qualified_market_observations_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence
