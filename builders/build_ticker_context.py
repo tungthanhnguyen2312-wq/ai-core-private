@@ -1144,6 +1144,32 @@ def apply_bundle_historical_fundamental_brief_contract(context: dict[str, Any], 
     return context
 
 
+def apply_bundle_historical_decision_analysis_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Pass through the Phase 4B Producer result without recomputation or interpretation."""
+    entry = ((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle, Mapping) else None
+    raw = entry.get("historical_decision_analysis") if isinstance(entry, Mapping) else None
+    required = {"schema_version", "ticker", "analysis_mode", "eligibility", "quality_assessment", "risks",
+                "catalysts", "scenarios", "invalidation_conditions", "historical_conclusion", "historical_only",
+                "market_dependent", "is_actionable"}
+    valid = (isinstance(raw, Mapping) and required <= set(raw) and raw.get("ticker") == context.get("ticker")
+             and raw.get("analysis_mode") == "historical_only_qualified_data"
+             and raw.get("historical_only") is True and raw.get("market_dependent") is False
+             and raw.get("is_actionable") is False and isinstance(raw.get("eligibility"), Mapping)
+             and raw["eligibility"].get("status") in {"eligible", "partially_eligible", "insufficient_evidence", "blocked"}
+             and isinstance(raw.get("scenarios"), Mapping) and set(raw["scenarios"]) == {"bear", "base", "bull"})
+    if raw is not None:
+        context["historical_decision_analysis"] = copy.deepcopy(dict(raw)) if valid else {
+            "status": "malformed", "historical_only": True, "market_dependent": False, "is_actionable": False,
+            "reason_codes": ["historical_decision_analysis_malformed"],
+        }
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "historical_decision_analysis",
+            "transformation": "Pass through the Producer historical decision analysis verbatim; Consumer does not recompute quality, risks, catalysts, scenarios, eligibility, or conclusion.",
+            "limitations": ["Historical-only qualified-data contract; no target price, valuation, recommendation, ranking, or portfolio sizing."],
+        })
+    return context
+
+
 def save_json(path: Path, payload: Any, *, rotate_existing: bool = False) -> None:
     """Write a context package. Never overwrites an existing export.
 
@@ -2484,6 +2510,7 @@ def build_context_package(
     apply_bundle_canonical_financial_facts_contract(context, bundle_payload)
     apply_bundle_historical_capital_structure_contract(context, bundle_payload)
     apply_bundle_historical_fundamental_brief_contract(context, bundle_payload)
+    apply_bundle_historical_decision_analysis_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
         from builders.cited_document_evidence import attach as attach_cited_document_evidence
