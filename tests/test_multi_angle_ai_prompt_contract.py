@@ -44,7 +44,7 @@ class MultiAngleAiPromptContractTests(unittest.TestCase):
         self.assertIn("explicitly", PROMPT)
         self.assertIn("before forming any higher-level inference", PROMPT)
         self.assertIn("do not resolve the disagreement by inventing confidence", PROMPT)
-        self.assertIn("never turn conflicting evidence into an automatic BUY/SELL", PROMPT)
+        self.assertIn("automatic BUY/SELL or directional rating", PROMPT)
 
     def test_fact_inference_categories_and_synthesis_order(self):
         for category in ("**Fact**", "**Data Warnings / Limitations**", "**Inference**", "**Conflicting Evidence**", "**Hypotheses**", "**Missing Evidence**", "**Invalidation Conditions**"):
