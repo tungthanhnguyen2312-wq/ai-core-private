@@ -39,9 +39,12 @@ class MultiAngleAiPromptContractTests(unittest.TestCase):
         self.assertIn("Do not infer qualified foreign volume, foreign room semantics, flow-to-turnover ratios, institutional accumulation, or causal price impact", PROMPT)
 
     def test_conflicting_evidence_explicit(self):
+        self.assertIn("suppress conflicts", PROMPT)
         self.assertIn("**Conflicting Evidence**", PROMPT)
-        self.assertIn("state the **Conflicting Evidence** explicitly before forming any higher-level inference", PROMPT)
-        self.assertIn("never turn conflicting evidence into an automatic BUY/SELL or directional rating", PROMPT)
+        self.assertIn("explicitly", PROMPT)
+        self.assertIn("before forming any higher-level inference", PROMPT)
+        self.assertIn("do not resolve the disagreement by inventing confidence", PROMPT)
+        self.assertIn("never turn conflicting evidence into an automatic BUY/SELL", PROMPT)
 
     def test_fact_inference_categories_and_synthesis_order(self):
         for category in ("**Fact**", "**Data Warnings / Limitations**", "**Inference**", "**Conflicting Evidence**", "**Hypotheses**", "**Missing Evidence**", "**Invalidation Conditions**"):
