@@ -62,6 +62,8 @@ _REAL_HPG_MARKET_RISK = {
     "provenance": {"stock_provenance": {}, "benchmark_provenance": {},
                   "contract_module": "dnse_current_state_market_risk.py", "contract_version": "1.0.0"},
     "is_actionable": False,
+    "freshness": {"reference_session_date": "2026-08-07", "latest_qualified_session_date": "2026-08-07",
+                 "sessions_behind": 0, "status": "current", "reason": None},
 }
 
 _VNM_NOT_QUALIFIED = {
@@ -142,6 +144,35 @@ class CurrentStateMarketRiskPassThroughTests(unittest.TestCase):
         context = {"ticker": "HPG", "provenance": []}
         apply_bundle_current_state_market_risk_contract(context, bundle)
         self.assertIs(False, context["current_state_market_risk"]["is_actionable"])
+
+    def test_freshness_verdict_passes_through_verbatim(self):
+        bundle = {"tickers": {"HPG": {"current_state_market_risk": copy.deepcopy(_REAL_HPG_MARKET_RISK)}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_current_state_market_risk_contract(context, bundle)
+        freshness = context["current_state_market_risk"]["freshness"]
+        self.assertEqual("current", freshness["status"])
+        self.assertEqual(0, freshness["sessions_behind"])
+
+    def test_stale_freshness_status_is_not_upgraded_to_current(self):
+        """A stale beta/correlation stays visible (Step 9) -- Consumer never
+        recomputes or reinterprets the freshness verdict, and never hides the
+        value just because it is dated."""
+        stale = copy.deepcopy(_REAL_HPG_MARKET_RISK)
+        stale["freshness"] = {"reference_session_date": "2026-08-10", "latest_qualified_session_date": "2026-08-07",
+                              "sessions_behind": 1, "status": "stale",
+                              "reason": "retained market-risk evidence is 1 trading session(s) behind the reference session"}
+        stale["warnings"] = stale["warnings"] + [
+            "retained_market_risk_evidence_is_stale_relative_to_the_release_reference_session"
+        ]
+        bundle = {"tickers": {"HPG": {"current_state_market_risk": stale}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_current_state_market_risk_contract(context, bundle)
+        result = context["current_state_market_risk"]
+        self.assertEqual("stale", result["freshness"]["status"])
+        self.assertEqual(1, result["freshness"]["sessions_behind"])
+        # Still visible, not suppressed.
+        self.assertEqual(0.8093285134496059, result["beta"]["value"])
+        self.assertEqual(0.5664164065437041, result["correlation"]["value"])
 
     def test_not_qualified_ticker_passes_through_unchanged_no_fabricated_value(self):
         bundle = {"tickers": {"VNM": {"current_state_market_risk": copy.deepcopy(_VNM_NOT_QUALIFIED)}}}
