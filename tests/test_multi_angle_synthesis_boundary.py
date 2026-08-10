@@ -20,14 +20,21 @@ from builders.multi_angle_synthesis_boundary import accept_multi_angle_synthesis
 
 # TEST_FIXTURE_ONLY -- synthetic fixture for boundary tests.
 # Does NOT import retained production data.
+# Shape matches the real canonical contract (verified against a real fresh Consumer
+# context and stock-core-private/dnse_current_state_price_analytics.py's own source):
+# SMA20 lives at current_state_price_analytics.technical_indicators.sma_20.status, not
+# at a top-level current_state_price_analytics.sma_20.
 _VALID_CANONICAL_CONTEXT_FIXTURE = {
     "ticker": "TEST_TICKER",
     "historical_only": False,
     "current_state_price_analytics": {
         "status": "available",
-        "sma_20": {
-            "status": "unavailable",
-            "reason": "insufficient_session_history",
+        "technical_indicators": {
+            "status": "available",
+            "sma_20": {
+                "status": "unavailable",
+                "reason": "insufficient_session_history",
+            },
         },
     },
     "current_state_market_risk": {
@@ -134,7 +141,7 @@ class MultiAngleSynthesisBoundaryTests(unittest.TestCase):
 
     def test_malformed_sma20_metadata_source_rejected(self):
         ctx = copy.deepcopy(_VALID_CANONICAL_CONTEXT_FIXTURE)
-        ctx["current_state_price_analytics"]["sma_20"] = "invalid_string_sma20"
+        ctx["current_state_price_analytics"]["technical_indicators"]["sma_20"] = "invalid_string_sma20"
         resp = copy.deepcopy(_VALID_AI_RESPONSE_FIXTURE)
         result = accept_multi_angle_synthesis(ctx, resp)
         self.assertEqual("rejected", result["status"])
@@ -142,11 +149,58 @@ class MultiAngleSynthesisBoundaryTests(unittest.TestCase):
 
     def test_malformed_sma20_status_rejected(self):
         ctx = copy.deepcopy(_VALID_CANONICAL_CONTEXT_FIXTURE)
-        ctx["current_state_price_analytics"]["sma_20"]["status"] = 123
+        ctx["current_state_price_analytics"]["technical_indicators"]["sma_20"]["status"] = 123
         resp = copy.deepcopy(_VALID_AI_RESPONSE_FIXTURE)
         result = accept_multi_angle_synthesis(ctx, resp)
         self.assertEqual("rejected", result["status"])
         self.assertIn("ticker_context_malformed:sma_20_status", result["reasons"])
+
+    def test_malformed_technical_indicators_structure_rejected(self):
+        ctx = copy.deepcopy(_VALID_CANONICAL_CONTEXT_FIXTURE)
+        ctx["current_state_price_analytics"]["technical_indicators"] = "invalid_string_technical_indicators"
+        resp = copy.deepcopy(_VALID_AI_RESPONSE_FIXTURE)
+        result = accept_multi_angle_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("ticker_context_malformed:technical_indicators", result["reasons"])
+
+    def test_canonical_nested_sma20_available_not_marked_unavailable(self):
+        ctx = copy.deepcopy(_VALID_CANONICAL_CONTEXT_FIXTURE)
+        ctx["current_state_price_analytics"]["technical_indicators"]["sma_20"] = {
+            "status": "available", "value": 25.4, "as_of_session": "2026-08-07",
+        }
+        resp = copy.deepcopy(_VALID_AI_RESPONSE_FIXTURE)
+        resp["data_warnings"] = [w for w in resp["data_warnings"] if "SMA20 is unavailable" not in w]
+        result = accept_multi_angle_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("unavailable_indicators", result["derived_contract_metadata"])
+
+    def test_legacy_top_level_sma20_shape_is_not_read(self):
+        """Regression guard: a pre-existing, never-real top-level
+        current_state_price_analytics.sma_20 must not be read by the boundary --
+        only the canonical current_state_price_analytics.technical_indicators.sma_20
+        path is authoritative. Proves the fix uses the real shape, not the old
+        test-only shape."""
+        ctx = {
+            "ticker": "TEST_TICKER",
+            "current_state_price_analytics": {
+                "status": "available",
+                "sma_20": {"status": "unavailable", "reason": "legacy_shape_should_be_ignored"},
+            },
+        }
+        resp = copy.deepcopy(_VALID_AI_RESPONSE_FIXTURE)
+        result = accept_multi_angle_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("unavailable_indicators", result["derived_contract_metadata"])
+
+    def test_metadata_derivation_deterministic_across_repeated_calls(self):
+        ctx = copy.deepcopy(_VALID_CANONICAL_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_VALID_AI_RESPONSE_FIXTURE)
+        res1 = accept_multi_angle_synthesis(ctx, resp)
+        res2 = accept_multi_angle_synthesis(ctx, resp)
+        self.assertEqual(
+            res1["derived_contract_metadata"], res2["derived_contract_metadata"],
+        )
+        self.assertEqual(["sma_20"], res1["derived_contract_metadata"].get("unavailable_indicators"))
 
     def test_affirmative_buy_sell_hold_output_rejected(self):
         ctx = copy.deepcopy(_VALID_CANONICAL_CONTEXT_FIXTURE)
