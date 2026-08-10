@@ -1091,6 +1091,58 @@ def apply_bundle_foreign_flow_contract(context: dict[str, Any], bundle: Mapping[
     return context
 
 
+def current_state_market_risk_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional current_state_market_risk contract verbatim.
+
+    Canonical location: tickers[ticker].current_state_market_risk -- the exact
+    dict stock-core-private/dnse_current_state_market_risk.py's
+    compute_current_state_beta_correlation() returns, plus the bundle-level
+    "status" field export_ai_bundle.py's attach layer adds (available /
+    not_qualified). Descriptive current-state (never point-in-time) HPG vs
+    VNINDEX beta/correlation: pit_backtest_eligible is always False,
+    is_actionable is always False, and sample_adequacy distinguishes
+    MATHEMATICALLY_COMPUTABLE from an unaddressed "statistically strong" bar
+    that this contract never claims. Distinct from the pre-existing
+    tickers[ticker].risk_analysis.market_risk (risk_liquidity.py's
+    point-in-time-labelled section, passed through separately by
+    apply_bundle_risk_analysis_contract) -- this function never reads that
+    field and never merges the two. The field stays opt-in at the Producer
+    builder level (export_ai_bundle.py defaults it off), so this is
+    legacy-compatible by construction: absent in every bundle that did not
+    request it, and this function simply returns None until it exists. This
+    function never recomputes a beta or correlation value, never derives a
+    risk score or recommendation, and never asserts statistical strength for
+    a short observation window -- it is a byte-identical pass-through, same
+    as every other contract in this module. Missing input remains missing;
+    malformed input fails closed locally without touching any other context
+    field."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_state_market_risk") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        return {"status": "malformed", "warnings": ["current_state_market_risk contract is malformed."],
+                "pit_backtest_eligible": False, "is_actionable": False}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_state_market_risk_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_state_market_risk_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_state_market_risk"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "current_state_market_risk",
+            "transformation": "Pass through the Producer's current-state (never point-in-time) HPG-vs-VNINDEX beta/correlation contract verbatim. Consumer does not recompute beta, correlation, or any statistic, and never upgrades a short-window result to a statistically-strong claim.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-current-state-market-risk).",
+                "Currently qualified for HPG only; every other ticker reports status=\"not_qualified\", never a fabricated beta/correlation.",
+                "Descriptive current-state statistic only -- not a recommendation, not a risk score, and not evidence of causation.",
+                "pit_backtest_eligible and is_actionable are always false; this is not point-in-time backtest evidence.",
+            ],
+        })
+    return context
+
+
 def fundamental_quality_evidence_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
     """Pass through the optional Phase 6A fundamental_quality_evidence contract verbatim.
 
@@ -2688,6 +2740,7 @@ def build_context_package(
     apply_bundle_analysis_lane_eligibility_contract(context, bundle_payload)
     apply_bundle_distribution_evidence_contract(context, bundle_payload)
     apply_bundle_foreign_flow_contract(context, bundle_payload)
+    apply_bundle_current_state_market_risk_contract(context, bundle_payload)
     apply_bundle_fundamental_quality_evidence_contract(context, bundle_payload)
     apply_bundle_canonical_financial_facts_contract(context, bundle_payload)
     apply_bundle_historical_capital_structure_contract(context, bundle_payload)
