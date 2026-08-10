@@ -155,6 +155,34 @@ class ForeignFlowPassThroughTests(unittest.TestCase):
         sources = [p.get("source_dataset") for p in context["provenance"]]
         self.assertIn("foreign_flow", sources)
 
+    def test_freshness_verdict_passes_through_verbatim(self):
+        """The production freshness envelope (added alongside authoritative release
+        enablement) is just another field in the same verbatim pass-through -- Consumer
+        never recomputes or reinterprets it."""
+        with_freshness = copy.deepcopy(_REAL_HPG_FOREIGN_FLOW)
+        with_freshness["freshness"] = {
+            "reference_session_date": "2026-08-07", "latest_qualified_session_date": "2026-08-07",
+            "sessions_behind": 0, "status": "current", "reason": None,
+        }
+        bundle = {"tickers": {"HPG": {"foreign_flow": with_freshness}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_foreign_flow_contract(context, bundle)
+        self.assertEqual("current", context["foreign_flow"]["freshness"]["status"])
+        self.assertEqual(0, context["foreign_flow"]["freshness"]["sessions_behind"])
+
+    def test_stale_freshness_status_is_not_upgraded_to_current(self):
+        stale = copy.deepcopy(_REAL_HPG_FOREIGN_FLOW)
+        stale["freshness"] = {
+            "reference_session_date": "2026-08-10", "latest_qualified_session_date": "2026-08-07",
+            "sessions_behind": 1, "status": "stale",
+            "reason": "retained foreign-flow data is 1 trading session(s) behind the reference session",
+        }
+        bundle = {"tickers": {"HPG": {"foreign_flow": stale}}}
+        context = {"ticker": "HPG", "provenance": []}
+        apply_bundle_foreign_flow_contract(context, bundle)
+        self.assertEqual("stale", context["foreign_flow"]["freshness"]["status"])
+        self.assertEqual(1, context["foreign_flow"]["freshness"]["sessions_behind"])
+
     def test_foreign_flow_contract_function_returns_deep_copy_not_alias(self):
         original = copy.deepcopy(_REAL_HPG_FOREIGN_FLOW)
         bundle = {"tickers": {"HPG": {"foreign_flow": original}}}

@@ -1052,10 +1052,13 @@ def foreign_flow_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict
     (schema_version, ticker, status, source, source_contract_version, source_scope,
     point_in_time_status, latest_session, observations, qualified_session_count,
     cumulative_net_value_vnd, cumulative_window, positive/negative/neutral_session_count,
-    current_consecutive_net_buy/sell_sessions, window_summaries, warnings, limitations,
-    is_actionable). No default Producer invocation attaches this yet (opt-in only, its own
-    --include-dnse-foreign-flow flag), so this is legacy-compatible by construction: absent
-    in every current bundle, and simply returns None until it exists. This function never
+    current_consecutive_net_buy/sell_sessions, window_summaries, freshness, warnings,
+    limitations, is_actionable). The field stays opt-in at the Producer builder level
+    (export_ai_bundle.py/operate_stocklookup.py default it off, independently testable
+    either way) but the authoritative production release profile
+    (release_orchestrator.py's --generate step) now opts it in for a real release --
+    still legacy-compatible either way: absent in a bundle where it was not requested,
+    and this function simply returns None until it exists. This function never
     recomputes a net value, never derives an ownership/free-float percentage, never
     computes a flow/trading-value ratio, and never reads or fabricates foreign volume or
     foreign room (the Producer contract never includes them here at all) -- it is a
@@ -1079,9 +1082,10 @@ def apply_bundle_foreign_flow_contract(context: dict[str, Any], bundle: Mapping[
             "source_file": "analysis_bundle.json", "source_dataset": "foreign_flow",
             "transformation": "Pass through the Producer's qualified DNSE foreign-investor VALUE contract verbatim (foreign_buy_value_vnd/foreign_sell_value_vnd/foreign_net_value_vnd per session, plus fail-closed multi-session window summaries). Consumer does not recompute a net value, derive an ownership/free-float percentage, or compute a flow/trading-value ratio.",
             "limitations": [
-                "Optional field; absent until a future Producer milestone wires DNSE foreign-flow by default.",
-                "Currently retained for HPG, VNM, QNS only; other tickers report status=\"missing\" when the flag is set.",
+                "Opt-in field, wired into the authoritative production release profile but still absent from any bundle that did not request it (e.g. a manually-run export without the flag).",
+                "Currently retained for HPG, VNM, QNS only; other tickers report status=\"missing\", never a fabricated value.",
                 "Foreign volume and foreign room are not represented in this contract at all -- both remain unqualified by the Producer's own DNSE capability contracts.",
+                "freshness compares the latest retained session against the release's own exact reference session in real trading sessions, not calendar days; a stale verdict is reported, never silently upgraded to current.",
             ],
         })
     return context
