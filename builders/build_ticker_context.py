@@ -1186,6 +1186,72 @@ def apply_bundle_current_state_price_analytics_contract(context: dict[str, Any],
     return context
 
 
+def current_state_relative_valuation_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional current_state_relative_valuation contract verbatim.
+
+    Canonical location: tickers[ticker].current_state_relative_valuation -- the exact
+    dict stock-core-private/current_state_relative_valuation.py's
+    evaluate_current_state_relative_valuation() returns, plus the bundle-level "status"
+    field export_ai_bundle.py's attach layer adds (available / not_qualified). Current
+    market cap/P-E/P-B/P-S/EV/EV-Sales/EV-EBITDA from the qualified DNSE current-state
+    price times official-evidence current shares outstanding, against already-qualified
+    historical financial denominators -- every method explicitly carries
+    as_of_semantics="current_market_price_on_qualified_historical_fundamentals", never
+    "TTM"/"forward"/"current earnings", and is_actionable is always False. Distinct from
+    the pre-existing tickers[ticker].relative_valuation (historical point-in-time
+    multiples, passed through separately by apply_bundle_relative_valuation_contract)
+    and from tickers[ticker].ticker_capability_matrix.market_actionable.current_valuation
+    (an unrelated, market-wide generic capability-status slot) -- this function never
+    reads either and never merges them. The field stays opt-in at the Producer builder
+    level (export_ai_bundle.py defaults it off), so this is legacy-compatible by
+    construction: absent in every bundle that did not request it, and this function
+    simply returns None until it exists. This function never recomputes a price, a
+    share count, or a multiple, and never converts a comparability verdict into a
+    cheap/expensive, buy/sell, or target-price conclusion -- it is a byte-identical
+    pass-through, same as every other contract in this module. Missing input remains
+    missing; malformed input fails closed locally without touching any other context
+    field."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_state_relative_valuation") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    structurally_valid = (
+        isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("is_actionable") is False
+        and isinstance(raw.get("methods"), Mapping)
+        and all(
+            isinstance(method, Mapping) and method.get("is_actionable") is False
+            for method in raw["methods"].values()
+        )
+    )
+    if not structurally_valid:
+        return {
+            "status": "malformed",
+            "warnings": ["current_state_relative_valuation contract is malformed."],
+            "is_actionable": False,
+            "methods": {},
+            "historical_comparison": {"status": "incomparable", "reasons": ["malformed_producer_contract"], "comparisons": {}},
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_state_relative_valuation_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_state_relative_valuation_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_state_relative_valuation"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "current_state_relative_valuation",
+            "transformation": "Pass through the Producer's current-state relative valuation contract verbatim (current market cap/P-E/P-B/P-S/EV/EV-Sales/EV-EBITDA from a qualified current price times official-evidence current shares, against qualified historical financial denominators). Consumer does not recompute a price, a share count, a multiple, or a comparability verdict.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-current-state-relative-valuation).",
+                "Every method mixes a current market price with an older qualified financial period; none of them is a TTM, forward, or current-earnings valuation.",
+                "A metric with state != \"available\" carries no numeric value; an unqualified current-share or current-price leg blocks every method, never a partial/fabricated one.",
+                "historical_comparison is \"comparable\" only when the Producer explicitly marks both sides compatible; otherwise it is \"incomparable\" with reasons, never inferred as a change.",
+                "is_actionable is always false; no target price, recommendation, or cheap/expensive conclusion is produced by this contract.",
+            ],
+        })
+    return context
+
+
 def fundamental_quality_evidence_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
     """Pass through the optional Phase 6A fundamental_quality_evidence contract verbatim.
 
@@ -2785,6 +2851,7 @@ def build_context_package(
     apply_bundle_foreign_flow_contract(context, bundle_payload)
     apply_bundle_current_state_market_risk_contract(context, bundle_payload)
     apply_bundle_current_state_price_analytics_contract(context, bundle_payload)
+    apply_bundle_current_state_relative_valuation_contract(context, bundle_payload)
     apply_bundle_fundamental_quality_evidence_contract(context, bundle_payload)
     apply_bundle_canonical_financial_facts_contract(context, bundle_payload)
     apply_bundle_historical_capital_structure_contract(context, bundle_payload)
