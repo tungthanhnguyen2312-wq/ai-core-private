@@ -1396,6 +1396,66 @@ def apply_bundle_qualified_research_brief_contract(context: dict[str, Any], bund
     return context
 
 
+QUALIFIED_RESEARCH_SNAPSHOT_V2_SCHEMA_VERSIONS = frozenset({"2.0.0", "2.1.0"})
+
+
+def qualified_research_snapshot_v2_contract(bundle: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Return the Producer-owned universe snapshot without recomputing any verdict.
+
+    This is a bundle-level contract rather than a per-ticker calculation.  Every Consumer
+    context therefore retains the exact same ordered snapshot, identity, and statuses so a
+    downstream reader cannot mistake a filtered per-ticker projection for the source record.
+    """
+    raw = (bundle or {}).get("qualified_research_snapshot_v2") if isinstance(bundle, Mapping) else None
+    if raw is None:
+        return None
+    required = {"schema_version", "snapshot_id", "identity", "tickers", "historical_only", "is_actionable"}
+    valid = (
+        isinstance(raw, Mapping)
+        and required <= set(raw)
+        and raw.get("schema_version") in QUALIFIED_RESEARCH_SNAPSHOT_V2_SCHEMA_VERSIONS
+        and isinstance(raw.get("snapshot_id"), str)
+        and isinstance(raw.get("identity"), Mapping)
+        and isinstance(raw.get("tickers"), list)
+        and raw.get("historical_only") is True
+        and raw.get("is_actionable") is False
+    )
+    if valid:
+        valid = all(
+            isinstance(row, Mapping)
+            and isinstance(row.get("ticker"), str)
+            and isinstance(row.get("research_status"), str)
+            and isinstance(row.get("reason_codes"), list)
+            and isinstance(row.get("analysis_states"), Mapping)
+            for row in raw["tickers"]
+        )
+    if valid:
+        return copy.deepcopy(dict(raw))
+    return {
+        "status": "malformed",
+        "historical_only": True,
+        "is_actionable": False,
+        "reason_codes": ["qualified_research_snapshot_v2_malformed"],
+    }
+
+
+def apply_bundle_qualified_research_snapshot_v2_contract(
+    context: dict[str, Any], bundle: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """Pass through the complete immutable v2 snapshot, or retain its absence for legacy bundles."""
+    value = qualified_research_snapshot_v2_contract(bundle)
+    if value is None:
+        return context
+    context["qualified_research_snapshot_v2"] = value
+    context.setdefault("provenance", []).append({
+        "source_file": "analysis_bundle.json",
+        "source_dataset": "qualified_research_snapshot_v2",
+        "transformation": "Verbatim Producer production-universe snapshot; Consumer performs no snapshot, capability, market, valuation, or event recomputation.",
+        "limitations": ["Historical-only and non-actionable; no raw/PIT price, volume/liquidity value, target price, probability, or corporate-action fact is inferred."],
+    })
+    return context
+
+
 def apply_bundle_qualified_cohort_comparison_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Pass through the fixed qualified-cohort comparison without any comparison logic.
 
@@ -2859,6 +2919,7 @@ def build_context_package(
     apply_bundle_historical_decision_analysis_contract(context, bundle_payload)
     apply_bundle_portfolio_risk_analysis_contract(context, bundle_payload)
     apply_bundle_qualified_research_brief_contract(context, bundle_payload)
+    apply_bundle_qualified_research_snapshot_v2_contract(context, bundle_payload)
     apply_bundle_qualified_cohort_comparison_contract(context, bundle_payload)
     apply_bundle_qualified_research_delta_contract(context, bundle_payload)
     apply_bundle_qualified_research_change_events_contract(context, bundle_payload)
