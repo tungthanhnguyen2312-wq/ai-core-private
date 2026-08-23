@@ -42,6 +42,13 @@ def test_strategy_fit_requires_declared_non_actionable_strategy_statuses():
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
 
 
+def test_optional_portfolio_envelope_is_non_actionable_and_fail_closed():
+    raw = _raw(); raw["portfolio_risk"] = {"contract_version": "current_portfolio_risk_envelope/v1", "portfolio_id": "DEMONSTRATION_ONLY", "is_actionable": False, "position_sizing_status": "BLOCKED", "blocked_risk_dimensions": {"VaR": {"status": "BLOCKED"}}}
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["portfolio_risk"]["portfolio_id"] == "DEMONSTRATION_ONLY"
+    raw["portfolio_risk"]["position_sizing_status"] = "READY"
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
+
+
 def test_invalid_claim_or_human_review_boundary_fails_closed():
     raw = _raw(); raw["thesis_counter_thesis"]["thesis"][0]["type"] = "BUY"
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
