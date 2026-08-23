@@ -2151,6 +2151,7 @@ def current_daily_decision_research_contract(bundle: Mapping[str, Any] | None, t
         and isinstance(state, Mapping) and state.get("is_actionable") is False and state.get("requires_human_review") is True
         and state.get("position_sizing_status") == "NOT_EVALUATED" and isinstance(state.get("entry_action"), (str, type(None)))
         and isinstance(raw.get("peer_context"), Mapping) and isinstance(raw.get("fundamental_context"), Mapping) and isinstance(raw.get("valuation_context"), Mapping)
+        and ("corporate_intelligence_context" not in raw or (isinstance(raw.get("corporate_intelligence_context"), Mapping) and raw["corporate_intelligence_context"].get("is_actionable") is False and isinstance(raw["corporate_intelligence_context"].get("confirmed"), list) and isinstance(raw["corporate_intelligence_context"].get("planned_or_pending"), list)))
         and isinstance(scenario, Mapping) and scenario.get("probability_status") == "UNKNOWN_UNCALIBRATED"
         and all(isinstance(scenario.get(name), Mapping) for name in ("bear_case", "base_case", "bull_case"))
         and isinstance(claims, Mapping) and all(isinstance(claims.get(name), list) for name in ("thesis", "counter_thesis", "questions_to_verify"))

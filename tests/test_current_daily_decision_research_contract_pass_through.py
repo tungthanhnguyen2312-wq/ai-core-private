@@ -28,6 +28,13 @@ def test_daily_card_passes_through_with_tactical_and_unknown_probability_boundar
     assert context["current_daily_decision_research"]["scenario"]["probability_status"] == "UNKNOWN_UNCALIBRATED"
 
 
+def test_corporate_context_must_preserve_non_actionable_verified_lists():
+    raw = _raw(); raw["corporate_intelligence_context"] = {"status": "CURRENT_INTELLIGENCE_AVAILABLE", "confirmed": [], "planned_or_pending": [], "is_actionable": False}
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["corporate_intelligence_context"]["status"] == "CURRENT_INTELLIGENCE_AVAILABLE"
+    raw["corporate_intelligence_context"]["is_actionable"] = True
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
+
+
 def test_invalid_claim_or_human_review_boundary_fails_closed():
     raw = _raw(); raw["thesis_counter_thesis"]["thesis"][0]["type"] = "BUY"
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
