@@ -1896,6 +1896,112 @@ def apply_bundle_market_wide_current_fundamental_research_contract(context: dict
     return context
 
 
+_WATCHLIST_TACTICAL_ENTRY_CLASSIFIER_STATUSES = {"classified", "insufficient_data"}
+_WATCHLIST_TACTICAL_ENTRY_STATES = {
+    "DOWNTREND", "SELLING_PRESSURE_EASING", "EARLY_REVERSAL_CANDIDATE", "BASE_BUILDING",
+    "SIDEWAYS_NEUTRAL", "BREAKOUT_READY", "UPTREND_CONFIRMED", "DISTRIBUTION_RISK", "BREAKDOWN_RISK",
+}
+_WATCHLIST_TACTICAL_ACTIONS = {
+    "EARLY_ENTRY", "BUY_ON_CONFIRMATION", "ACCUMULATE_IN_BASE", "HOLD_DO_NOT_ADD", "WAIT", "AVOID", "REDUCE_EXIT",
+}
+
+
+def _watchlist_tactical_entry_classifier_valid(raw: Any, *, ticker: str) -> bool:
+    if not isinstance(raw, Mapping):
+        return False
+    if not (
+        raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and raw.get("status") in _WATCHLIST_TACTICAL_ENTRY_CLASSIFIER_STATUSES
+        and isinstance(raw.get("market_state"), str)
+        and isinstance(raw.get("ticker_structure_state"), str)
+        and isinstance(raw.get("evidence_for"), list)
+        and isinstance(raw.get("evidence_against"), list)
+        and isinstance(raw.get("data_quality"), Mapping)
+        and isinstance(raw.get("action"), str)
+        and raw["action"] in _WATCHLIST_TACTICAL_ACTIONS
+        and isinstance(raw.get("is_full_position_ready"), bool)
+        and isinstance(raw.get("fundamental_context"), Mapping)
+    ):
+        return False
+    if raw["status"] == "classified":
+        if not (
+            raw.get("entry_state") in _WATCHLIST_TACTICAL_ENTRY_STATES
+            and isinstance(raw.get("confirmation_trigger"), str) and raw["confirmation_trigger"]
+            and isinstance(raw.get("invalidation"), str) and raw["invalidation"]
+            and isinstance(raw.get("horizon"), str)
+        ):
+            return False
+        # Structural enforcement of this milestone's own boundary: EARLY_ENTRY/ACCUMULATE_IN_BASE
+        # must never carry is_full_position_ready=true (Producer already guarantees this; Consumer
+        # revalidates rather than trusting it blindly).
+        if raw["action"] in ("EARLY_ENTRY", "ACCUMULATE_IN_BASE") and raw["is_full_position_ready"] is not False:
+            return False
+    else:
+        if raw.get("entry_state") is not None or raw.get("horizon") is not None or raw.get("is_full_position_ready") is not False:
+            return False
+    return True
+
+
+def watchlist_tactical_entry_classifier_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional watchlist_tactical_entry_classifier contract verbatim.
+
+    Canonical location: tickers[ticker].watchlist_tactical_entry_classifier -- the exact per-ticker
+    record from stock-core-private's retained watchlist_tactical_entry_classifier artifact
+    (tools/run_watchlist_tactical_entry_classifier.py), plus the bundle-level
+    "state_taxonomy"/"action_taxonomy"/"action_by_entry_state"/"blocked_outputs"/"status"/
+    "is_actionable" convenience fields export_ai_bundle.py's attach layer adds.
+
+    A deterministic nine-state tactical entry classification (`entry_state`) built only from
+    already-computed market_wide_current_descriptive_research/current_market_screening_
+    opportunity_comparison_foundation/market_wide_current_fundamental_research lanes -- Consumer
+    performs no recomputation of any technical feature, screening flag, percentile/bucket,
+    fundamental tier, market_state, entry_state, action, evidence, confirmation_trigger,
+    invalidation, horizon, or is_full_position_ready. `action` is a fixed nine-to-seven lookup from
+    `entry_state`, never an independently-derived recommendation. `is_full_position_ready` is
+    revalidated (never just trusted) to be `False` whenever `action` is `EARLY_ENTRY` or
+    `ACCUMULATE_IN_BASE` -- this is how "EARLY_ENTRY must never imply a full-size position" stays
+    binding even if a malformed or tampered bundle ever violated it upstream.
+
+    A ticker outside the retained artifact's universe is a separate case: the key is absent from
+    the bundle entry entirely, so this function returns None (never a synthesized record). The
+    field stays opt-in at the Producer builder level (export_ai_bundle.py defaults it off).
+    Malformed/tampered input fails closed locally to an explicit malformed record, never silently
+    upgraded or dropped.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("watchlist_tactical_entry_classifier") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not _watchlist_tactical_entry_classifier_valid(raw, ticker=ticker):
+        return {
+            "status": "malformed", "entry_state": None, "action": "WAIT", "is_actionable": False,
+            "is_full_position_ready": False, "reason_codes": ["watchlist_tactical_entry_classifier_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_watchlist_tactical_entry_classifier_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = watchlist_tactical_entry_classifier_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["watchlist_tactical_entry_classifier"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "watchlist_tactical_entry_classifier",
+            "transformation": "Pass through the Producer's deterministic nine-state tactical entry classification verbatim: market_state, ticker_structure_state, entry_state, action, evidence_for/against, confirmation_trigger, invalidation, data_quality, horizon, and is_full_position_ready. Consumer performs no recomputation of any technical feature, screening flag, fundamental tier, or tactical classification.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-watchlist-tactical-entry-classifier).",
+                "Descriptive tactical classification for human review only: is_actionable=false and requires_human_review=true always; never an execution instruction, order, or automated trade signal.",
+                "EARLY_ENTRY and ACCUMULATE_IN_BASE actions never carry is_full_position_ready=true; a full-size position is possible only under BUY_ON_CONFIRMATION (entry_state=BREAKOUT_READY) with eligible liquidity, OFFICIAL_QUALIFIED fundamental readiness, and a market backdrop that is not broadly risk-off.",
+                "No fabricated probability, target price, expected-return figure, or portfolio-sizing formula exists anywhere in this lane.",
+                "entry_state never asserts a confirmed bottom or top; EARLY_REVERSAL_CANDIDATE and BASE_BUILDING are early/base language only, carrying stricter invalidation than a confirmed-trend state.",
+                "market_state is contemporaneous breadth/regime context shared by every ticker in the same build; it is never a market forecast, timing call, or a gate that overrides a ticker's own entry_state.",
+                "Missing or BLOCKED fundamental-tier context narrows horizon toward the shortest tier and lowers data_quality.confidence; it does not by itself force a WAIT action when tactical evidence is otherwise sufficient.",
+                "A ticker outside the retained artifact's universe has no key at all here, distinct from an in-universe insufficient_data record.",
+            ],
+        })
+    return context
+
+
 def apply_bundle_ticker_capability_matrix_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Preserve the Producer's P1.5 capability projection without interpretation.
 
@@ -3317,6 +3423,7 @@ def build_context_package(
     apply_bundle_market_wide_current_liquidity_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
+    apply_bundle_watchlist_tactical_entry_classifier_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
