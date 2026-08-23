@@ -43,11 +43,21 @@ class WatchlistTacticalEntryClassifierAiPromptContractTests(unittest.TestCase):
         self.assertIn('never carry `is_full_position_ready=true` under any circumstance', PROMPT)
         self.assertIn("do not describe either action as appropriate for a full-size position", PROMPT)
 
-    def test_full_position_ready_gate_conditions_stated(self):
-        self.assertIn('`action="BUY_ON_CONFIRMATION"` (`entry_state="BREAKOUT_READY"`)', PROMPT)
-        self.assertIn("eligible liquidity", PROMPT)
-        self.assertIn("`OFFICIAL_QUALIFIED` fundamental readiness", PROMPT)
-        self.assertIn("non-risk-off market backdrop", PROMPT)
+    def test_full_position_ready_is_unconditional_not_gate_conditions(self):
+        """2026-08-23 closeout correction: position sizing is not implemented, so
+        is_full_position_ready is unconditionally false/NOT_EVALUATED for every ticker -- there is
+        no longer a conditional gate (liquidity/fundamental/market-backdrop) under which it can
+        ever become true, for BREAKOUT_READY or any other entry_state."""
+        self.assertIn('`is_full_position_ready` is unconditionally `false`', PROMPT)
+        self.assertIn('`position_sizing_status` is unconditionally `"NOT_EVALUATED"`', PROMPT)
+        self.assertIn("neither does any other state", PROMPT)
+
+    def test_entry_action_is_primary_and_excludes_hold_and_reduce(self):
+        self.assertIn("`entry_action`", PROMPT)
+        self.assertIn("is the PRIMARY field for whether to enter", PROMPT)
+        self.assertIn("never returns `HOLD_DO_NOT_ADD` or `REDUCE_EXIT`", PROMPT)
+        self.assertIn("SECONDARY, position-management-conditional", PROMPT)
+        self.assertIn("never use `action` to answer whether to enter a ticker whose holdings are unknown or zero", PROMPT)
 
     def test_missing_fundamental_narrows_not_forces_wait(self):
         self.assertIn("`NOT_IN_FUNDAMENTAL_COHORT`", PROMPT)
@@ -65,6 +75,12 @@ class WatchlistTacticalEntryClassifierAiPromptContractTests(unittest.TestCase):
         self.assertIn("fabricating a probability of success, a target price, an expected return, or a position-size/share-count figure", PROMPT)
         self.assertIn("treating `watchlist_tactical_entry_classifier.market_state` as a market forecast or timing call", PROMPT)
         self.assertIn("treating `watchlist_tactical_entry_classifier`'s output as an automated trade signal, order, or execution instruction", PROMPT)
+
+    def test_prohibited_claims_cover_action_entry_action_conflation_and_sizing(self):
+        """2026-08-23 closeout correction: two new prohibited-claims items guard the entry/
+        position-management split and the unconditional non-readiness of full-position sizing."""
+        self.assertIn("treating `action`'s `HOLD_DO_NOT_ADD` or `REDUCE_EXIT` value as an answer to whether to enter a ticker when it is not known whether the user currently holds it", PROMPT)
+        self.assertIn("claiming or implying `is_full_position_ready=true`, or any other full or complete position-sizing readiness, for any ticker", PROMPT)
 
 
 if __name__ == "__main__":

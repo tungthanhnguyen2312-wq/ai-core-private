@@ -103,6 +103,11 @@ class FrozenTimeProducerConsumerEndToEndTests(unittest.TestCase):
         self.assertEqual(producer_side, result)
         self.assertEqual(result["entry_state"], "UPTREND_CONFIRMED")
         self.assertEqual(result["action"], "HOLD_DO_NOT_ADD")
+        # 2026-08-23 closeout correction: entry_action (primary, "should I enter") must never be
+        # HOLD_DO_NOT_ADD -- that verb presupposes a position this classifier cannot confirm VNM's
+        # reader actually holds. UPTREND_CONFIRMED has no fresh low-risk entry trigger today, so
+        # the honest primary answer is WAIT, not the position-management-flavored action value.
+        self.assertEqual(result["entry_action"], "WAIT")
 
     def test_real_taxonomy_tables_travel_with_every_ticker(self):
         from builders import build_ticker_context as consumer
@@ -113,14 +118,30 @@ class FrozenTimeProducerConsumerEndToEndTests(unittest.TestCase):
         self.assertEqual(len(result["state_taxonomy"]), 9)
         self.assertEqual(len(result["action_taxonomy"]), 7)
         self.assertEqual(set(result["action_by_entry_state"]), set(result["state_taxonomy"]))
+        self.assertEqual(len(result["entry_action_taxonomy"]), 5)
+        self.assertEqual(set(result["entry_action_by_entry_state"]), set(result["state_taxonomy"]))
 
-    def test_real_full_position_ready_is_never_true_for_early_entry_or_accumulate(self):
-        """Real-data proof (not just synthetic) that the structural gate holds across the entire
-        real retained 1,683-candidate universe, not merely the 11-ticker production cohort."""
+    def test_real_full_position_ready_is_never_true_for_any_ticker(self):
+        """Real-data proof (not just synthetic) that is_full_position_ready is unconditionally
+        False and position_sizing_status is unconditionally NOT_EVALUATED across the entire real
+        retained 1,683-candidate universe (2026-08-23 closeout correction: position sizing is not
+        implemented, so this is no longer conditional on BREAKOUT_READY/liquidity/fundamental/
+        market-state -- it holds for every record without exception)."""
         artifact = self.producer_bundle.load_watchlist_tactical_entry_classifier_artifact(_ARTIFACT_PATH)
         offending = [
             ticker for ticker, record in artifact["records"].items()
-            if record["action"] in ("EARLY_ENTRY", "ACCUMULATE_IN_BASE") and record["is_full_position_ready"] is True
+            if record["is_full_position_ready"] is True or record["position_sizing_status"] != "NOT_EVALUATED"
+        ]
+        self.assertEqual(offending, [])
+        self.assertEqual(artifact["coverage"]["full_position_ready_count"], 0)
+
+    def test_real_entry_action_never_hold_or_reduce_across_full_universe(self):
+        """Real-data proof that entry_action (the primary should-I-enter field) never carries
+        HOLD_DO_NOT_ADD or REDUCE_EXIT across the entire real retained universe."""
+        artifact = self.producer_bundle.load_watchlist_tactical_entry_classifier_artifact(_ARTIFACT_PATH)
+        offending = [
+            ticker for ticker, record in artifact["records"].items()
+            if record["entry_action"] in ("HOLD_DO_NOT_ADD", "REDUCE_EXIT")
         ]
         self.assertEqual(offending, [])
 

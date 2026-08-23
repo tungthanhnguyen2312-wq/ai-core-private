@@ -1904,6 +1904,12 @@ _WATCHLIST_TACTICAL_ENTRY_STATES = {
 _WATCHLIST_TACTICAL_ACTIONS = {
     "EARLY_ENTRY", "BUY_ON_CONFIRMATION", "ACCUMULATE_IN_BASE", "HOLD_DO_NOT_ADD", "WAIT", "AVOID", "REDUCE_EXIT",
 }
+# PRIMARY field for "should I enter" -- deliberately excludes HOLD_DO_NOT_ADD/REDUCE_EXIT, which
+# presuppose a position this pipeline has no holdings input to confirm (2026-08-23 closeout
+# correction: see watchlist_tactical_entry_classifier.py's module docstring in stock-core-private).
+_WATCHLIST_TACTICAL_ENTRY_ACTIONS = {
+    "EARLY_ENTRY", "BUY_ON_CONFIRMATION", "ACCUMULATE_IN_BASE", "WAIT", "AVOID",
+}
 
 
 def _watchlist_tactical_entry_classifier_valid(raw: Any, *, ticker: str) -> bool:
@@ -1920,7 +1926,10 @@ def _watchlist_tactical_entry_classifier_valid(raw: Any, *, ticker: str) -> bool
         and isinstance(raw.get("data_quality"), Mapping)
         and isinstance(raw.get("action"), str)
         and raw["action"] in _WATCHLIST_TACTICAL_ACTIONS
-        and isinstance(raw.get("is_full_position_ready"), bool)
+        and isinstance(raw.get("entry_action"), str)
+        and raw["entry_action"] in _WATCHLIST_TACTICAL_ENTRY_ACTIONS
+        and raw.get("is_full_position_ready") is False
+        and raw.get("position_sizing_status") == "NOT_EVALUATED"
         and isinstance(raw.get("fundamental_context"), Mapping)
     ):
         return False
@@ -1932,13 +1941,8 @@ def _watchlist_tactical_entry_classifier_valid(raw: Any, *, ticker: str) -> bool
             and isinstance(raw.get("horizon"), str)
         ):
             return False
-        # Structural enforcement of this milestone's own boundary: EARLY_ENTRY/ACCUMULATE_IN_BASE
-        # must never carry is_full_position_ready=true (Producer already guarantees this; Consumer
-        # revalidates rather than trusting it blindly).
-        if raw["action"] in ("EARLY_ENTRY", "ACCUMULATE_IN_BASE") and raw["is_full_position_ready"] is not False:
-            return False
     else:
-        if raw.get("entry_state") is not None or raw.get("horizon") is not None or raw.get("is_full_position_ready") is not False:
+        if raw.get("entry_state") is not None or raw.get("horizon") is not None:
             return False
     return True
 
@@ -1956,12 +1960,18 @@ def watchlist_tactical_entry_classifier_contract(bundle: Mapping[str, Any] | Non
     already-computed market_wide_current_descriptive_research/current_market_screening_
     opportunity_comparison_foundation/market_wide_current_fundamental_research lanes -- Consumer
     performs no recomputation of any technical feature, screening flag, percentile/bucket,
-    fundamental tier, market_state, entry_state, action, evidence, confirmation_trigger,
-    invalidation, horizon, or is_full_position_ready. `action` is a fixed nine-to-seven lookup from
-    `entry_state`, never an independently-derived recommendation. `is_full_position_ready` is
-    revalidated (never just trusted) to be `False` whenever `action` is `EARLY_ENTRY` or
-    `ACCUMULATE_IN_BASE` -- this is how "EARLY_ENTRY must never imply a full-size position" stays
-    binding even if a malformed or tampered bundle ever violated it upstream.
+    fundamental tier, market_state, entry_state, action, entry_action, evidence,
+    confirmation_trigger, invalidation, horizon, or is_full_position_ready. Two separate action
+    fields travel with every record (2026-08-23 closeout correction, deliberately not conflated):
+    `entry_action` is the PRIMARY field answering "should I enter" (fixed nine-to-five lookup,
+    never `HOLD_DO_NOT_ADD`/`REDUCE_EXIT` since those presuppose a position this pipeline has no
+    holdings input to confirm); `action` is a SECONDARY, position-management-conditional field
+    (fixed nine-to-seven lookup) only meaningful if the reader already holds the ticker. Both are
+    independently-derived-recommendation-free fixed lookups from `entry_state`.
+    `is_full_position_ready` is revalidated (never just trusted) to be unconditionally `False` for
+    every record, and `position_sizing_status` to be unconditionally `"NOT_EVALUATED"` -- position
+    sizing is not implemented anywhere in this pipeline, so no record may ever claim full-position
+    readiness, regardless of `entry_state`/`entry_action`/`action`.
 
     A ticker outside the retained artifact's universe is a separate case: the key is absent from
     the bundle entry entirely, so this function returns None (never a synthesized record). The
@@ -1975,8 +1985,9 @@ def watchlist_tactical_entry_classifier_contract(bundle: Mapping[str, Any] | Non
         return None
     if not _watchlist_tactical_entry_classifier_valid(raw, ticker=ticker):
         return {
-            "status": "malformed", "entry_state": None, "action": "WAIT", "is_actionable": False,
-            "is_full_position_ready": False, "reason_codes": ["watchlist_tactical_entry_classifier_malformed"],
+            "status": "malformed", "entry_state": None, "action": "WAIT", "entry_action": "WAIT",
+            "is_actionable": False, "is_full_position_ready": False, "position_sizing_status": "NOT_EVALUATED",
+            "reason_codes": ["watchlist_tactical_entry_classifier_malformed"],
         }
     return copy.deepcopy(dict(raw))
 
@@ -1987,11 +1998,12 @@ def apply_bundle_watchlist_tactical_entry_classifier_contract(context: dict[str,
         context["watchlist_tactical_entry_classifier"] = contract
         context.setdefault("provenance", []).append({
             "source_file": "analysis_bundle.json", "source_dataset": "watchlist_tactical_entry_classifier",
-            "transformation": "Pass through the Producer's deterministic nine-state tactical entry classification verbatim: market_state, ticker_structure_state, entry_state, action, evidence_for/against, confirmation_trigger, invalidation, data_quality, horizon, and is_full_position_ready. Consumer performs no recomputation of any technical feature, screening flag, fundamental tier, or tactical classification.",
+            "transformation": "Pass through the Producer's deterministic nine-state tactical entry classification verbatim: market_state, ticker_structure_state, entry_state, entry_action, action, evidence_for/against, confirmation_trigger, invalidation, data_quality, horizon, is_full_position_ready, and position_sizing_status. Consumer performs no recomputation of any technical feature, screening flag, fundamental tier, or tactical classification.",
             "limitations": [
                 "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-watchlist-tactical-entry-classifier).",
                 "Descriptive tactical classification for human review only: is_actionable=false and requires_human_review=true always; never an execution instruction, order, or automated trade signal.",
-                "EARLY_ENTRY and ACCUMULATE_IN_BASE actions never carry is_full_position_ready=true; a full-size position is possible only under BUY_ON_CONFIRMATION (entry_state=BREAKOUT_READY) with eligible liquidity, OFFICIAL_QUALIFIED fundamental readiness, and a market backdrop that is not broadly risk-off.",
+                "entry_action is the primary field for 'should I enter' and never carries HOLD_DO_NOT_ADD/REDUCE_EXIT; action is secondary, position-management-conditional guidance only meaningful if the reader already holds the ticker -- never use action to decide whether to enter when holdings are unknown.",
+                "is_full_position_ready is unconditionally false and position_sizing_status is unconditionally NOT_EVALUATED for every ticker; position sizing is not implemented anywhere in this pipeline and no record may ever claim full-position readiness.",
                 "No fabricated probability, target price, expected-return figure, or portfolio-sizing formula exists anywhere in this lane.",
                 "entry_state never asserts a confirmed bottom or top; EARLY_REVERSAL_CANDIDATE and BASE_BUILDING are early/base language only, carrying stricter invalidation than a confirmed-trend state.",
                 "market_state is contemporaneous breadth/regime context shared by every ticker in the same build; it is never a market forecast, timing call, or a gate that overrides a ticker's own entry_state.",
