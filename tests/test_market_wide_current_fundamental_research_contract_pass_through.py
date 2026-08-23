@@ -336,6 +336,27 @@ class VerbatimPassThrough(unittest.TestCase):
         self.assertEqual("PROVIDER_RESEARCH", result["authority_tier"])
         self.assertNotIn("metrics", result)
 
+    def test_provider_trajectory_context_passes_through_verbatim_without_tier_upgrade(self) -> None:
+        trajectory = {
+            "version": "market_wide_fundamental_trajectory_context/v1", "trajectory_status": "AVAILABLE",
+            "authority_tier": "PROVIDER_RESEARCH", "entity_class": "corporate",
+            "revenue_direction": "EXPANDING", "revenue_growth_basis": {"comparison_type": "QoQ"},
+            "earnings_direction": None, "earnings_growth_basis": None,
+            "revenue_vs_earnings_alignment": {"status": "PARTIAL"},
+            "assets_direction": "INCREASED", "equity_direction": "INCREASED",
+            "balance_sheet_expansion_pattern": {"status": "ASSETS_AND_EQUITY_EXPANDING"},
+            "operating_cash_flow_direction": None, "period_coverage": {"income_trajectory_available": True},
+            "multi_dimensional_trajectory": True, "acceleration": {"status": "UNAVAILABLE"},
+            "official_metric_context": None, "data_limitations": ["provider_research_only"],
+            "unavailable_or_partial_reasons": ["ONLY_ONE_INCOME_DIMENSION_QOQ_AVAILABLE"],
+        }
+        raw = {**_REAL_AAA_RECORD, "fundamental_trajectory_context": trajectory}
+        ctx = {"ticker": "AAA", "provenance": []}
+        b.apply_bundle_market_wide_current_fundamental_research_contract(ctx, _bundle("AAA", raw))
+        result = ctx["market_wide_current_fundamental_research"]
+        self.assertEqual(trajectory, result["fundamental_trajectory_context"])
+        self.assertEqual("PROVIDER_RESEARCH", result["authority_tier"])
+
     def test_blocked_no_source_passes_through_not_treated_as_malformed(self) -> None:
         ctx = {"ticker": "CCS", "provenance": []}
         b.apply_bundle_market_wide_current_fundamental_research_contract(ctx, _bundle("CCS", _REAL_CCS_RECORD))

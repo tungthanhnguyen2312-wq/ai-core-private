@@ -1812,6 +1812,44 @@ def apply_bundle_market_wide_current_descriptive_research_contract(context: dict
 _MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_TIERS = {"OFFICIAL_QUALIFIED", "PROVIDER_RESEARCH", "BLOCKED"}
 _MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_STATUSES = {"official_qualified", "provider_research", "blocked"}
 _MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_READINESS_STATES = {"READY", "PARTIAL", "BLOCKED"}
+_FUNDAMENTAL_TRAJECTORY_STATUSES = {"AVAILABLE", "UNAVAILABLE", "OFFICIAL_METRIC_CONTEXT_ONLY"}
+
+
+def _valid_fundamental_trajectory_context(raw: Mapping[str, Any], tier: str) -> bool:
+    """Validate the optional additive trajectory envelope without deriving or scoring it.
+
+    Older retained artifacts legitimately omit this field.  When present, it must remain tied to
+    the Producer's tier and keep its descriptive/non-actionable shape before Consumer passes it
+    through verbatim.
+    """
+    context = raw.get("fundamental_trajectory_context")
+    if context is None:
+        return True
+    if not isinstance(context, Mapping):
+        return False
+    if (context.get("authority_tier") != tier
+            or context.get("trajectory_status") not in _FUNDAMENTAL_TRAJECTORY_STATUSES
+            or not isinstance(context.get("entity_class"), str)
+            or not isinstance(context.get("data_limitations"), list)
+            or not isinstance(context.get("period_coverage"), Mapping)
+            or not isinstance(context.get("revenue_vs_earnings_alignment"), Mapping)
+            or not isinstance(context.get("balance_sheet_expansion_pattern"), Mapping)
+            or not isinstance(context.get("acceleration"), Mapping)
+            or any(key in context for key in ("score", "ranking", "recommendation", "target_price", "probability"))):
+        return False
+    if tier == "PROVIDER_RESEARCH":
+        return (
+            context.get("trajectory_status") in {"AVAILABLE", "UNAVAILABLE"}
+            and context.get("official_metric_context") is None
+            and isinstance(context.get("multi_dimensional_trajectory"), bool)
+            and isinstance(context.get("unavailable_or_partial_reasons"), list)
+        )
+    if tier == "OFFICIAL_QUALIFIED":
+        return (
+            context.get("trajectory_status") == "OFFICIAL_METRIC_CONTEXT_ONLY"
+            and isinstance(context.get("official_metric_context"), Mapping)
+        )
+    return context.get("trajectory_status") == "UNAVAILABLE"
 
 
 def market_wide_current_fundamental_research_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
@@ -1861,6 +1899,7 @@ def market_wide_current_fundamental_research_contract(bundle: Mapping[str, Any] 
             and isinstance(raw.get("metric_family_states"), Mapping)
             and raw.get("fundamental_research_readiness") in _MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_READINESS_STATES
             and isinstance(raw.get("entity_class"), str)
+            and _valid_fundamental_trajectory_context(raw, tier)
         )
     elif structurally_valid:
         # PROVIDER_RESEARCH or BLOCKED: provider series remains descriptive-only. A retained
@@ -1916,6 +1955,7 @@ def market_wide_current_fundamental_research_contract(bundle: Mapping[str, Any] 
             and isinstance(raw.get("forbidden_uses"), list)
             and "metrics" not in raw
             and trends_valid
+            and _valid_fundamental_trajectory_context(raw, tier)
         )
     else:
         valid = False
