@@ -49,6 +49,13 @@ def test_optional_portfolio_envelope_is_non_actionable_and_fail_closed():
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
 
 
+def test_optional_macro_context_is_descriptive_and_fail_closed():
+    raw = _raw(); raw["macro_context"] = {"status": "UNAVAILABLE", "reason": "NOT_KNOWN_BY_SESSION", "is_actionable": False}
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["macro_context"]["status"] == "UNAVAILABLE"
+    raw["macro_context"]["is_actionable"] = True
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
+
+
 def test_invalid_claim_or_human_review_boundary_fails_closed():
     raw = _raw(); raw["thesis_counter_thesis"]["thesis"][0]["type"] = "BUY"
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
