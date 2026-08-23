@@ -1506,6 +1506,91 @@ def apply_bundle_qualified_market_observations_contract(context: dict[str, Any],
     return context
 
 
+_MARKET_WIDE_CURRENT_LIQUIDITY_RESEARCH_DISPOSITIONS = {
+    "CURRENT_SESSION_DESCRIPTIVE_ELIGIBLE", "INCOMPLETE", "MISSING", "PROVIDER_REJECTED", "MALFORMED",
+}
+
+
+def market_wide_current_liquidity_research_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional market_wide_current_liquidity_research contract verbatim.
+
+    Canonical location: tickers[ticker].market_wide_current_liquidity_research -- the exact
+    per-ticker record from stock-core-private's retained market_wide_current_liquidity_research
+    artifact (tools/run_market_wide_current_liquidity_research.py), plus the bundle-level
+    "status"/"is_actionable"/"reconciliation_verdict" convenience fields
+    export_ai_bundle.py's attach layer adds. Current-session (never historical, never
+    point-in-time) DNSE board composition across G1 (matched round lot) / G4 (matched odd lot)
+    / T1,T3 (put-through round lot) / T4,T6 (put-through odd lot), the G1x10-vs-OHLC-v
+    reconciliation verdict, and the liquidity_research_contract authority-boundary matrix.
+    Consumer performs no recomputation: it never derives a traded value, turnover, ADTV, ADV,
+    position size, or execution capacity from grossTradeAmount or any other field here, and
+    never coerces a non-EXACT_MATCH g1_v_reconciliation.verdict (e.g. SHB's 4-unit residual)
+    toward EXACT_MATCH.
+
+    The four Producer dispositions (CURRENT_SESSION_DESCRIPTIVE_ELIGIBLE / INCOMPLETE / MISSING
+    / PROVIDER_REJECTED), plus the Producer's own MALFORMED disposition, stay distinct and are
+    reused verbatim -- this function invents no new vocabulary for them. A ticker outside the
+    retained artifact's universe is a fifth, separate case: the key is absent from the bundle
+    entry entirely, so this function returns None (never a synthesized MISSING/zero-filled
+    record). The field stays opt-in at the Producer builder level (export_ai_bundle.py defaults
+    it off), so this is legacy-compatible by construction: absent in every bundle that did not
+    request it. Malformed/tampered input (wrong ticker, an actionable flag flipped true, an
+    unknown status/disposition, or an "available" record missing its required reconciliation/
+    contract fields) fails closed locally to an explicit malformed record, never silently
+    upgraded or dropped.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("market_wide_current_liquidity_research") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    structurally_valid = (
+        isinstance(raw, Mapping)
+        and raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and raw.get("status") in {"available", "not_available"}
+        and raw.get("disposition") in _MARKET_WIDE_CURRENT_LIQUIDITY_RESEARCH_DISPOSITIONS
+    )
+    # An "available" record additionally carries the full current-session evidence; every other
+    # status is a valid, non-malformed Producer answer on its own (MISSING/INCOMPLETE/
+    # PROVIDER_REJECTED/MALFORMED never carry board_composition -- nothing to widen from).
+    valid = structurally_valid and (
+        raw.get("status") != "available"
+        or (
+            raw.get("disposition") == "CURRENT_SESSION_DESCRIPTIVE_ELIGIBLE"
+            and isinstance(raw.get("board_composition"), Mapping)
+            and isinstance(raw.get("g1_v_reconciliation"), Mapping)
+            and "verdict" in raw["g1_v_reconciliation"]
+            and isinstance(raw.get("liquidity_research_contract"), Mapping)
+            and "CURRENT_SESSION_LIQUIDITY_RESEARCH" in raw["liquidity_research_contract"]
+            and raw.get("current_ohlc_v") is not None
+        )
+    )
+    if not valid:
+        return {
+            "status": "malformed", "disposition": "MALFORMED", "is_actionable": False,
+            "reason_codes": ["market_wide_current_liquidity_research_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_market_wide_current_liquidity_research_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = market_wide_current_liquidity_research_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["market_wide_current_liquidity_research"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "market_wide_current_liquidity_research",
+            "transformation": "Pass through the Producer's current-session DNSE board-composition and G1x10-vs-OHLC-v reconciliation contract verbatim. Consumer performs no recomputation of board composition, reconciliation, traded value, turnover, ADTV, ADV, position sizing, or execution capacity.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-market-wide-current-liquidity-research).",
+                "CURRENT_SESSION / DESCRIPTIVE_ONLY: never historical liquidity, ADV/ADTV, position sizing, execution capacity, PIT/backtest, or RAW_AS_TRADED authority.",
+                "grossTradeAmount remains non-authoritative; no traded value, turnover, or ADTV is inferred from it here or upstream.",
+                "A non-EXACT_MATCH g1_v_reconciliation.verdict (e.g. SHB's 4-unit residual) is preserved verbatim as an explicit warning, never coerced, upgraded, or hidden.",
+                "A ticker outside the retained artifact's universe has no key at all here, distinct from an in-universe MISSING/INCOMPLETE/PROVIDER_REJECTED record.",
+            ],
+        })
+    return context
+
+
 def apply_bundle_ticker_capability_matrix_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Preserve the Producer's P1.5 capability projection without interpretation.
 
@@ -2924,6 +3009,7 @@ def build_context_package(
     apply_bundle_qualified_research_delta_contract(context, bundle_payload)
     apply_bundle_qualified_research_change_events_contract(context, bundle_payload)
     apply_bundle_qualified_market_observations_contract(context, bundle_payload)
+    apply_bundle_market_wide_current_liquidity_research_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
