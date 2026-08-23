@@ -1985,6 +1985,46 @@ def apply_bundle_market_wide_current_fundamental_research_contract(context: dict
     return context
 
 
+def market_wide_current_valuation_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Validate and pass through the Producer's current-only valuation snapshot.
+
+    The Consumer deliberately accepts only the bounded, non-actionable envelope;
+    it never recomputes values or upgrades stale shares/provider fundamentals.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("market_wide_current_valuation") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    valid = (
+        isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("status") == "current_valuation_snapshot"
+        and raw.get("is_actionable") is False and isinstance(raw.get("entity_class"), str)
+        and isinstance(raw.get("price_input"), Mapping) and isinstance(raw.get("share_basis_input"), Mapping)
+        and isinstance(raw.get("financial_input"), Mapping) and isinstance(raw.get("metrics"), Mapping)
+        and all(
+            isinstance(metric, Mapping) and metric.get("status") in {"READY", "BLOCKED", "NOT_APPLICABLE"}
+            and ((metric.get("status") == "READY" and isinstance(metric.get("value"), (int, float)))
+                 or (metric.get("status") != "READY" and metric.get("value") is None))
+            for metric in raw["metrics"].values()
+        )
+    )
+    if not valid:
+        return {"status": "malformed", "is_actionable": False,
+                "reason_codes": ["market_wide_current_valuation_malformed"]}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_market_wide_current_valuation_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = market_wide_current_valuation_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["market_wide_current_valuation"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "market_wide_current_valuation",
+            "transformation": "Pass through Producer current valuation inputs, applicability, authority tiers, and blocked reasons verbatim.",
+            "limitations": ["Current snapshot only; never historical PIT or RAW_AS_TRADED.", "No target price, ranking, recommendation, sizing, or portfolio instruction.", "Consumer does not upgrade share or financial authority."],
+        })
+    return context
+
+
 _WATCHLIST_TACTICAL_ENTRY_CLASSIFIER_STATUSES = {"classified", "insufficient_data"}
 _WATCHLIST_TACTICAL_ENTRY_STATES = {
     "DOWNTREND", "SELLING_PRESSURE_EASING", "EARLY_REVERSAL_CANDIDATE", "BASE_BUILDING",
@@ -3524,6 +3564,7 @@ def build_context_package(
     apply_bundle_market_wide_current_liquidity_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
+    apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_watchlist_tactical_entry_classifier_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
