@@ -2094,6 +2094,48 @@ def apply_bundle_sector_aware_relative_research_contract(context: dict[str, Any]
     return context
 
 
+_CURRENT_EVIDENCE_SCENARIO_DISPOSITIONS = {"SCENARIO_READY", "SCENARIO_PARTIAL", "SCENARIO_INSUFFICIENT_DATA", "SCENARIO_NOT_APPLICABLE"}
+
+
+def current_evidence_bound_scenario_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Validate the additive current scenario envelope without interpreting a case."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_evidence_bound_scenario") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    cases = {name: raw.get(name + "_case") for name in ("bear", "base", "bull")} if isinstance(raw, Mapping) else {}
+    def valid_case(name: str, case: Any) -> bool:
+        return (isinstance(case, Mapping) and isinstance(case.get("case_id"), str)
+                and case.get("probability_status") == "UNKNOWN_UNCALIBRATED"
+                and case.get("case_status") in {"CONDITIONAL", "INSUFFICIENT_EVIDENCE"}
+                and isinstance(case.get("data_gaps"), list) and isinstance(case.get("authority_limitations"), list)
+                and ((name == "base" and isinstance(case.get("continuation_conditions"), list)
+                     and isinstance(case.get("transition_to_bull_conditions"), list)
+                     and isinstance(case.get("transition_to_bear_conditions"), list))
+                     or (name != "base" and isinstance(case.get("required_confirmations"), list)
+                         and "invalidation" in case and isinstance(case.get("counter_evidence"), list))))
+    valid = (
+        isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("is_actionable") is False
+        and isinstance(raw.get("source_artifact_identity"), str) and raw["source_artifact_identity"].startswith("current_evidence_bound_scenario:")
+        and isinstance(raw.get("source_session"), str) and raw.get("scenario_disposition") in _CURRENT_EVIDENCE_SCENARIO_DISPOSITIONS
+        and raw.get("probability_status") == "UNKNOWN_UNCALIBRATED" and isinstance(raw.get("scenario_drivers"), Mapping)
+        and all(valid_case(name, case) for name, case in cases.items())
+        and isinstance(raw.get("authority_boundary"), Mapping) and raw["authority_boundary"].get("probabilities") == "UNKNOWN_UNCALIBRATED"
+        and isinstance(raw.get("authority_limitations"), list)
+    )
+    if not valid:
+        return {"status": "malformed", "is_actionable": False, "reason_codes": ["current_evidence_bound_scenario_malformed"]}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_evidence_bound_scenario_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_evidence_bound_scenario_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_evidence_bound_scenario"] = contract
+        context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "current_evidence_bound_scenario", "transformation": "Pass through Producer conditional Bear/Base/Bull cases verbatim; Consumer creates no scenario, probability, target, score, or recommendation.", "limitations": ["Base is a current-continuation reference, not most likely.", "Probability is UNKNOWN_UNCALIBRATED.", "AI must not convert a conditional case into a prediction or investment instruction."]})
+    return context
+
+
 _WATCHLIST_TACTICAL_ENTRY_CLASSIFIER_STATUSES = {"classified", "insufficient_data"}
 _WATCHLIST_TACTICAL_ENTRY_STATES = {
     "DOWNTREND", "SELLING_PRESSURE_EASING", "EARLY_REVERSAL_CANDIDATE", "BASE_BUILDING",
@@ -3635,6 +3677,7 @@ def build_context_package(
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_sector_aware_relative_research_contract(context, bundle_payload)
+    apply_bundle_current_evidence_bound_scenario_contract(context, bundle_payload)
     apply_bundle_watchlist_tactical_entry_classifier_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
