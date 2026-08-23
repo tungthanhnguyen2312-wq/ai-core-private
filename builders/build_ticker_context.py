@@ -1995,6 +1995,20 @@ def market_wide_current_valuation_contract(bundle: Mapping[str, Any] | None, tic
     raw = entry.get("market_wide_current_valuation") if isinstance(entry, Mapping) else None
     if raw is None:
         return None
+    shadow = raw.get("shadow_proxy_valuation") if isinstance(raw, Mapping) else None
+    shadow_valid = shadow is None or (
+        isinstance(shadow, Mapping) and shadow.get("share_basis_type") == "PROVIDER_ISSUED_SHARE_PROXY"
+        and shadow.get("authority_tier") == "SHADOW_RESEARCH_ONLY" and shadow.get("is_actionable") is False
+        and isinstance(shadow.get("source_observation"), Mapping) and isinstance(shadow.get("metrics"), Mapping)
+        and "COMMON_SHARES_OUTSTANDING" in set(shadow.get("forbidden_uses") or [])
+        and all(
+            isinstance(metric, Mapping) and metric.get("status") in {"SHADOW_PROXY_READY", "BLOCKED", "NOT_APPLICABLE"}
+            and "SHADOW" in set(metric.get("labels") or []) and "NON_AUTHORITATIVE" in set(metric.get("labels") or [])
+            and ((metric.get("status") == "SHADOW_PROXY_READY" and isinstance(metric.get("value"), (int, float)))
+                 or (metric.get("status") != "SHADOW_PROXY_READY" and metric.get("value") is None))
+            for metric in shadow["metrics"].values()
+        )
+    )
     valid = (
         isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("status") == "current_valuation_snapshot"
         and raw.get("is_actionable") is False and isinstance(raw.get("entity_class"), str)
@@ -2006,6 +2020,7 @@ def market_wide_current_valuation_contract(bundle: Mapping[str, Any] | None, tic
                  or (metric.get("status") != "READY" and metric.get("value") is None))
             for metric in raw["metrics"].values()
         )
+        and shadow_valid
     )
     if not valid:
         return {"status": "malformed", "is_actionable": False,
