@@ -35,6 +35,13 @@ def test_corporate_context_must_preserve_non_actionable_verified_lists():
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
 
 
+def test_strategy_fit_requires_declared_non_actionable_strategy_statuses():
+    raw = _raw(); raw["strategy_fit"] = {"status": "SINGLE_STRATEGY_ELIGIBLE", "eligible_strategy_ids": ["BREAKOUT"], "strategies": [{"strategy_id": "BREAKOUT", "status": "ELIGIBLE"}], "is_actionable": False}
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["strategy_fit"]["strategies"][0]["strategy_id"] == "BREAKOUT"
+    raw["strategy_fit"]["strategies"][0]["status"] = "BUY"
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
+
+
 def test_invalid_claim_or_human_review_boundary_fails_closed():
     raw = _raw(); raw["thesis_counter_thesis"]["thesis"][0]["type"] = "BUY"
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
