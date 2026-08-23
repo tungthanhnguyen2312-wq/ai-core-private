@@ -2040,6 +2040,60 @@ def apply_bundle_market_wide_current_valuation_contract(context: dict[str, Any],
     return context
 
 
+_SECTOR_AWARE_EXPECTATIONS = {
+    "MARKET_AND_FUNDAMENTALS_ALIGNED_POSITIVE", "MARKET_AND_FUNDAMENTALS_ALIGNED_NEGATIVE",
+    "MARKET_STRENGTH_AHEAD_OF_FUNDAMENTALS", "FUNDAMENTALS_AHEAD_OF_MARKET",
+    "TECHNICAL_RECOVERY_WITH_FUNDAMENTAL_UNCERTAINTY", "MIXED_OR_INSUFFICIENT_EVIDENCE",
+}
+_SECTOR_AWARE_MEMBERSHIP_LEVELS = {"QUALIFIED_ENTITY_CLASS", "RETAINED_PROVIDER_DESCRIPTIVE_INDUSTRY", "INSUFFICIENT"}
+_SECTOR_AWARE_TECHNICAL_STATUSES = {"AVAILABLE", "INSUFFICIENT_COHORT_OR_METRIC_UNAVAILABLE"}
+_SECTOR_AWARE_FUNDAMENTAL_STATUSES = {"AVAILABLE", "UNAVAILABLE", "INSUFFICIENT_COHORT"}
+
+
+def sector_aware_relative_research_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail-closed, verbatim Producer contract; Consumer never reclassifies peers."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("sector_aware_relative_research") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    membership = raw.get("peer_membership") if isinstance(raw, Mapping) else None
+    technical = raw.get("technical_peer_context") if isinstance(raw, Mapping) else None
+    fundamental = raw.get("fundamental_peer_context") if isinstance(raw, Mapping) else None
+    valuation = raw.get("valuation_peer_context") if isinstance(raw, Mapping) else None
+    expectation = raw.get("expectations_context") if isinstance(raw, Mapping) else None
+    boundary = raw.get("authority_boundary") if isinstance(raw, Mapping) else None
+    valid = (
+        isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("is_actionable") is False
+        and isinstance(raw.get("source_artifact_identity"), str) and raw["source_artifact_identity"].startswith("sector_aware_relative_research:")
+        and isinstance(raw.get("source_session"), str) and isinstance(raw.get("coverage"), Mapping)
+        and isinstance(membership, Mapping) and isinstance(membership.get("entity_class"), str)
+        and isinstance(membership.get("peer_group_id"), str) and isinstance(membership.get("peer_group_label"), str)
+        and membership.get("peer_group_level") in _SECTOR_AWARE_MEMBERSHIP_LEVELS
+        and membership.get("status") in {"AVAILABLE", "INSUFFICIENT_COHORT"} and isinstance(membership.get("member_count"), int)
+        and isinstance(technical, Mapping) and technical.get("status") in _SECTOR_AWARE_TECHNICAL_STATUSES and isinstance(technical.get("eligible_count"), int) and isinstance(technical.get("metrics"), Mapping)
+        and isinstance(fundamental, Mapping) and fundamental.get("status") in _SECTOR_AWARE_FUNDAMENTAL_STATUSES and isinstance(fundamental.get("dimensions"), Mapping)
+        and isinstance(valuation, Mapping) and valuation.get("status") == "VALUATION_PEER_CONTEXT_UNAVAILABLE" and valuation.get("eligible_count") == 0
+        and isinstance(expectation, Mapping) and expectation.get("state") in _SECTOR_AWARE_EXPECTATIONS and expectation.get("descriptive_only") is True
+        and isinstance(raw.get("data_gaps"), list) and isinstance(raw.get("authority_limitations"), list)
+        and isinstance(boundary, Mapping) and boundary.get("recommendation") is False and boundary.get("ranking") is False
+    )
+    if not valid:
+        return {"status": "malformed", "is_actionable": False, "reason_codes": ["sector_aware_relative_research_malformed"]}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_sector_aware_relative_research_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = sector_aware_relative_research_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["sector_aware_relative_research"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "sector_aware_relative_research",
+            "transformation": "Pass through Producer peer membership, retained comparison coverage, factual relative context, and expectations state verbatim; Consumer performs no peer selection, score, classification, or valuation computation.",
+            "limitations": ["Descriptive-only and opt-in.", "No ranking, recommendation, target, probability, alpha, sizing, or valuation-peer claim.", "A malformed Producer record fails closed and is not reinterpreted by the Consumer."],
+        })
+    return context
+
+
 _WATCHLIST_TACTICAL_ENTRY_CLASSIFIER_STATUSES = {"classified", "insufficient_data"}
 _WATCHLIST_TACTICAL_ENTRY_STATES = {
     "DOWNTREND", "SELLING_PRESSURE_EASING", "EARLY_REVERSAL_CANDIDATE", "BASE_BUILDING",
@@ -3580,6 +3634,7 @@ def build_context_package(
     apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
+    apply_bundle_sector_aware_relative_research_contract(context, bundle_payload)
     apply_bundle_watchlist_tactical_entry_classifier_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
