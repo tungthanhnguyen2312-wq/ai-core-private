@@ -416,6 +416,7 @@ class NeverWidensAProducerVerdict(unittest.TestCase):
             "metrics": {
                 "revenue_growth": {
                     "ticker": "AAA", "metric_id": "revenue_growth", "metric_family": "revenue",
+                    "metric_family_classification": "PERIOD_FLOW", "period_basis": [],
                     "method": "same_provider_consecutive_quarter_provider_series_trend/v1",
                     "authority_tier": "PROVIDER_RESEARCH", "status": "AVAILABLE", "provider": "VCI",
                     "periods": ["2025-Q4", "2026-Q1"], "growth_fraction": 0.1,

@@ -1883,6 +1883,8 @@ def market_wide_current_fundamental_research_contract(bundle: Mapping[str, Any] 
                 and isinstance(metric.get("lineage"), list)
                 and isinstance(metric.get("data_limitations"), list)
                 and isinstance(metric.get("comparability_scope"), str)
+                and metric.get("metric_family_classification") in {"POINT_IN_TIME_STOCK", "PERIOD_FLOW"}
+                and isinstance(metric.get("period_basis"), list)
                 and "blocked_reason" in metric
                 and "value" not in metric
                 and "absolute_value" not in metric
