@@ -1809,6 +1809,93 @@ def apply_bundle_market_wide_current_descriptive_research_contract(context: dict
     return context
 
 
+_MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_TIERS = {"OFFICIAL_QUALIFIED", "PROVIDER_RESEARCH", "BLOCKED"}
+_MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_STATUSES = {"official_qualified", "provider_research", "blocked"}
+_MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_READINESS_STATES = {"READY", "PARTIAL", "BLOCKED"}
+
+
+def market_wide_current_fundamental_research_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional market_wide_current_fundamental_research contract verbatim.
+
+    Canonical location: tickers[ticker].market_wide_current_fundamental_research -- the exact
+    per-ticker record from stock-core-private's retained
+    market_wide_current_fundamental_research artifact
+    (tools/run_market_wide_current_fundamental_research.py), plus the bundle-level
+    "status"/"is_actionable"/"source_artifact_identity"/"coverage" convenience fields
+    export_ai_bundle.py's attach layer adds.
+
+    Two authority tiers, never conflated: `OFFICIAL_QUALIFIED` (13 issuers today) carries the
+    full per-metric lineage, periods used, sector-specific applicability
+    (NOT_APPLICABLE industrial metrics on bank/securities issuers preserved verbatim), and
+    fundamental_research_readiness; `PROVIDER_RESEARCH` and `BLOCKED` (the remaining ~510
+    candidates) carry only retained-provider statement-family presence, a blocked reason, and an
+    allowed/forbidden-use list -- zero computed metric values, since scope/currency/scale remain
+    UNKNOWN by design. Consumer performs no recomputation of any metric, and never upgrades a
+    PROVIDER_RESEARCH/BLOCKED ticker toward OFFICIAL_QUALIFIED or a MISSING/BLOCKED/NOT_APPLICABLE
+    metric toward EXACT_QUALIFIED/DERIVED_PROXY.
+
+    A ticker outside the retained artifact's universe is a separate case from an in-universe
+    BLOCKED record: the key is absent from the bundle entry entirely, so this function returns
+    None (never a synthesized record). The field stays opt-in at the Producer builder level
+    (export_ai_bundle.py defaults it off). Malformed/tampered input fails closed locally to an
+    explicit malformed record, never silently upgraded or dropped.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("market_wide_current_fundamental_research") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    tier = raw.get("authority_tier") if isinstance(raw, Mapping) else None
+    structurally_valid = (
+        isinstance(raw, Mapping)
+        and raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and raw.get("status") in _MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_STATUSES
+        and tier in _MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_TIERS
+        and isinstance(raw.get("sector"), str)
+    )
+    if structurally_valid and tier == "OFFICIAL_QUALIFIED":
+        valid = (
+            isinstance(raw.get("metrics"), list)
+            and isinstance(raw.get("metric_family_states"), Mapping)
+            and raw.get("fundamental_research_readiness") in _MARKET_WIDE_CURRENT_FUNDAMENTAL_RESEARCH_READINESS_STATES
+            and isinstance(raw.get("entity_class"), str)
+        )
+    elif structurally_valid:
+        # PROVIDER_RESEARCH or BLOCKED: descriptive-only, zero metric values by contract.
+        valid = (
+            isinstance(raw.get("disposition"), str)
+            and isinstance(raw.get("allowed_uses"), list)
+            and isinstance(raw.get("forbidden_uses"), list)
+            and "metrics" not in raw
+        )
+    else:
+        valid = False
+    if not valid:
+        return {
+            "status": "malformed", "authority_tier": "MALFORMED", "is_actionable": False,
+            "reason_codes": ["market_wide_current_fundamental_research_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_market_wide_current_fundamental_research_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = market_wide_current_fundamental_research_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["market_wide_current_fundamental_research"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "market_wide_current_fundamental_research",
+            "transformation": "Pass through the Producer's market-wide fundamental-research coverage contract verbatim: the officially-qualified per-metric lineage for OFFICIAL_QUALIFIED issuers, or the provider-tier disposition/blocked reason and allowed/forbidden-use list for PROVIDER_RESEARCH/BLOCKED candidates. Consumer performs no recomputation of any metric value, growth rate, ratio, or sector applicability gate.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-market-wide-current-fundamental-research).",
+                "OFFICIAL_QUALIFIED issuers are a small, evidence-constrained cohort (13 today); PROVIDER_RESEARCH/BLOCKED tickers carry zero computed metric values because statement scope, currency, and unit scale remain UNKNOWN by design -- never silently promoted to calculation-grade authority.",
+                "A NOT_APPLICABLE metric on a bank/securities issuer (e.g. debt_to_equity on VCB) is preserved verbatim; never treated as missing or as zero.",
+                "Never a valuation, target price, ranking, recommendation, probability, portfolio weight, sizing, or backtest output.",
+                "A ticker outside the retained artifact's universe has no key at all here, distinct from an in-universe BLOCKED record.",
+            ],
+        })
+    return context
+
+
 def apply_bundle_ticker_capability_matrix_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Preserve the Producer's P1.5 capability projection without interpretation.
 
@@ -3229,6 +3316,7 @@ def build_context_package(
     apply_bundle_qualified_market_observations_contract(context, bundle_payload)
     apply_bundle_market_wide_current_liquidity_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
+    apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
