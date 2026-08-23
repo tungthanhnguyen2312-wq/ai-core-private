@@ -58,6 +58,16 @@ class MarketWideCurrentDescriptiveResearchAiPromptContractTests(unittest.TestCas
         self.assertIn("filling in, estimating, or treating as zero/neutral a sector whose `sector_state.status` is `UNAVAILABLE_INSUFFICIENT_COVERAGE`", PROMPT)
         self.assertIn("deriving a ranking, recommendation, probability, target price, portfolio weight, position size, or traded-value/turnover/ADV/ADTV figure from any `market_wide_current_descriptive_research` field", PROMPT)
 
+    def test_nested_screening_extension_is_descriptive_not_a_score_or_advice(self):
+        self.assertIn("optional nested `screening_comparison` extension", PROMPT)
+        self.assertIn("Screen flags are independent dimensions, never ingredients of a composite opportunity score", PROMPT)
+        self.assertIn("descriptive percentile or bucket context is not an ordinal market ranking", PROMPT)
+        self.assertIn("`screening_comparison.is_actionable=false` always", PROMPT)
+
+    def test_nested_screening_preserves_unavailable_and_shb_warning_states(self):
+        self.assertIn("The retained four insufficient sector cohorts remain unavailable", PROMPT)
+        self.assertIn('`g1_v_reconciliation_verdict="OTHER"`', PROMPT)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1601,6 +1601,12 @@ _MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_LIQUIDITY_STATUSES = {"ELIGIBLE", "UNA
 _MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_SECTOR_STATUSES = {
     "AVAILABLE", "UNAVAILABLE_INSUFFICIENT_COVERAGE", "NOT_CLASSIFIED",
 }
+_CURRENT_SCREENING_COMPARISON_SCREEN_NAMES = {
+    "TREND_AND_POSITIVE_MOMENTUM",
+    "MOMENTUM_ABOVE_COHORT_MEDIAN",
+    "RELATIVE_VOLUME_ABOVE_COHORT_MEDIAN",
+    "TECHNICAL_AND_CURRENT_DESCRIPTIVE_LIQUIDITY",
+}
 
 
 def _market_wide_current_descriptive_research_technical_features_valid(features: Any) -> bool:
@@ -1637,6 +1643,86 @@ def _market_wide_current_descriptive_research_sector_state_valid(sector_state: A
     if sector_state is None:
         return True
     return isinstance(sector_state, Mapping) and sector_state.get("status") in _MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_SECTOR_STATUSES
+
+
+def _current_screening_comparison_coverage_valid(coverage: Any, *, denominator: int, observed: int) -> bool:
+    return (
+        isinstance(coverage, Mapping)
+        and coverage.get("current_descriptive_denominator") == denominator
+        and coverage.get("observed_session_cohort") == observed
+        and isinstance(coverage.get("eligible_count"), int)
+        and isinstance(coverage.get("coverage_ratio"), (int, float))
+        and isinstance(coverage.get("session"), str)
+        and isinstance(coverage.get("source_artifact_identity"), str)
+        and isinstance(coverage.get("quality_state"), str)
+    )
+
+
+def _current_screening_comparison_valid(
+    screening: Any, *, ticker: str, market_coverage: Mapping[str, Any], source_artifact_identity: Any,
+) -> bool:
+    """Validate the optional nested screening extension without recalculating it.
+
+    The Consumer accepts only the Producer's deterministic descriptive flags and comparison
+    context.  A missing extension remains compatible with earlier opt-in bundles; a supplied
+    malformed extension makes the enclosing contract fail closed rather than dropping its
+    coverage, warning, or blocked-output semantics.
+    """
+    if not isinstance(screening, Mapping):
+        return False
+    denominator = market_coverage.get("current_active_equity_denominator")
+    observed = market_coverage.get("observed_session_cohort")
+    if not isinstance(denominator, int) or not isinstance(observed, int):
+        return False
+    disclosure = screening.get("coverage_disclosure")
+    ticker_context = screening.get("ticker_context")
+    if not (
+        isinstance(screening.get("artifact_identity"), str)
+        and isinstance(screening.get("source_lineage"), Mapping)
+        and isinstance(source_artifact_identity, str)
+        and screening["source_lineage"].get("current_descriptive_artifact_identity") == source_artifact_identity
+        and isinstance(screening.get("session"), str)
+        and isinstance(disclosure, Mapping)
+        and disclosure.get("denominator") == denominator
+        and disclosure.get("observed_session_cohort") == observed
+        and isinstance(screening.get("screen_definitions"), Mapping)
+        and set(screening["screen_definitions"]) == _CURRENT_SCREENING_COMPARISON_SCREEN_NAMES
+        and isinstance(screening.get("screen_membership_counts"), Mapping)
+        and set(screening["screen_membership_counts"]) == _CURRENT_SCREENING_COMPARISON_SCREEN_NAMES
+        and all(isinstance(value, int) for value in screening["screen_membership_counts"].values())
+        and isinstance(screening.get("market_relative_comparison_summary"), Mapping)
+        and isinstance(screening.get("sector_relative_comparison_summary"), Mapping)
+        and isinstance(screening.get("quality_warnings"), list)
+        and isinstance(screening.get("blocked_outputs"), Mapping)
+        and isinstance(screening.get("authority_boundary"), Mapping)
+        and screening.get("is_actionable") is False
+        and isinstance(ticker_context, Mapping)
+        and ticker_context.get("ticker") == ticker
+        and _current_screening_comparison_coverage_valid(
+            ticker_context.get("coverage_context"), denominator=denominator, observed=observed,
+        )
+    ):
+        return False
+    memberships = ticker_context.get("screen_membership")
+    if not isinstance(memberships, Mapping) or set(memberships) != _CURRENT_SCREENING_COMPARISON_SCREEN_NAMES:
+        return False
+    for membership in memberships.values():
+        if not (
+            isinstance(membership, Mapping)
+            and membership.get("status") in {"ELIGIBLE", "UNAVAILABLE"}
+            and (membership.get("member") is True or membership.get("member") is False or membership.get("member") is None)
+            and _current_screening_comparison_coverage_valid(
+                membership.get("coverage"), denominator=denominator, observed=observed,
+            )
+        ):
+            return False
+    for comparison_key in ("market_relative_comparison", "sector_relative_comparison", "liquidity_context"):
+        comparison = ticker_context.get(comparison_key)
+        if not isinstance(comparison, Mapping) or comparison.get("status") not in {"AVAILABLE", "ELIGIBLE", "UNAVAILABLE"}:
+            return False
+        if not _current_screening_comparison_coverage_valid(comparison.get("coverage"), denominator=denominator, observed=observed):
+            return False
+    return True
 
 
 def market_wide_current_descriptive_research_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
@@ -1688,6 +1774,10 @@ def market_wide_current_descriptive_research_contract(bundle: Mapping[str, Any] 
         and isinstance(raw["market_coverage"].get("current_active_equity_denominator"), int)
         and isinstance(raw["market_coverage"].get("observed_session_cohort"), int)
         and isinstance(raw.get("blocked_outputs"), Mapping)
+        and ("screening_comparison" not in raw or _current_screening_comparison_valid(
+            raw.get("screening_comparison"), ticker=ticker, market_coverage=raw["market_coverage"],
+            source_artifact_identity=raw.get("source_artifact_identity"),
+        ))
     )
     if not valid:
         return {
@@ -1703,7 +1793,7 @@ def apply_bundle_market_wide_current_descriptive_research_contract(context: dict
         context["market_wide_current_descriptive_research"] = contract
         context.setdefault("provenance", []).append({
             "source_file": "analysis_bundle.json", "source_dataset": "market_wide_current_descriptive_research",
-            "transformation": "Pass through the Producer's current-session market-wide breadth/sector/cross-sectional-technical-feature/liquidity research contract verbatim. Consumer performs no recomputation of breadth, sector cohorts, technical features, liquidity, traded value, turnover, ADTV, ADV, position sizing, or execution capacity.",
+            "transformation": "Pass through the Producer's current-session market-wide breadth/sector/cross-sectional-technical-feature/liquidity research contract verbatim, including an optional nested deterministic screening/comparison extension. Consumer performs no recomputation of breadth, sector cohorts, technical features, screening flags, relative positions, liquidity, traded value, turnover, ADTV, ADV, position sizing, or execution capacity.",
             "limitations": [
                 "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-market-wide-current-descriptive-research).",
                 "CURRENT_SESSION / DESCRIPTIVE_ONLY: never historical PIT, RAW_AS_TRADED, corporate-action/ex-date, backtesting, active-universe promotion, ranking, recommendation, valuation, ADV/ADTV, sizing, or execution authority (see blocked_outputs).",
@@ -1712,6 +1802,7 @@ def apply_bundle_market_wide_current_descriptive_research_contract(context: dict
                 "sector_state.status = UNAVAILABLE_INSUFFICIENT_COVERAGE is preserved verbatim; never filled in, estimated, or treated as zero/neutral.",
                 "A non-EXACT_MATCH liquidity.g1_v_reconciliation.verdict (e.g. SHB's 4-unit residual) is preserved verbatim as an explicit warning, never coerced, upgraded, or hidden.",
                 "grossTradeAmount remains non-authoritative; no traded value, turnover, or ADTV is inferred from it here or upstream.",
+                "screening_comparison, when explicitly requested upstream, contains independent deterministic descriptive flags and market/sector-relative percentile or bucket context only: never a composite score, ordinal ranking, recommendation, forecast, valuation, probability, portfolio, sizing, or execution output.",
                 "A ticker outside the retained artifact's universe has no key at all here, distinct from an in-universe not_available record.",
             ],
         })
