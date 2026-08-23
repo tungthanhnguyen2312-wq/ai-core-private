@@ -417,10 +417,15 @@ class NeverWidensAProducerVerdict(unittest.TestCase):
                 "revenue_growth": {
                     "ticker": "AAA", "metric_id": "revenue_growth", "metric_family": "revenue",
                     "metric_family_classification": "PERIOD_FLOW", "period_basis": [],
-                    "method": "same_provider_consecutive_quarter_provider_series_trend/v1",
+                    "method": "same_provider_comparable_quarter_provider_series_trend/v2",
                     "authority_tier": "PROVIDER_RESEARCH", "status": "AVAILABLE", "provider": "VCI",
                     "periods": ["2025-Q4", "2026-Q1"], "growth_fraction": 0.1,
                     "lineage": [{"fact_id": "a"}, {"fact_id": "b"}],
+                    "comparisons": {"qoq": {
+                        "comparison_type": "QoQ", "status": "AVAILABLE", "provider": "VCI",
+                        "periods": ["2025-Q4", "2026-Q1"], "lineage": [{"fact_id": "a"}, {"fact_id": "b"}],
+                        "period_basis": [], "growth_fraction": 0.1, "blocked_reason": None,
+                    }},
                     "data_limitations": ["provider_scoped_research_only_not_official_qualified"],
                     "comparability_scope": "same_ticker_same_provider_same_canonical_metric_consecutive_quarterly_periods_only",
                     "blocked_reason": None,

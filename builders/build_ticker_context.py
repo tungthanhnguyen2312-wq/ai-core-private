@@ -1888,6 +1888,25 @@ def market_wide_current_fundamental_research_contract(bundle: Mapping[str, Any] 
                 and "blocked_reason" in metric
                 and "value" not in metric
                 and "absolute_value" not in metric
+                and (
+                    "comparisons" not in metric
+                    or (
+                        isinstance(metric.get("comparisons"), Mapping)
+                        and all(
+                            isinstance(comparison, Mapping)
+                            and comparison.get("comparison_type") in {"QoQ", "YoY"}
+                            and comparison.get("status") in {"AVAILABLE", "BLOCKED"}
+                            and isinstance(comparison.get("provider"), (str, type(None)))
+                            and isinstance(comparison.get("periods"), list)
+                            and isinstance(comparison.get("lineage"), list)
+                            and isinstance(comparison.get("period_basis"), list)
+                            and "blocked_reason" in comparison
+                            and "value" not in comparison
+                            and "absolute_value" not in comparison
+                            for comparison in metric["comparisons"].values()
+                        )
+                    )
+                )
                 for metric in trends["metrics"].values()
             )
         )
