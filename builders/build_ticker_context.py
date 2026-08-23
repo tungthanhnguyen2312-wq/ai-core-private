@@ -1828,9 +1828,11 @@ def market_wide_current_fundamental_research_contract(bundle: Mapping[str, Any] 
     full per-metric lineage, periods used, sector-specific applicability
     (NOT_APPLICABLE industrial metrics on bank/securities issuers preserved verbatim), and
     fundamental_research_readiness; `PROVIDER_RESEARCH` and `BLOCKED` (the remaining ~510
-    candidates) carry only retained-provider statement-family presence, a blocked reason, and an
-    allowed/forbidden-use list -- zero computed metric values, since scope/currency/scale remain
-    UNKNOWN by design. Consumer performs no recomputation of any metric, and never upgrades a
+    candidates) carry retained-provider statement-family presence, a blocked reason, and an
+    allowed/forbidden-use list. When present, `provider_series_trends` contains only
+    same-ticker/same-provider/consecutive-quarter trend rates or directions, never an absolute
+    financial fact; scope/currency/scale remain UNKNOWN by design. Consumer performs no
+    recomputation of any metric, and never upgrades a
     PROVIDER_RESEARCH/BLOCKED ticker toward OFFICIAL_QUALIFIED or a MISSING/BLOCKED/NOT_APPLICABLE
     metric toward EXACT_QUALIFIED/DERIVED_PROXY.
 
@@ -1861,12 +1863,38 @@ def market_wide_current_fundamental_research_contract(bundle: Mapping[str, Any] 
             and isinstance(raw.get("entity_class"), str)
         )
     elif structurally_valid:
-        # PROVIDER_RESEARCH or BLOCKED: descriptive-only, zero metric values by contract.
+        # PROVIDER_RESEARCH or BLOCKED: provider series remains descriptive-only. A retained
+        # same-provider trend envelope is allowed, but no absolute provider fact or official tier.
+        trends = raw.get("provider_series_trends")
+        trends_valid = trends is None or (
+            tier == "PROVIDER_RESEARCH"
+            and isinstance(trends, Mapping)
+            and trends.get("authority_tier") == "PROVIDER_RESEARCH"
+            and trends.get("status") in {"AVAILABLE", "BLOCKED"}
+            and isinstance(trends.get("metrics"), Mapping)
+            and all(
+                isinstance(metric, Mapping)
+                and metric.get("ticker") == ticker
+                and metric.get("authority_tier") == "PROVIDER_RESEARCH"
+                and isinstance(metric.get("provider"), (str, type(None)))
+                and isinstance(metric.get("periods"), list)
+                and isinstance(metric.get("method"), str)
+                and metric.get("status") in {"AVAILABLE", "BLOCKED"}
+                and isinstance(metric.get("lineage"), list)
+                and isinstance(metric.get("data_limitations"), list)
+                and isinstance(metric.get("comparability_scope"), str)
+                and "blocked_reason" in metric
+                and "value" not in metric
+                and "absolute_value" not in metric
+                for metric in trends["metrics"].values()
+            )
+        )
         valid = (
             isinstance(raw.get("disposition"), str)
             and isinstance(raw.get("allowed_uses"), list)
             and isinstance(raw.get("forbidden_uses"), list)
             and "metrics" not in raw
+            and trends_valid
         )
     else:
         valid = False
@@ -1884,10 +1912,10 @@ def apply_bundle_market_wide_current_fundamental_research_contract(context: dict
         context["market_wide_current_fundamental_research"] = contract
         context.setdefault("provenance", []).append({
             "source_file": "analysis_bundle.json", "source_dataset": "market_wide_current_fundamental_research",
-            "transformation": "Pass through the Producer's market-wide fundamental-research coverage contract verbatim: the officially-qualified per-metric lineage for OFFICIAL_QUALIFIED issuers, or the provider-tier disposition/blocked reason and allowed/forbidden-use list for PROVIDER_RESEARCH/BLOCKED candidates. Consumer performs no recomputation of any metric value, growth rate, ratio, or sector applicability gate.",
+            "transformation": "Pass through the Producer's market-wide fundamental-research coverage contract verbatim: the officially-qualified per-metric lineage for OFFICIAL_QUALIFIED issuers, or the provider-tier disposition/blocked reason, allowed/forbidden-use list, and already-computed same-provider series trends for PROVIDER_RESEARCH/BLOCKED candidates. Consumer performs no recomputation of any metric value, growth rate, ratio, or sector applicability gate.",
             "limitations": [
                 "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-market-wide-current-fundamental-research).",
-                "OFFICIAL_QUALIFIED issuers are a small, evidence-constrained cohort (13 today); PROVIDER_RESEARCH/BLOCKED tickers carry zero computed metric values because statement scope, currency, and unit scale remain UNKNOWN by design -- never silently promoted to calculation-grade authority.",
+                "OFFICIAL_QUALIFIED issuers are a small, evidence-constrained cohort (13 today). PROVIDER_RESEARCH may carry only same-provider consecutive-quarter trend research, with no absolute provider fact or calculation-grade authority; statement scope, currency, and unit scale remain UNKNOWN by design.",
                 "A NOT_APPLICABLE metric on a bank/securities issuer (e.g. debt_to_equity on VCB) is preserved verbatim; never treated as missing or as zero.",
                 "Never a valuation, target price, ranking, recommendation, probability, portfolio weight, sizing, or backtest output.",
                 "A ticker outside the retained artifact's universe has no key at all here, distinct from an in-universe BLOCKED record.",

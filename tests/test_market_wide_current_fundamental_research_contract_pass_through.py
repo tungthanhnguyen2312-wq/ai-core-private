@@ -410,6 +410,42 @@ class NeverWidensAProducerVerdict(unittest.TestCase):
         b.apply_bundle_market_wide_current_fundamental_research_contract(ctx, _bundle("AAA", bad))
         self.assertEqual("malformed", ctx["market_wide_current_fundamental_research"]["status"])
 
+    def test_same_provider_series_trends_pass_through_without_absolute_value(self) -> None:
+        trend = {
+            "authority_tier": "PROVIDER_RESEARCH", "status": "AVAILABLE", "usable_metric_count": 1,
+            "metrics": {
+                "revenue_growth": {
+                    "ticker": "AAA", "metric_id": "revenue_growth", "metric_family": "revenue",
+                    "method": "same_provider_consecutive_quarter_provider_series_trend/v1",
+                    "authority_tier": "PROVIDER_RESEARCH", "status": "AVAILABLE", "provider": "VCI",
+                    "periods": ["2025-Q4", "2026-Q1"], "growth_fraction": 0.1,
+                    "lineage": [{"fact_id": "a"}, {"fact_id": "b"}],
+                    "data_limitations": ["provider_scoped_research_only_not_official_qualified"],
+                    "comparability_scope": "same_ticker_same_provider_same_canonical_metric_consecutive_quarterly_periods_only",
+                    "blocked_reason": None,
+                }
+            },
+        }
+        raw = {**_REAL_AAA_RECORD, "provider_series_trends": trend}
+        ctx = {"ticker": "AAA", "provenance": []}
+        b.apply_bundle_market_wide_current_fundamental_research_contract(ctx, _bundle("AAA", raw))
+        self.assertEqual(trend, ctx["market_wide_current_fundamental_research"]["provider_series_trends"])
+
+    def test_provider_series_trend_absolute_value_is_refused(self) -> None:
+        bad = {**_REAL_AAA_RECORD, "provider_series_trends": {
+            "authority_tier": "PROVIDER_RESEARCH", "status": "AVAILABLE", "metrics": {
+                "revenue_growth": {
+                    "ticker": "AAA", "authority_tier": "PROVIDER_RESEARCH", "status": "AVAILABLE",
+                    "provider": "VCI", "periods": ["2025-Q4", "2026-Q1"], "method": "m",
+                    "lineage": [], "data_limitations": [], "comparability_scope": "same_provider_only",
+                    "blocked_reason": None, "value": 123,
+                }
+            },
+        }}
+        ctx = {"ticker": "AAA", "provenance": []}
+        b.apply_bundle_market_wide_current_fundamental_research_contract(ctx, _bundle("AAA", bad))
+        self.assertEqual("malformed", ctx["market_wide_current_fundamental_research"]["status"])
+
     def test_ticker_mismatch_is_refused(self) -> None:
         bad = {**_REAL_PNJ_RECORD, "ticker": "VNM"}
         ctx = {"ticker": "PNJ", "provenance": []}
