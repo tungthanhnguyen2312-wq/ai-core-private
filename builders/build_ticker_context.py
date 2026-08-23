@@ -1591,6 +1591,133 @@ def apply_bundle_market_wide_current_liquidity_research_contract(context: dict[s
     return context
 
 
+_MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_ACTIVITY_STATES = {
+    "ACTIVE_LISTED_OBSERVED", "ACTIVE_LISTED_NO_QUALIFIED_SESSION_OBSERVATION",
+    "INACTIVE_OR_DELISTED", "UNSUPPORTED_OR_INVALID_PROVIDER_SYMBOL",
+    "NOT_APPLICABLE_NON_EQUITY", "UNKNOWN",
+}
+_MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_TECHNICAL_STATUSES = {"SHADOW_ONLY", "MISSING", "NOT_APPLICABLE"}
+_MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_LIQUIDITY_STATUSES = {"ELIGIBLE", "UNAVAILABLE", "NOT_APPLICABLE"}
+_MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_SECTOR_STATUSES = {
+    "AVAILABLE", "UNAVAILABLE_INSUFFICIENT_COVERAGE", "NOT_CLASSIFIED",
+}
+
+
+def _market_wide_current_descriptive_research_technical_features_valid(features: Any) -> bool:
+    if not isinstance(features, Mapping):
+        return False
+    status = features.get("status")
+    if status not in _MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_TECHNICAL_STATUSES:
+        return False
+    if status != "SHADOW_ONLY":
+        return True  # MISSING / NOT_APPLICABLE carry no values -- nothing to widen from
+    return (
+        isinstance(features.get("values"), Mapping)
+        and "is_current_session" in features
+        and "feature_as_of_session" in features
+    )
+
+
+def _market_wide_current_descriptive_research_liquidity_valid(liquidity: Any) -> bool:
+    if not isinstance(liquidity, Mapping):
+        return False
+    status = liquidity.get("status")
+    if status not in _MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_LIQUIDITY_STATUSES:
+        return False
+    if status != "ELIGIBLE":
+        return True
+    return (
+        isinstance(liquidity.get("board_composition"), Mapping)
+        and isinstance(liquidity.get("g1_v_reconciliation"), Mapping)
+        and "verdict" in liquidity["g1_v_reconciliation"]
+    )
+
+
+def _market_wide_current_descriptive_research_sector_state_valid(sector_state: Any) -> bool:
+    if sector_state is None:
+        return True
+    return isinstance(sector_state, Mapping) and sector_state.get("status") in _MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_SECTOR_STATUSES
+
+
+def market_wide_current_descriptive_research_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the optional market_wide_current_descriptive_research contract verbatim.
+
+    Canonical location: tickers[ticker].market_wide_current_descriptive_research -- the exact
+    per-ticker record from stock-core-private's retained
+    market_wide_current_descriptive_research artifact
+    (tools/run_market_wide_current_descriptive_research.py), plus the bundle-level
+    "market_coverage"/"blocked_outputs"/"status"/"is_actionable" convenience fields
+    export_ai_bundle.py's attach layer adds. Current-session (never historical, never
+    point-in-time) market-wide breadth/sector/cross-sectional technical features and liquidity.
+
+    denominator=1,510 (`market_coverage.current_active_equity_denominator`) and
+    observed_session_cohort=960 (`market_coverage.observed_session_cohort`) travel with every
+    ticker so a reader of a single ticker's context still sees the full-market coverage
+    disclosure -- partial same-session coverage must never be represented as full-market
+    breadth. `technical_features.is_current_session` distinguishes a genuine same-session
+    reading from a stale prior-session value; both are legitimate Producer answers on their
+    own and neither is coerced into the other. `sector_state.status =
+    "UNAVAILABLE_INSUFFICIENT_COVERAGE"` is preserved exactly: Consumer never fills in or
+    broadens an insufficient-coverage sector. `liquidity`'s SHB-style non-EXACT_MATCH
+    `g1_v_reconciliation.verdict` is preserved exactly, never coerced toward EXACT_MATCH.
+    Consumer performs no recomputation of breadth, sector cohorts, technical features,
+    liquidity, traded value, turnover, ADTV, ADV, position sizing, or execution capacity.
+
+    A ticker outside the retained artifact's universe is a separate case: the key is absent
+    from the bundle entry entirely, so this function returns None (never a synthesized
+    not_available/zero-filled record). The field stays opt-in at the Producer builder level
+    (export_ai_bundle.py defaults it off), so this is legacy-compatible by construction.
+    Malformed/tampered input (wrong ticker, an actionable flag flipped true, an unknown
+    status/activity-state, or missing required nested structure) fails closed locally to an
+    explicit malformed record, never silently upgraded or dropped.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("market_wide_current_descriptive_research") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    valid = (
+        isinstance(raw, Mapping)
+        and raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and raw.get("status") in {"available", "not_available"}
+        and raw.get("activity_and_session_state") in _MARKET_WIDE_CURRENT_DESCRIPTIVE_RESEARCH_ACTIVITY_STATES
+        and _market_wide_current_descriptive_research_technical_features_valid(raw.get("technical_features"))
+        and _market_wide_current_descriptive_research_liquidity_valid(raw.get("liquidity"))
+        and _market_wide_current_descriptive_research_sector_state_valid(raw.get("sector_state"))
+        and isinstance(raw.get("market_coverage"), Mapping)
+        and isinstance(raw["market_coverage"].get("current_active_equity_denominator"), int)
+        and isinstance(raw["market_coverage"].get("observed_session_cohort"), int)
+        and isinstance(raw.get("blocked_outputs"), Mapping)
+    )
+    if not valid:
+        return {
+            "status": "malformed", "activity_and_session_state": "UNKNOWN", "is_actionable": False,
+            "reason_codes": ["market_wide_current_descriptive_research_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_market_wide_current_descriptive_research_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = market_wide_current_descriptive_research_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["market_wide_current_descriptive_research"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "market_wide_current_descriptive_research",
+            "transformation": "Pass through the Producer's current-session market-wide breadth/sector/cross-sectional-technical-feature/liquidity research contract verbatim. Consumer performs no recomputation of breadth, sector cohorts, technical features, liquidity, traded value, turnover, ADTV, ADV, position sizing, or execution capacity.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-market-wide-current-descriptive-research).",
+                "CURRENT_SESSION / DESCRIPTIVE_ONLY: never historical PIT, RAW_AS_TRADED, corporate-action/ex-date, backtesting, active-universe promotion, ranking, recommendation, valuation, ADV/ADTV, sizing, or execution authority (see blocked_outputs).",
+                "market_coverage.current_active_equity_denominator (1,510) and observed_session_cohort (960) must always be reported together; a same-session statistic bounded by the smaller observed/technical-feature count must never be described as covering the full denominator.",
+                "technical_features.is_current_session distinguishes a genuine same-session reading from a stale prior-session value; a stale value is reported only as of its own feature_as_of_session, never as today's.",
+                "sector_state.status = UNAVAILABLE_INSUFFICIENT_COVERAGE is preserved verbatim; never filled in, estimated, or treated as zero/neutral.",
+                "A non-EXACT_MATCH liquidity.g1_v_reconciliation.verdict (e.g. SHB's 4-unit residual) is preserved verbatim as an explicit warning, never coerced, upgraded, or hidden.",
+                "grossTradeAmount remains non-authoritative; no traded value, turnover, or ADTV is inferred from it here or upstream.",
+                "A ticker outside the retained artifact's universe has no key at all here, distinct from an in-universe not_available record.",
+            ],
+        })
+    return context
+
+
 def apply_bundle_ticker_capability_matrix_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Preserve the Producer's P1.5 capability projection without interpretation.
 
@@ -3010,6 +3137,7 @@ def build_context_package(
     apply_bundle_qualified_research_change_events_contract(context, bundle_payload)
     apply_bundle_qualified_market_observations_contract(context, bundle_payload)
     apply_bundle_market_wide_current_liquidity_research_contract(context, bundle_payload)
+    apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:
