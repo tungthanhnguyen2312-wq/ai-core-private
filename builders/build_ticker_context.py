@@ -2136,6 +2136,39 @@ def apply_bundle_current_evidence_bound_scenario_contract(context: dict[str, Any
     return context
 
 
+def current_daily_decision_research_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail closed on malformed daily product cards; do not synthesize analyst prose."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_daily_decision_research") if isinstance(entry, Mapping) else None
+    state = raw.get("current_decision_state") if isinstance(raw, Mapping) else None
+    scenario = raw.get("scenario") if isinstance(raw, Mapping) else None
+    claims = raw.get("thesis_counter_thesis") if isinstance(raw, Mapping) else None
+    valid = (
+        isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("is_actionable") is False
+        and isinstance(raw.get("source_artifact_identity"), str) and raw["source_artifact_identity"].startswith("current_daily_decision_research_product:")
+        and isinstance(raw.get("source_session"), str) and isinstance(raw.get("market_brief"), Mapping)
+        and isinstance(state, Mapping) and state.get("is_actionable") is False and state.get("requires_human_review") is True
+        and state.get("position_sizing_status") == "NOT_EVALUATED" and isinstance(state.get("entry_action"), (str, type(None)))
+        and isinstance(raw.get("peer_context"), Mapping) and isinstance(raw.get("fundamental_context"), Mapping) and isinstance(raw.get("valuation_context"), Mapping)
+        and isinstance(scenario, Mapping) and scenario.get("probability_status") == "UNKNOWN_UNCALIBRATED"
+        and all(isinstance(scenario.get(name), Mapping) for name in ("bear_case", "base_case", "bull_case"))
+        and isinstance(claims, Mapping) and all(isinstance(claims.get(name), list) for name in ("thesis", "counter_thesis", "questions_to_verify"))
+        and all(claim.get("type") in {"FACT", "INFERENCE", "DATA_GAP", "QUESTION_TO_VERIFY"} and isinstance(claim.get("evidence_field"), str) for group in claims.values() for claim in group if isinstance(claim, Mapping))
+        and isinstance(raw.get("authority_boundary"), Mapping) and raw["authority_boundary"].get("probability") == "UNKNOWN_UNCALIBRATED"
+    )
+    if not valid:
+        return {"status": "malformed", "is_actionable": False, "reason_codes": ["current_daily_decision_research_malformed"]}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_daily_decision_research_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_daily_decision_research_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_daily_decision_research"] = contract
+        context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "current_daily_decision_research_product", "transformation": "Pass through the Producer daily human-review card and cited claim categories verbatim; Consumer does not derive a new state, peer group, scenario, thesis, or recommendation.", "limitations": ["Human-review research only; entry_action remains a deterministic tactical state.", "No probability, target, expected return, ranking, recommendation, sizing, portfolio, or execution instruction."]})
+    return context
+
+
 _WATCHLIST_TACTICAL_ENTRY_CLASSIFIER_STATUSES = {"classified", "insufficient_data"}
 _WATCHLIST_TACTICAL_ENTRY_STATES = {
     "DOWNTREND", "SELLING_PRESSURE_EASING", "EARLY_REVERSAL_CANDIDATE", "BASE_BUILDING",
@@ -3678,6 +3711,7 @@ def build_context_package(
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_sector_aware_relative_research_contract(context, bundle_payload)
     apply_bundle_current_evidence_bound_scenario_contract(context, bundle_payload)
+    apply_bundle_current_daily_decision_research_contract(context, bundle_payload)
     apply_bundle_watchlist_tactical_entry_classifier_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
