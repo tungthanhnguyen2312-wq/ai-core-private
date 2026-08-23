@@ -2147,6 +2147,7 @@ def current_daily_decision_research_contract(bundle: Mapping[str, Any] | None, t
         isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("is_actionable") is False
         and isinstance(raw.get("source_artifact_identity"), str) and raw["source_artifact_identity"].startswith("current_daily_decision_research_product:")
         and isinstance(raw.get("source_session"), str) and isinstance(raw.get("market_brief"), Mapping)
+        and raw["market_brief"].get("source_market_session") == raw.get("source_session")
         and isinstance(state, Mapping) and state.get("is_actionable") is False and state.get("requires_human_review") is True
         and state.get("position_sizing_status") == "NOT_EVALUATED" and isinstance(state.get("entry_action"), (str, type(None)))
         and isinstance(raw.get("peer_context"), Mapping) and isinstance(raw.get("fundamental_context"), Mapping) and isinstance(raw.get("valuation_context"), Mapping)

@@ -33,3 +33,5 @@ def test_invalid_claim_or_human_review_boundary_fails_closed():
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
     raw = _raw(); raw["current_decision_state"]["requires_human_review"] = False
     assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
+    raw = _raw(); raw["market_brief"]["source_market_session"] = "2026-08-20"
+    assert current_daily_decision_research_contract({"tickers": {"ABB": {"current_daily_decision_research": raw}}}, "ABB")["status"] == "malformed"
