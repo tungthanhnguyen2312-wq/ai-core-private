@@ -2097,6 +2097,32 @@ def apply_bundle_sector_aware_relative_research_contract(context: dict[str, Any]
 _CURRENT_EVIDENCE_SCENARIO_DISPOSITIONS = {"SCENARIO_READY", "SCENARIO_PARTIAL", "SCENARIO_INSUFFICIENT_DATA", "SCENARIO_NOT_APPLICABLE"}
 
 
+def current_market_flow_positioning_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the producer-owned current-flow record without interpretation."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_market_flow_positioning") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    sections = ("traded_value", "foreign_flow", "foreign_room", "proprietary_flow", "active_order_context")
+    valid = (isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("is_actionable") is False
+             and isinstance(raw.get("source_artifact_identity"), str) and raw["source_artifact_identity"].startswith("current_market_flow_positioning:")
+             and isinstance(raw.get("source_session"), str) and isinstance(raw.get("price_flow_relationships"), list)
+             and isinstance(raw.get("authority_boundary"), Mapping)
+             and raw["authority_boundary"].get("liquidity_sizing_execution") == "BLOCKED"
+             and all(isinstance(raw.get(name), Mapping) and raw[name].get("status") in {"AVAILABLE", "MISSING", "PROVIDER_REJECTED", "RATE_LIMITED", "SEMANTIC_BLOCKED", "NOT_APPLICABLE"} for name in sections))
+    if not valid:
+        return {"status": "malformed", "is_actionable": False, "reason_codes": ["current_market_flow_positioning_malformed"]}
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_market_flow_positioning_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_market_flow_positioning_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_market_flow_positioning"] = contract
+        context.setdefault("provenance", []).append({"source_file": "analysis_bundle.json", "source_dataset": "current_market_flow_positioning", "transformation": "Verbatim Producer pass-through; Consumer does not recompute flow, reconcile providers, or infer intent/causality.", "limitations": ["No smart-money, institutional-intent, causal, recommendation, sizing, liquidity, or execution claim."]})
+    return context
+
+
 def current_evidence_bound_scenario_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
     """Validate the additive current scenario envelope without interpreting a case."""
     entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
@@ -3714,6 +3740,7 @@ def build_context_package(
     apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
+    apply_bundle_current_market_flow_positioning_contract(context, bundle_payload)
     apply_bundle_sector_aware_relative_research_contract(context, bundle_payload)
     apply_bundle_current_evidence_bound_scenario_contract(context, bundle_payload)
     apply_bundle_current_daily_decision_research_contract(context, bundle_payload)
