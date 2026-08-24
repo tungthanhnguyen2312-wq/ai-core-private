@@ -2200,6 +2200,99 @@ def apply_bundle_current_daily_decision_research_contract(context: dict[str, Any
     return context
 
 
+def current_opportunity_decision_context_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Pass through the opt-in Producer daily opportunity-decision queue.
+
+    The queue is a separate, all-lane research-priority contract. It is not the
+    pre-existing 47-name tactical human-review cohort and it is not a new
+    Consumer selection, ranking, or recommendation.
+    """
+    raw = bundle.get("daily_opportunity_decision_queue") if isinstance(bundle, Mapping) else None
+    if raw is None:
+        return None
+    records = raw.get("records") if isinstance(raw, Mapping) else None
+    record = records.get(ticker) if isinstance(records, Mapping) else None
+    # A queue may be valid while a caller asks for a ticker outside its retained
+    # universe. Preserve that absence rather than inventing an unavailable row.
+    if isinstance(records, Mapping) and record is None:
+        return None
+    valid = (
+        isinstance(raw, Mapping)
+        and raw.get("contract_version") == "daily_opportunity_decision_queue/v1"
+        and isinstance(raw.get("artifact_identity"), str)
+        and raw["artifact_identity"].startswith("daily_opportunity_decision_queue:")
+        and isinstance(raw.get("research_session"), str)
+        and isinstance(raw.get("source_artifact_identities"), Mapping)
+        and isinstance(records, Mapping)
+        and isinstance(record, Mapping)
+        and record.get("ticker") == ticker
+        and isinstance(record.get("research_priority_tier"), str)
+        and isinstance(record.get("eligible_strategies"), list)
+        and all(isinstance(strategy, str) for strategy in record["eligible_strategies"])
+        and isinstance(record.get("lane_specific_priority"), Mapping)
+        and isinstance(record.get("entry_action"), (str, type(None)))
+        and isinstance(record.get("entry_relevant"), bool)
+        and record.get("is_actionable") is False
+        and isinstance(record.get("authority_note"), str)
+        and isinstance(record.get("invalidation_or_context_warnings"), list)
+        and isinstance(raw.get("full_priority_now"), list)
+        and all(isinstance(symbol, str) for symbol in raw["full_priority_now"])
+        and isinstance(raw.get("lane_queues"), Mapping)
+        and isinstance(raw.get("entry_relevant_summary"), Mapping)
+        and isinstance(raw.get("multi_strategy"), Mapping)
+        and isinstance(raw.get("primary_review_candidates"), Mapping)
+        and isinstance(raw["primary_review_candidates"].get("tickers"), list)
+        and raw["primary_review_candidates"].get("count") == len(raw["primary_review_candidates"]["tickers"])
+        and raw["primary_review_candidates"].get("policy_kind") == "EXISTING_EVIDENCE_GATED_ELIGIBILITY_NOT_A_FIXED_CAP"
+        and isinstance(raw.get("legacy_comparison"), Mapping)
+        and isinstance(raw.get("authority_boundary"), Mapping)
+        and raw["authority_boundary"].get("no_global_score") is True
+        and raw["authority_boundary"].get("research_priority_is_not_trade_readiness") is True
+        and raw["authority_boundary"].get("priority_now_is_not_buy_now") is True
+        and raw["authority_boundary"].get("priority_now_is_not_sizing_ready") is True
+    )
+    if not valid:
+        return {
+            "status": "malformed",
+            "is_actionable": False,
+            "reason_codes": ["daily_opportunity_decision_queue_malformed"],
+        }
+    return copy.deepcopy({
+        "contract_version": raw["contract_version"],
+        "source_artifact_identity": raw["artifact_identity"],
+        "research_session": raw["research_session"],
+        "source_artifact_identities": raw["source_artifact_identities"],
+        "ticker_record": record,
+        # These are deliberately separate: the full all-lane research-priority
+        # output must not collapse into the legacy tactical review policy.
+        "full_priority_now": raw["full_priority_now"],
+        "lane_queues": raw["lane_queues"],
+        "entry_relevant_summary": raw["entry_relevant_summary"],
+        "multi_strategy": raw["multi_strategy"],
+        "legacy_human_review_queue": raw["primary_review_candidates"],
+        "legacy_comparison": raw["legacy_comparison"],
+        "authority_boundary": raw["authority_boundary"],
+        "is_actionable": False,
+    })
+
+
+def apply_bundle_current_opportunity_decision_context_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_opportunity_decision_context_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_opportunity_decision_context"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json",
+            "source_dataset": "daily_opportunity_decision_queue",
+            "transformation": "Pass through the Producer's all-lane research-priority queue, target ticker record, full PRIORITY_NOW membership, lane queues, multi-strategy membership, and separately named legacy human-review policy. Consumer derives no rank, score, selection, entry action, sizing, or recommendation.",
+            "limitations": [
+                "Research priority is distinct from entry action, entry relevance, full-position readiness, and sizing authority.",
+                "The legacy human-review queue is an existing evidence-gated tactical policy, not a fixed-cap or top-stock list.",
+                "Producer warnings, blockers, source identities, and authority boundary remain binding; is_actionable=false.",
+            ],
+        })
+    return context
+
+
 _WATCHLIST_TACTICAL_ENTRY_CLASSIFIER_STATUSES = {"classified", "insufficient_data"}
 _WATCHLIST_TACTICAL_ENTRY_STATES = {
     "DOWNTREND", "SELLING_PRESSURE_EASING", "EARLY_REVERSAL_CANDIDATE", "BASE_BUILDING",
@@ -3744,6 +3837,7 @@ def build_context_package(
     apply_bundle_sector_aware_relative_research_contract(context, bundle_payload)
     apply_bundle_current_evidence_bound_scenario_contract(context, bundle_payload)
     apply_bundle_current_daily_decision_research_contract(context, bundle_payload)
+    apply_bundle_current_opportunity_decision_context_contract(context, bundle_payload)
     apply_bundle_watchlist_tactical_entry_classifier_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
