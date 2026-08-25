@@ -1985,6 +1985,117 @@ def apply_bundle_market_wide_current_fundamental_research_contract(context: dict
     return context
 
 
+_MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES = {
+    "AVAILABLE", "PARTIAL", "INSUFFICIENT_HISTORY", "MISSING", "NOT_APPLICABLE",
+}
+_MARKET_WIDE_HISTORICAL_STRUCTURAL_STATES = {
+    "TREND_CONTINUATION", "MATURE_TREND", "BASE", "EARLY_REVERSAL", "DETERIORATION", "INDETERMINATE",
+}
+_MARKET_WIDE_HISTORICAL_FIELD_NAMES = (
+    "trailing_range", "fifty_two_week_range", "drawdown", "volatility_regime", "momentum",
+    "ma_alignment", "relative_volume", "technical_state_frequency", "structural_state",
+)
+
+
+def _market_wide_historical_research_context_valid(raw: Mapping[str, Any], ticker: str) -> bool:
+    """Validate the Producer's explicitly non-authoritative historical envelope only."""
+    history = raw.get("history")
+    in_scope = raw.get("in_current_descriptive_scope")
+    context_status = raw.get("context_status")
+    structural = raw.get("structural_state")
+    authority_boundary = raw.get("authority_boundary")
+    if not (
+        raw.get("ticker") == ticker
+        and raw.get("status") in {"available", "not_available"}
+        and raw.get("is_actionable") is False
+        and raw.get("research_mode") == "RETROSPECTIVE_DESCRIPTIVE_WITHIN_TICKER"
+        and isinstance(raw.get("session"), str)
+        and isinstance(raw.get("source_artifact_identity"), str)
+        and raw["source_artifact_identity"].startswith("market_wide_historical_research_context:")
+        and isinstance(raw.get("coverage"), Mapping)
+        and isinstance(raw.get("blocked_outputs"), Mapping)
+        and isinstance(in_scope, bool)
+        and context_status in _MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES
+        and isinstance(authority_boundary, Mapping)
+        and authority_boundary.get("research_mode") == "RETROSPECTIVE_DESCRIPTIVE_WITHIN_TICKER"
+        and authority_boundary.get("price_basis") == "ADJUSTED_RETROSPECTIVE"
+        and authority_boundary.get("RAW_AS_TRADED") == "NOT_PROMOTED"
+        and authority_boundary.get("PIT") == "BLOCKED"
+    ):
+        return False
+    if in_scope is False:
+        return (
+            raw.get("status") == "not_available"
+            and context_status == "NOT_APPLICABLE"
+            and raw.get("as_of_session") is None
+            and raw.get("is_current_session") is False
+        )
+    if not (
+        raw.get("status") == "available"
+        and isinstance(history, Mapping)
+        and history.get("price_basis") == "ADJUSTED_RETROSPECTIVE"
+        and history.get("raw_as_traded") == "NOT_PROMOTED"
+        and history.get("historical_pit_eligible") is False
+        and all(isinstance(raw.get(name), Mapping) for name in _MARKET_WIDE_HISTORICAL_FIELD_NAMES)
+        and isinstance(structural, Mapping)
+        and structural.get("status") in _MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES | {"BLOCKED"}
+    ):
+        return False
+    if structural.get("status") == "AVAILABLE" and not (
+        structural.get("value") in _MARKET_WIDE_HISTORICAL_STRUCTURAL_STATES
+        and structural.get("not_entry_state") is True
+        and structural.get("not_strategy_eligibility") is True
+    ):
+        return False
+    as_of = raw.get("as_of_session")
+    if raw.get("is_current_session") is True:
+        if not isinstance(as_of, str) or as_of != raw["session"]:
+            return False
+    elif as_of is not None and not isinstance(as_of, str):
+        return False
+    if isinstance(as_of, str) and history.get("last_session") != as_of:
+        return False
+    current_window = raw.get("current_feature_window")
+    if isinstance(current_window, Mapping) and not (
+        current_window.get("price_basis") == "ADJUSTED_RETROSPECTIVE"
+        and current_window.get("historical_pit_eligible") is False
+    ):
+        return False
+    return True
+
+
+def market_wide_historical_research_context_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail-closed pass-through for retrospective descriptive within-ticker research."""
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("market_wide_historical_research_context") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping) or not _market_wide_historical_research_context_valid(raw, ticker):
+        return {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["market_wide_historical_research_context_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_market_wide_historical_research_context_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = market_wide_historical_research_context_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["market_wide_historical_research_context"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json",
+            "source_dataset": "market_wide_historical_research_context",
+            "transformation": "Pass through the Producer's retrospective descriptive within-ticker history, including range, drawdown, technical persistence, structural state, blockers, session, and lineage verbatim; Consumer derives no historical result.",
+            "limitations": [
+                "RETROSPECTIVE_DESCRIPTIVE_WITHIN_TICKER only: adjusted retained history is not RAW_AS_TRADED, historical PIT, performance, alpha, win-probability, or executable backtest evidence.",
+                "structural_state is descriptive only and remains explicitly not an entry state or strategy-eligibility signal; this layer does not alter research priority, entry action, sizing, or recommendation authority.",
+                "Relative volume is provider-scoped descriptive context, not liquidity, turnover, ADV/ADTV, sizing, or execution authority.",
+                "Optional field: an absent sibling stays absent; malformed supplied content remains an explicit non-actionable malformed record.",
+            ],
+        })
+    return context
+
+
 def market_wide_current_valuation_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
     """Validate and pass through the Producer's current-only valuation snapshot.
 
@@ -2009,17 +2120,36 @@ def market_wide_current_valuation_contract(bundle: Mapping[str, Any] | None, tic
             for metric in shadow["metrics"].values()
         )
     )
+    metrics = raw.get("metrics") if isinstance(raw, Mapping) else None
+    price_input = raw.get("price_input") if isinstance(raw, Mapping) else None
+    price_session = price_input.get("session") if isinstance(price_input, Mapping) else None
+    forbidden_top_level_fields = {
+        "target_price", "intrinsic_value", "dcf", "recommendation", "entry_action",
+        "position_size", "position_sizing", "buy_sell",
+    }
     valid = (
         isinstance(raw, Mapping) and raw.get("ticker") == ticker and raw.get("status") == "current_valuation_snapshot"
         and raw.get("is_actionable") is False and isinstance(raw.get("entity_class"), str)
         and isinstance(raw.get("price_input"), Mapping) and isinstance(raw.get("share_basis_input"), Mapping)
         and isinstance(raw.get("financial_input"), Mapping) and isinstance(raw.get("metrics"), Mapping)
+        and not (forbidden_top_level_fields & set(raw))
         and all(
-            isinstance(metric, Mapping) and metric.get("status") in {"READY", "BLOCKED", "NOT_APPLICABLE"}
-            and ((metric.get("status") == "READY" and isinstance(metric.get("value"), (int, float)))
-                 or (metric.get("status") != "READY" and metric.get("value") is None))
-            for metric in raw["metrics"].values()
+            isinstance(metric, Mapping) and metric.get("status") in {"READY", "RESEARCH_USABLE", "BLOCKED", "NOT_APPLICABLE"}
+            and ((metric.get("status") in {"READY", "RESEARCH_USABLE"}
+                  and isinstance(metric.get("value"), (int, float)) and not isinstance(metric.get("value"), bool))
+                 or (metric.get("status") not in {"READY", "RESEARCH_USABLE"} and metric.get("value") is None))
+            and (not isinstance(price_session, str) or "price_session" not in metric or metric.get("price_session") == price_session)
+            and (metric.get("status") != "RESEARCH_USABLE" or (
+                metric.get("is_actionable") is False
+                and "CURRENT_RESEARCH_ONLY" in set(metric.get("allowed_uses") or [])
+                and "VALUE_STRATEGY_ELIGIBILITY" in set(metric.get("forbidden_uses") or [])
+                and "TARGET_PRICE" in set(metric.get("forbidden_uses") or [])
+            ))
+            for metric in metrics.values()
         )
+        and (not isinstance(raw.get("source_artifact_identity"), str)
+             or raw["source_artifact_identity"].startswith("market_wide_current_valuation:"))
+        and ("source_session" not in raw or not isinstance(price_session, str) or raw.get("source_session") == price_session)
         and shadow_valid
     )
     if not valid:
@@ -2034,8 +2164,8 @@ def apply_bundle_market_wide_current_valuation_contract(context: dict[str, Any],
         context["market_wide_current_valuation"] = contract
         context.setdefault("provenance", []).append({
             "source_file": "analysis_bundle.json", "source_dataset": "market_wide_current_valuation",
-            "transformation": "Pass through Producer current valuation inputs, applicability, authority tiers, and blocked reasons verbatim.",
-            "limitations": ["Current snapshot only; never historical PIT or RAW_AS_TRADED.", "No target price, ranking, recommendation, sizing, or portfolio instruction.", "Consumer does not upgrade share or financial authority."],
+            "transformation": "Pass through Producer current valuation inputs, per-method applicability/status, share-authority tiers, financial period/basis, lineage, and blockers verbatim.",
+            "limitations": ["CURRENT_RESEARCH only; never historical PIT or RAW_AS_TRADED.", "RESEARCH_USABLE is research-only and never becomes READY, authoritative valuation, or VALUE eligibility.", "NOT_APPLICABLE is preserved per method and does not globally block the ticker.", "No target price, intrinsic value, DCF, ranking, recommendation, sizing, or portfolio instruction.", "Consumer does not upgrade share or financial authority, or combine valuation methods across differing price sessions."],
         })
     return context
 
@@ -3832,6 +3962,7 @@ def build_context_package(
     apply_bundle_market_wide_current_liquidity_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
+    apply_bundle_market_wide_historical_research_context_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_current_market_flow_positioning_contract(context, bundle_payload)
     apply_bundle_sector_aware_relative_research_contract(context, bundle_payload)

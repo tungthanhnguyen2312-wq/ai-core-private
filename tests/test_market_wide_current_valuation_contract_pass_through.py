@@ -40,3 +40,37 @@ def test_shadow_proxy_requires_lower_authority_labels_and_preserves_stale_share_
     assert market_wide_current_valuation_contract({"tickers": {"AAA": {"market_wide_current_valuation": raw}}}, "AAA")["shadow_proxy_valuation"] == raw["shadow_proxy_valuation"]
     raw["shadow_proxy_valuation"]["share_basis_type"] = "COMMON_SHARES_OUTSTANDING"
     assert market_wide_current_valuation_contract({"tickers": {"AAA": {"market_wide_current_valuation": raw}}}, "AAA")["status"] == "malformed"
+
+
+def test_research_usable_ready_blocked_and_not_applicable_stay_per_method():
+    raw = _raw()
+    raw["entity_class"] = "bank"
+    raw["price_input"]["session"] = "2026-08-21"
+    raw["share_basis_input"]["authority"] = "provider_reported_lagged"
+    raw["metrics"] = {
+        "P/E": {
+            "status": "RESEARCH_USABLE", "value": 7.0, "is_actionable": False,
+            "allowed_uses": ["CURRENT_RESEARCH_ONLY"],
+            "forbidden_uses": ["VALUE_STRATEGY_ELIGIBILITY", "TARGET_PRICE"],
+            "applicability": "APPLICABLE", "financial_period": "2026-Q2", "price_session": "2026-08-21",
+        },
+        "P/B": {"status": "READY", "value": 1.2, "applicability": "APPLICABLE", "price_session": "2026-08-21"},
+        "EV/EBITDA": {"status": "BLOCKED", "value": None, "applicability": "APPLICABLE", "price_session": "2026-08-21"},
+        "EV/Sales": {"status": "NOT_APPLICABLE", "value": None, "applicability": "NOT_APPLICABLE", "price_session": "2026-08-21"},
+    }
+    result = market_wide_current_valuation_contract({"tickers": {"AAA": {"market_wide_current_valuation": raw}}}, "AAA")
+    assert result["metrics"]["P/E"]["status"] == "RESEARCH_USABLE"
+    assert result["metrics"]["P/B"]["status"] == "READY"
+    assert result["metrics"]["EV/Sales"]["status"] == "NOT_APPLICABLE"
+    assert result["share_basis_input"]["authority"] == "provider_reported_lagged"
+
+
+def test_wrong_metric_session_and_invented_authority_fields_fail_closed():
+    raw = _raw()
+    raw["price_input"]["session"] = "2026-08-21"
+    raw["metrics"]["P/E"]["price_session"] = "2026-08-24"
+    assert market_wide_current_valuation_contract({"tickers": {"AAA": {"market_wide_current_valuation": raw}}}, "AAA")["status"] == "malformed"
+
+    raw = _raw()
+    raw["target_price"] = 100.0
+    assert market_wide_current_valuation_contract({"tickers": {"AAA": {"market_wide_current_valuation": raw}}}, "AAA")["status"] == "malformed"
