@@ -2089,6 +2089,138 @@ def apply_bundle_current_market_sector_leadership_context_contract(context: dict
     return context
 
 
+_FINANCIAL_MOMENTUM_EVIDENCE_TIERS = {"OFFICIAL_QUALIFIED", "PROVIDER_RESEARCH", "BLOCKED", "UNAVAILABLE"}
+_FINANCIAL_MOMENTUM_COVERAGE_STATUSES = {"FULL", "PARTIAL", "INSUFFICIENT", "NOT_APPLICABLE"}
+_FINANCIAL_MOMENTUM_STATES = {
+    "BROAD_IMPROVEMENT", "EARNINGS_IMPROVING", "MIXED", "DETERIORATING",
+    "LOSS_MAKING_OR_STRESSED", "INSUFFICIENT_COMPARABLE_DATA", "NOT_APPLICABLE",
+}
+_FINANCIAL_MOMENTUM_COMPONENT_STATUSES = {"AVAILABLE", "PARTIAL", "BLOCKED", "UNAVAILABLE", "NOT_APPLICABLE"}
+_FINANCIAL_MOMENTUM_PRICE_CONTRAST_STATUSES = {"AVAILABLE", "UNAVAILABLE"}
+_FINANCIAL_MOMENTUM_REQUIRED_PROHIBITED_USES = {
+    "cheapness", "VALUE", "target_price", "forecast", "probability",
+    "strategy_eligibility", "research_priority", "entry_action", "recommendation", "sizing",
+}
+
+
+def _financial_momentum_component_valid(component: Any) -> bool:
+    current_value = component.get("current_value") if isinstance(component, Mapping) else None
+    return (
+        isinstance(component, Mapping)
+        and component.get("status") in _FINANCIAL_MOMENTUM_COMPONENT_STATUSES
+        and isinstance(component.get("periods"), list)
+        and isinstance(component.get("warnings"), list)
+        and (current_value is None or (isinstance(current_value, (int, float)) and not isinstance(current_value, bool)))
+        and (component.get("status") in {"AVAILABLE", "PARTIAL"} or component.get("direction") is None)
+    )
+
+
+def _current_financial_momentum_context_valid(raw: Any, *, ticker: str) -> bool:
+    if not isinstance(raw, Mapping):
+        return False
+    ticker_context = raw.get("ticker_context")
+    blocked_outputs = raw.get("blocked_outputs")
+    authority_boundary = raw.get("authority_boundary")
+    if not (
+        raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and raw.get("status") in {"available", "data_limited"}
+        and (raw.get("session") is None or isinstance(raw.get("session"), str))
+        and isinstance(raw.get("source_artifact_identity"), str)
+        and raw["source_artifact_identity"].startswith("current_financial_momentum_context:")
+        and raw.get("research_mode") == "CURRENT_RESEARCH_ONLY"
+        and isinstance(ticker_context, Mapping)
+        and isinstance(raw.get("coverage"), Mapping)
+        and isinstance(blocked_outputs, Mapping)
+        and blocked_outputs.get("strategy_eligibility") == "NOT_MODIFIED"
+        and blocked_outputs.get("research_priority") == "NOT_MODIFIED"
+        and blocked_outputs.get("entry_action") == "NOT_MODIFIED"
+        and blocked_outputs.get("fundamental_improvement_strategy") == "NOT_ENABLED_BY_THIS_CONTEXT"
+        and isinstance(authority_boundary, Mapping)
+        and authority_boundary.get("is_actionable") is False
+        and authority_boundary.get("financial_momentum_is_not_strategy_eligibility") is True
+        and authority_boundary.get("financial_momentum_is_not_research_priority") is True
+        and authority_boundary.get("financial_momentum_is_not_entry_action") is True
+        and authority_boundary.get("financial_momentum_is_not_recommendation") is True
+        and authority_boundary.get("financial_momentum_is_not_value") is True
+        and authority_boundary.get("financial_momentum_is_not_target_price") is True
+        and authority_boundary.get("financial_momentum_is_not_probability") is True
+        and authority_boundary.get("financial_momentum_is_not_sizing") is True
+        and authority_boundary.get("financial_momentum_is_not_price_momentum") is True
+        and authority_boundary.get("official_and_provider_remain_separated") is True
+        and authority_boundary.get("provider_not_upgraded_to_official") is True
+        and authority_boundary.get("missing_is_not_zero") is True
+    ):
+        return False
+    components = ticker_context.get("components")
+    price_context = ticker_context.get("price_momentum_context")
+    if not (
+        ticker_context.get("ticker") == ticker
+        and ticker_context.get("evidence_tier") in _FINANCIAL_MOMENTUM_EVIDENCE_TIERS
+        and ticker_context.get("coverage_status") in _FINANCIAL_MOMENTUM_COVERAGE_STATUSES
+        and ticker_context.get("financial_momentum_state") in _FINANCIAL_MOMENTUM_STATES
+        and isinstance(ticker_context.get("entity_class"), str)
+        and isinstance(ticker_context.get("supporting_dimensions"), list)
+        and isinstance(ticker_context.get("weakening_dimensions"), list)
+        and isinstance(ticker_context.get("blockers"), list)
+        and isinstance(ticker_context.get("warnings"), list)
+        and isinstance(ticker_context.get("comparable_period_identities"), list)
+        and isinstance(ticker_context.get("allowed_uses"), list)
+        and isinstance(ticker_context.get("prohibited_uses"), list)
+        and _FINANCIAL_MOMENTUM_REQUIRED_PROHIBITED_USES <= set(ticker_context["prohibited_uses"])
+        and isinstance(components, Mapping)
+        and all(_financial_momentum_component_valid(component) for component in components.values())
+        and isinstance(price_context, Mapping)
+        and price_context.get("status") in _FINANCIAL_MOMENTUM_PRICE_CONTRAST_STATUSES
+        and price_context.get("financial_momentum_is_not_price_momentum") is True
+    ):
+        return False
+    return True
+
+
+def current_financial_momentum_context_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail-closed pass-through for the opt-in current financial momentum context.
+
+    Canonical location: tickers[ticker].current_financial_momentum_context, attached by
+    stock-core-private's export_ai_bundle.py only with
+    --include-current-financial-momentum-context. Descriptive current-research-only
+    projection of already-qualified official FY YoY metrics and already-emitted provider-
+    series trends; Producer's own blocked_outputs/authority_boundary mark
+    strategy_eligibility/research_priority/entry_action as never modified, official and
+    provider tiers as never merged, and FUNDAMENTAL_IMPROVEMENT as never enabled by this
+    context. Consumer performs no recomputation of any growth, margin, or state.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_financial_momentum_context") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not _current_financial_momentum_context_valid(raw, ticker=ticker):
+        return {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_financial_momentum_context_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_financial_momentum_context_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_financial_momentum_context_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_financial_momentum_context"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "current_financial_momentum_context",
+            "transformation": "Pass through the Producer's current financial-momentum research context verbatim: evidence tier, comparable-period component states (revenue/earnings/margin/operating cash flow), supporting/weakening dimensions, financial_momentum_state, coverage status, price-momentum contrast, blockers, warnings, and authority boundary. Consumer performs no recomputation of any growth rate, margin change, or momentum state.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-current-financial-momentum-context).",
+                "CURRENT_RESEARCH_ONLY: never a forecast, valuation, cheapness/VALUE, target price, probability, recommendation, strategy eligibility, research_priority, entry_action, or sizing claim; does not enable FUNDAMENTAL_IMPROVEMENT.",
+                "OFFICIAL_QUALIFIED and PROVIDER_RESEARCH tiers stay separated; provider evidence is never upgraded to official merely because components, price momentum, or sector leadership agree with it.",
+                "FY YoY, quarterly YoY, and QoQ PARTIAL are distinct comparison types and are never relabelled as each other; a missing comparable dimension is a coverage gap, never zero.",
+                "Bank/securities archetypes never receive an industrial revenue/margin interpretation; NOT_APPLICABLE is preserved exactly, never treated as missing.",
+                "price_momentum_context contrasts operational financial momentum with current-session price momentum descriptively; it is not itself a trade signal.",
+            ],
+        })
+    return context
+
+
 _MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES = {
     "AVAILABLE", "PARTIAL", "INSUFFICIENT_HISTORY", "MISSING", "NOT_APPLICABLE",
 }
@@ -4082,6 +4214,7 @@ def build_context_package(
     apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
     apply_bundle_current_market_sector_leadership_context_contract(context, bundle_payload)
+    apply_bundle_current_financial_momentum_context_contract(context, bundle_payload)
     apply_bundle_market_wide_historical_research_context_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_current_market_flow_positioning_contract(context, bundle_payload)

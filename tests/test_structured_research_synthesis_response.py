@@ -296,6 +296,30 @@ class StructuredResearchSynthesisResponseTests(unittest.TestCase):
         self.assertEqual("rejected", result["status"])
         self.assertIn("prohibited_valuation_overclaim", result["reasons"])
 
+    def test_forecast_claim_rejected(self):
+        """Financial momentum (and every other current-research lane) is retrospective/
+        current, never forward-looking."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " We forecast continued earnings growth."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_forecast_claim", result["reasons"])
+
+    def test_will_likely_grow_forecast_claim_rejected(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["counter_evidence"].append("Revenue will likely grow next quarter based on the current trend.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_forecast_claim", result["reasons"])
+
+    def test_negated_forecast_language_accepted(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["authority_limitations"].append(
+            "This synthesis does not claim revenue will likely grow next quarter; only retained comparable-period evidence is reported."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
     def test_capacity_or_participation_claim_rejected(self):
         """This contract consumes no liquidity/traded-value lane (e.g. the currently
         restricted ADTV20_MATCHED_VALUE Producer lane); it must never imply how much

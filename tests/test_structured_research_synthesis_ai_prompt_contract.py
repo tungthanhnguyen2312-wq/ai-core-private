@@ -46,6 +46,30 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
         ):
             self.assertIn(forbidden, PROMPT)
 
+    def test_financial_momentum_documented_in_single_ticker_template(self):
+        self.assertIn("If `current_financial_momentum_context` is present", PROMPT)
+        self.assertIn("`OFFICIAL_QUALIFIED`, `PROVIDER_RESEARCH`, `BLOCKED`, or `UNAVAILABLE`", PROMPT)
+        self.assertIn("never merged", PROMPT)
+        self.assertIn("revenue up, margin down is `MIXED`, not \"improving\"", PROMPT)
+        self.assertIn("FY YoY is not \"current earnings,\"", PROMPT)
+        self.assertIn("absence_from_fundamental_cohort_is_not_zero_or_deterioration", PROMPT)
+
+    def test_financial_momentum_routed_through_existing_synthesis_fields(self):
+        self.assertIn("it does not get its own dedicated summary field", PROMPT)
+        self.assertIn("cited directly into `thesis`, `supporting_evidence`, `counter_thesis`, `risk_context`, and `unresolved_questions`", PROMPT)
+        self.assertIn("cannot itself enable, create, or upgrade one, nor change `strategy_eligibility`, `research_priority`, or `entry_action`", PROMPT)
+
+    def test_financial_momentum_prohibited_claims_extend_master_list(self):
+        for forbidden in (
+            "describing `current_financial_momentum_context`'s `PROVIDER_RESEARCH` evidence tier as official-qualified",
+            "turning `financial_momentum_state` (including `BROAD_IMPROVEMENT`) into a forecast, target price, cheapness/VALUE conclusion, probability, recommendation, entry action, or sizing figure",
+            "relabelling a `QoQ`/`PARTIAL` component comparison as `YoY`",
+            "treating a component `status` of `UNAVAILABLE`/`BLOCKED` as zero, negative, or deteriorating",
+            "forcing an industrial revenue/margin/cash-flow interpretation onto a bank/securities `entity_class` component",
+            "treating `current_financial_momentum_context` as enabling, creating, or upgrading a `FUNDAMENTAL_IMPROVEMENT` state",
+        ):
+            self.assertIn(forbidden, PROMPT)
+
     def test_counter_thesis_is_mandatory(self):
         self.assertIn("`counter_thesis` is mandatory", PROMPT)
         self.assertIn("a generic disclaimer is not a counter-thesis", PROMPT)

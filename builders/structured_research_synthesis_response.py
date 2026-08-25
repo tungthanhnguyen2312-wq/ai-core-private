@@ -79,6 +79,8 @@ _ALLOWED_CONTRACT_METADATA_KEYS = {
     "valuation_context_status",
     "market_sector_context_session",
     "market_sector_context_status",
+    "financial_momentum_context_session",
+    "financial_momentum_context_status",
 }
 
 _NEGATION_MARKERS = (
@@ -127,6 +129,17 @@ _AFFIRMATIVE_COMBINED_SCORE_RE = re.compile(
     r"\b(?:combined|composite|overall|aggregate|blended)\s+(?:score|rating)\b"
     r"|\bscore\s+of\s+\d"
     r"|\b\d+(?:\.\d+)?\s*(?:/|out of)\s*\d+\s*(?:score|rating)\b",
+    re.IGNORECASE,
+)
+# Comparable-period financial momentum (and any other current-research evidence lane) is
+# retrospective/current, never forward-looking; guard against the AI projecting it into a
+# forecast even though no forecast field exists anywhere in the structured output.
+_AFFIRMATIVE_FORECAST_RE = re.compile(
+    r"\bwe\s+forecast\b"
+    r"|\bis\s+forecast(?:ed)?\s+to\b"
+    r"|\bwill\s+likely\s+(?:grow|improve|increase|earn|expand|decline)\b"
+    r"|\bproject(?:ed|s)?\s+to\s+(?:grow|improve|increase|earn|expand|decline)\b"
+    r"|\bnext\s+(?:year|quarter)(?:'s)?\s+(?:earnings|revenue|margin)\s+(?:will|are\s+expected|is\s+expected)\b",
     re.IGNORECASE,
 )
 
@@ -289,6 +302,10 @@ def validate_structured_research_synthesis_output(
         if any(kw in item_lower for kw in ("score", "composite", "aggregate", "blended rating")):
             if _AFFIRMATIVE_COMBINED_SCORE_RE.search(item_lower) and not is_negated:
                 reasons.append("prohibited_combined_score_claim")
+
+        if any(kw in item_lower for kw in ("forecast", "project", "will likely", "next year", "next quarter")):
+            if _AFFIRMATIVE_FORECAST_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_forecast_claim")
 
     if reasons:
         return _reject(*reasons)

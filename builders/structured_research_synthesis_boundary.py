@@ -36,9 +36,11 @@ _SIBLING_KEYS = (
     "market_wide_historical_research_context",
     "market_wide_current_valuation",
     "current_market_sector_leadership_context",
+    "current_financial_momentum_context",
 )
 
 _VALUATION_USABLE_STATUSES = {"READY", "RESEARCH_USABLE"}
+_FINANCIAL_MOMENTUM_COMPONENT_USABLE_STATUSES = {"AVAILABLE", "PARTIAL"}
 
 
 def _reject_boundary(*reasons: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -125,6 +127,19 @@ def accept_structured_research_synthesis(
         else:
             derived_meta["market_sector_context_status"] = "malformed"
 
+    # Financial momentum's own session may legitimately be None (Producer omits it when no
+    # current_descriptive sibling was available at artifact-build time) -- that is distinct
+    # from malformed, so only treat an unrecognized status as malformed.
+    financial_momentum = ticker_context.get("current_financial_momentum_context")
+    if isinstance(financial_momentum, Mapping):
+        fm_session = financial_momentum.get("session")
+        if (fm_session is None or isinstance(fm_session, str)) and financial_momentum.get("status") in {"available", "data_limited"}:
+            if isinstance(fm_session, str):
+                derived_meta["financial_momentum_context_session"] = fm_session
+            derived_meta["financial_momentum_context_status"] = financial_momentum["status"]
+        else:
+            derived_meta["financial_momentum_context_status"] = "malformed"
+
     # --- 3. Derive known, citable evidence references from the context's own provenance ---
     known_refs: set[str] = set()
     provenance = ticker_context.get("provenance")
@@ -137,6 +152,14 @@ def accept_structured_research_synthesis(
         for metric_name, metric in valuation["metrics"].items():
             if isinstance(metric, Mapping) and metric.get("status") in _VALUATION_USABLE_STATUSES:
                 known_refs.add(f"market_wide_current_valuation.metrics.{metric_name}")
+
+    if isinstance(financial_momentum, Mapping):
+        fm_ticker_context = financial_momentum.get("ticker_context")
+        components = fm_ticker_context.get("components") if isinstance(fm_ticker_context, Mapping) else None
+        if isinstance(components, Mapping):
+            for component_name, component in components.items():
+                if isinstance(component, Mapping) and component.get("status") in _FINANCIAL_MOMENTUM_COMPONENT_USABLE_STATUSES:
+                    known_refs.add(f"current_financial_momentum_context.components.{component_name}")
 
     # A malformed sibling is recorded (processed) in provenance, but must never be
     # citable as if its content were usable evidence -- strip it back out here.
@@ -152,6 +175,9 @@ def accept_structured_research_synthesis(
         known_refs = {ref for ref in known_refs if not ref.startswith("market_wide_current_valuation.")}
     if derived_meta.get("market_sector_context_status") == "malformed":
         known_refs.discard("current_market_sector_leadership_context")
+    if derived_meta.get("financial_momentum_context_status") == "malformed":
+        known_refs.discard("current_financial_momentum_context")
+        known_refs = {ref for ref in known_refs if not ref.startswith("current_financial_momentum_context.")}
 
     derived_meta["known_evidence_refs"] = sorted(known_refs)
 

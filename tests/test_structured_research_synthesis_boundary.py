@@ -100,6 +100,27 @@ _MARKET_SECTOR_FIXTURE = {
         "market_relative_momentum": {"status": "AVAILABLE", "momentum_bucket": "TOP_QUINTILE"},
     },
 }
+_FINANCIAL_MOMENTUM_FIXTURE = {
+    "ticker": "TEST_TICKER",
+    "session": "2026-08-24",
+    "status": "available",
+    "is_actionable": False,
+    "research_mode": "CURRENT_RESEARCH_ONLY",
+    "ticker_context": {
+        "ticker": "TEST_TICKER",
+        "evidence_tier": "OFFICIAL_QUALIFIED",
+        "coverage_status": "FULL",
+        "financial_momentum_state": "BROAD_IMPROVEMENT",
+        "components": {
+            "revenue_growth": {"status": "AVAILABLE", "direction": "EXPANDING"},
+            "earnings_growth": {"status": "AVAILABLE", "direction": "EXPANDING"},
+            "net_margin_change": {"status": "AVAILABLE", "direction": "DETERIORATING"},
+            "operating_cash_flow": {"status": "BLOCKED", "direction": None},
+        },
+        "supporting_dimensions": ["revenue_growth", "earnings_growth"],
+        "weakening_dimensions": ["net_margin_change"],
+    },
+}
 _PROVENANCE_FIXTURE = [
     {"source_dataset": "historical_fundamental_brief"},
     {"source_dataset": "market_wide_historical_research_context"},
@@ -107,6 +128,7 @@ _PROVENANCE_FIXTURE = [
     {"source_dataset": "watchlist_tactical_entry_classifier"},
     {"source_dataset": "daily_opportunity_decision_queue"},
     {"source_dataset": "current_market_sector_leadership_context"},
+    {"source_dataset": "current_financial_momentum_context"},
 ]
 _TICKER_CONTEXT_FIXTURE = {
     "ticker": "TEST_TICKER",
@@ -116,6 +138,7 @@ _TICKER_CONTEXT_FIXTURE = {
     "market_wide_historical_research_context": _HISTORICAL_FIXTURE,
     "market_wide_current_valuation": _VALUATION_FIXTURE,
     "current_market_sector_leadership_context": _MARKET_SECTOR_FIXTURE,
+    "current_financial_momentum_context": _FINANCIAL_MOMENTUM_FIXTURE,
 }
 _EXPECTED_UPSTREAM = {
     "tactical_entry_classifier": {
@@ -134,11 +157,13 @@ _AI_RESPONSE_FIXTURE = {
     "supporting_evidence": [
         "watchlist_tactical_entry_classifier reports entry_state=BASE_BUILDING, action=ACCUMULATE_IN_BASE.",
         "daily_opportunity_decision_queue reports research_priority_tier=PRIORITY_NOW.",
+        "current_financial_momentum_context reports OFFICIAL_QUALIFIED evidence_tier with revenue_growth and earnings_growth EXPANDING.",
     ],
-    "counter_thesis": "The opportunity queue's own entry_action is WAIT, and retained history shows a DETERIORATION structural state.",
+    "counter_thesis": "The opportunity queue's own entry_action is WAIT, retained history shows a DETERIORATION structural state, and net margin is deteriorating even as revenue expands.",
     "counter_evidence": [
         "current_opportunity_decision_context ticker_record.entry_action = WAIT.",
         "market_wide_historical_research_context structural_state.value = DETERIORATION.",
+        "current_financial_momentum_context reports net_margin_change CONTRACTING alongside revenue_growth EXPANDING, making the fundamental picture MIXED.",
     ],
     "historical_context_summary": "As of session 2026-08-20, market_wide_historical_research_context reports a DETERIORATION structural state; descriptive only, not an entry action.",
     "valuation_context_summary": "As of price session 2026-08-24, P/B is READY (1.2) while EV/EBITDA is BLOCKED and EV/Sales is NOT_APPLICABLE; no ticker-wide valuation verdict is implied.",
@@ -151,6 +176,7 @@ _AI_RESPONSE_FIXTURE = {
     "catalyst_context": [],
     "risk_context": [
         "market_wide_historical_research_context reports a DETERIORATION structural state as a descriptive risk factor.",
+        "current_financial_momentum_context reports net_margin_change as a weakening dimension despite expanding revenue and earnings.",
     ],
     "invalidation_conditions": [
         "watchlist_tactical_entry_classifier invalidation: close below the prior base low.",
@@ -168,6 +194,9 @@ _AI_RESPONSE_FIXTURE = {
         "market_wide_historical_research_context",
         "market_wide_current_valuation.metrics.pb",
         "current_market_sector_leadership_context",
+        "current_financial_momentum_context.components.revenue_growth",
+        "current_financial_momentum_context.components.earnings_growth",
+        "current_financial_momentum_context.components.net_margin_change",
     ],
     "is_actionable": False,
 }
@@ -366,6 +395,231 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         resp["sector_context_summary"] = "current_market_sector_leadership_context is not supplied in this context package."
         resp["relative_strength_context"] = []
         resp["provenance_references"] = [r for r in resp["provenance_references"] if r != "current_market_sector_leadership_context"]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    # --- AI_FINANCIAL_MOMENTUM_SYNTHESIS_INTEGRATION_V1 TESTS ---
+
+    def test_valid_financial_context_passes(self):
+        """1. valid financial context passes."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("available", result["derived_contract_metadata"]["financial_momentum_context_status"])
+
+    def test_official_qualified_tier_preserved(self):
+        """2. official-qualified tier preserved."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        self.assertEqual("OFFICIAL_QUALIFIED", ctx["current_financial_momentum_context"]["ticker_context"]["evidence_tier"])
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertIn("OFFICIAL_QUALIFIED", result["accepted_output"]["supporting_evidence"][2])
+
+    def test_provider_research_tier_preserved(self):
+        """3. provider-research tier preserved -- never described as official-qualified."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_financial_momentum_context"]["ticker_context"]["evidence_tier"] = "PROVIDER_RESEARCH"
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["supporting_evidence"] = [
+            "watchlist_tactical_entry_classifier reports entry_state=BASE_BUILDING, action=ACCUMULATE_IN_BASE.",
+            "daily_opportunity_decision_queue reports research_priority_tier=PRIORITY_NOW.",
+            "current_financial_momentum_context reports PROVIDER_RESEARCH evidence_tier with revenue_growth and earnings_growth EXPANDING.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertIn("PROVIDER_RESEARCH", result["accepted_output"]["supporting_evidence"][2])
+
+    def test_broad_improvement_supports_thesis_without_action_upgrade(self):
+        """4. BROAD_IMPROVEMENT can support thesis without an action upgrade."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        self.assertEqual("BROAD_IMPROVEMENT", ctx["current_financial_momentum_context"]["ticker_context"]["financial_momentum_state"])
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " Official evidence shows a BROAD_IMPROVEMENT financial momentum state."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("WAIT", result["accepted_output"]["upstream_decision_context"]["opportunity_decision_queue"]["entry_action"])
+
+    def test_deteriorating_supports_counter_thesis(self):
+        """5. DETERIORATING can support a counter-thesis."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_financial_momentum_context"]["ticker_context"]["financial_momentum_state"] = "DETERIORATING"
+        ctx["current_financial_momentum_context"]["ticker_context"]["supporting_dimensions"] = []
+        ctx["current_financial_momentum_context"]["ticker_context"]["weakening_dimensions"] = ["revenue_growth", "earnings_growth"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["counter_thesis"] = resp["counter_thesis"] + " current_financial_momentum_context also reports a DETERIORATING financial momentum state."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_revenue_up_margin_down_remains_mixed_evidence(self):
+        """6. revenue up + margin down remains mixed evidence, not forced to one verdict."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        fm = ctx["current_financial_momentum_context"]["ticker_context"]
+        self.assertIn("revenue_growth", fm["supporting_dimensions"])
+        self.assertIn("net_margin_change", fm["weakening_dimensions"])
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        # Cited in supporting_evidence (revenue/earnings) AND counter_evidence/risk_context
+        # (margin) simultaneously -- both survive, neither forces the other out.
+        self.assertTrue(any("current_financial_momentum_context" in item for item in result["accepted_output"]["supporting_evidence"]))
+        self.assertTrue(any("current_financial_momentum_context" in item for item in result["accepted_output"]["counter_evidence"]))
+        self.assertTrue(any("current_financial_momentum_context" in item for item in result["accepted_output"]["risk_context"]))
+
+    def test_loss_making_state_preserved(self):
+        """7. negative/loss state preserved."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_financial_momentum_context"]["ticker_context"]["financial_momentum_state"] = "LOSS_MAKING_OR_STRESSED"
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["counter_thesis"] = resp["counter_thesis"] + " current_financial_momentum_context reports LOSS_MAKING_OR_STRESSED."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_bank_industrial_metrics_remain_not_applicable(self):
+        """8. bank industrial metrics remain NA."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        fm = ctx["current_financial_momentum_context"]["ticker_context"]
+        fm["entity_class"] = "bank"
+        fm["components"]["revenue_growth"] = {"status": "NOT_APPLICABLE", "direction": None}
+        fm["components"]["net_margin_change"] = {"status": "NOT_APPLICABLE", "direction": None}
+        fm["components"]["operating_cash_flow"] = {"status": "NOT_APPLICABLE", "direction": None}
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["provenance_references"] = [
+            r for r in resp["provenance_references"]
+            if r not in {"current_financial_momentum_context.components.revenue_growth", "current_financial_momentum_context.components.net_margin_change"}
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        known_refs = result["derived_contract_metadata"]["known_evidence_refs"]
+        self.assertNotIn("current_financial_momentum_context.components.revenue_growth", known_refs)
+        self.assertNotIn("current_financial_momentum_context.components.net_margin_change", known_refs)
+
+    def test_missing_comparison_stays_insufficient_not_citable(self):
+        """9. missing comparison stays insufficient/partial -- never silently citable as usable evidence."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        known_refs = result["derived_contract_metadata"]["known_evidence_refs"]
+        self.assertNotIn("current_financial_momentum_context.components.operating_cash_flow", known_refs)
+        self.assertIn("current_financial_momentum_context.components.revenue_growth", known_refs)
+
+    def test_absent_financial_sibling_allows_partial_synthesis(self):
+        """10. absent financial sibling allows a valid PARTIAL synthesis."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        del ctx["current_financial_momentum_context"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_financial_momentum_context"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["supporting_evidence"] = resp["supporting_evidence"][:2]
+        resp["counter_evidence"] = resp["counter_evidence"][:2]
+        resp["risk_context"] = resp["risk_context"][:1]
+        resp["provenance_references"] = [
+            r for r in resp["provenance_references"] if not r.startswith("current_financial_momentum_context")
+        ]
+        resp["authority_limitations"].append("current_financial_momentum_context is not supplied for this ticker.")
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("financial_momentum_context_status", result["derived_contract_metadata"])
+
+    def test_malformed_financial_sibling_cannot_be_cited(self):
+        """11. malformed financial sibling cannot be cited."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_financial_momentum_context"] = {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_financial_momentum_context_malformed"],
+        }
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("rejected", result["status"])
+        self.assertTrue(any(r.startswith("unknown_evidence_reference:") for r in result["reasons"]))
+        self.assertEqual("malformed", result["derived_contract_metadata"]["financial_momentum_context_status"])
+
+    def test_financial_momentum_provenance_survives(self):
+        """12. provenance survives."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertIn("current_financial_momentum_context.components.revenue_growth", result["accepted_output"]["provenance_references"])
+        self.assertIn("current_financial_momentum_context.components.revenue_growth", result["derived_contract_metadata"]["known_evidence_refs"])
+
+    def test_financial_context_cannot_change_research_priority(self):
+        """13. financial context cannot change research_priority."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["upstream_decision_context"]["opportunity_decision_queue"]["research_priority_tier"] = "PRIORITY_NOW_UPGRADED"
+        resp["thesis"] = resp["thesis"] + " Broad official financial improvement supports upgrading priority."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+
+    def test_financial_context_cannot_change_strategy_eligibility(self):
+        """14. cannot change strategy eligibility (no strategy-eligibility field exists to mint)."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["strategy_eligibility"] = "ELIGIBLE"
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_top_level_key:strategy_eligibility", result["reasons"])
+
+    def test_financial_context_cannot_change_entry_action(self):
+        """15. cannot change entry_action, even cited as justification."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["upstream_decision_context"]["tactical_entry_classifier"]["entry_action"] = "BUY_ON_CONFIRMATION"
+        resp["thesis"] = resp["thesis"] + " Official financial improvement justifies a stronger entry action."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+
+    def test_no_target_forecast_probability_recommendation_sizing_from_financial_context(self):
+        """16. cannot produce target/forecast/probability/recommendation/sizing."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        for key, value in (
+            ("target_price", 35000), ("probability", 0.8), ("recommendation", "BUY"), ("position_size", "5%"),
+        ):
+            with self.subTest(key=key):
+                resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+                resp[key] = value
+                result = accept_structured_research_synthesis(ctx, resp)
+                self.assertEqual("rejected", result["status"])
+                self.assertIn(f"prohibited_top_level_key:{key}", result["reasons"])
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " We forecast continued earnings growth next year."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_forecast_claim", result["reasons"])
+
+    def test_financial_and_market_sessions_remain_distinct(self):
+        """17. different financial/market sessions remain distinct."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_financial_momentum_context"]["session"] = "2026-08-10"
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        meta = result["derived_contract_metadata"]
+        self.assertEqual("2026-08-10", meta["financial_momentum_context_session"])
+        self.assertEqual("2026-08-25", meta["market_sector_context_session"])
+        self.assertNotEqual(meta["financial_momentum_context_session"], meta["market_sector_context_session"])
+
+    def test_financial_momentum_session_may_be_absent_and_still_accepted(self):
+        """Financial momentum's own session may legitimately be None (Producer had no
+        current_descriptive sibling at artifact-build time) -- distinct from malformed."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_financial_momentum_context"]["session"] = None
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("financial_momentum_context_session", result["derived_contract_metadata"])
+        self.assertEqual("available", result["derived_contract_metadata"]["financial_momentum_context_status"])
+
+    def test_existing_synthesis_without_financial_momentum_sibling_backward_compatible(self):
+        """18. existing synthesis (built before this milestone, with no financial-momentum
+        sibling at all) remains backward compatible."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        del ctx["current_financial_momentum_context"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_financial_momentum_context"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["supporting_evidence"] = resp["supporting_evidence"][:2]
+        resp["counter_evidence"] = resp["counter_evidence"][:2]
+        resp["risk_context"] = resp["risk_context"][:1]
+        resp["provenance_references"] = [
+            r for r in resp["provenance_references"] if not r.startswith("current_financial_momentum_context")
+        ]
         result = accept_structured_research_synthesis(ctx, resp)
         self.assertEqual("accepted", result["status"])
 
