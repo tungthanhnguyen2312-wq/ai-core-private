@@ -90,6 +90,13 @@ _PACKET_DIRECT_SIBLING_MALFORMED_META_KEY = {
     "historical": "historical_context_status",
 }
 
+# The product remains on the established direct-sibling path unless a caller opts into
+# the packet shadow.  This is deliberately an input-routing choice, not an authority
+# level: both representations remain descriptive, non-actionable Producer state.
+LEGACY_DIRECT = "LEGACY_DIRECT"
+PACKET_SHADOW = "PACKET_SHADOW"
+_PACKET_CONSUMPTION_MODES = {LEGACY_DIRECT, PACKET_SHADOW}
+
 
 def _reject_boundary(*reasons: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
@@ -104,10 +111,19 @@ def _reject_boundary(*reasons: str, metadata: dict[str, Any] | None = None) -> d
 def accept_structured_research_synthesis(
     ticker_context: Mapping[str, Any],
     ai_response: str | Mapping[str, Any],
+    *,
+    packet_consumption_mode: str = LEGACY_DIRECT,
 ) -> dict[str, Any]:
-    """Accept and validate a structured AI research-synthesis output using canonical ticker context."""
+    """Accept a research synthesis using legacy inputs or an explicit packet shadow.
+
+    ``LEGACY_DIRECT`` is the default production-compatible path.  ``PACKET_SHADOW``
+    permits packet-only components to be cited and produces transition diagnostics,
+    while retaining direct siblings for one-fact parity checks.
+    """
     if not isinstance(ticker_context, Mapping):
         return _reject_boundary("ticker_context_invalid_type")
+    if packet_consumption_mode not in _PACKET_CONSUMPTION_MODES:
+        return _reject_boundary("packet_consumption_mode_invalid")
 
     ticker = ticker_context.get("ticker")
     if ticker is not None and not isinstance(ticker, str):
@@ -121,7 +137,7 @@ def accept_structured_research_synthesis(
     if shape_reasons:
         return _reject_boundary(*shape_reasons)
 
-    derived_meta: dict[str, Any] = {}
+    derived_meta: dict[str, Any] = {"packet_consumption_mode": packet_consumption_mode}
     if isinstance(ticker, str):
         derived_meta["expected_ticker"] = ticker
 
@@ -282,7 +298,7 @@ def accept_structured_research_synthesis(
             return None
         return payload
 
-    if packet_record is not None:
+    if packet_record is not None and packet_consumption_mode == PACKET_SHADOW:
         # current_decision_context is quoted decision metadata, never evidence (mirroring
         # how tactical/opportunity feed expected_upstream_decision_context but are never
         # added to known_evidence_refs below) -- it can only be cross-checked for
@@ -314,6 +330,99 @@ def accept_structured_research_synthesis(
 
     if isinstance(packet_ctx, Mapping):
         derived_meta["current_research_decision_packet_component_conflicts"] = sorted(packet_component_conflicts)
+
+    # Preserve the packet's own provenance and local component disposition in the final
+    # product representation.  These are transition/research metadata only; they do not
+    # become evidence citations or decision authority by being present here.
+    if packet_record is not None:
+        packet_components = packet_record.get("components")
+        derived_meta["current_research_decision_packet_product_metadata"] = {
+            "source_artifact_identity": packet_ctx.get("source_artifact_identity"),
+            "packet_status": packet_record.get("packet_status"),
+            "component_manifest": copy.deepcopy(packet_ctx.get("component_manifest")),
+            "component_local_status": {
+                name: (
+                    payload.get("status", "PRESENT") if isinstance(payload, Mapping) else "UNRESOLVED"
+                )
+                for name, key in _PACKET_COMPONENT_KEY.items()
+                for payload in [packet_components.get(key) if isinstance(packet_components, Mapping) else None]
+            },
+            "unresolved_components": copy.deepcopy(packet_record.get("unresolved_components")),
+            "authority_limitations": copy.deepcopy(packet_record.get("authority_limitations")),
+            "warnings": copy.deepcopy(packet_record.get("warnings")),
+            "authority_boundary": copy.deepcopy(packet_ctx.get("authority_boundary")),
+        }
+
+    # Shadow parity is deliberately component-scoped.  The packet Bear/Base/Bull overlay
+    # and the direct CONSERVATIVE/BASE/SPECULATIVE sibling are adjacent, distinct
+    # contracts, so their coexistence is diagnostic-only and never an equality check.
+    parity_components: dict[str, str] = {}
+    if packet_consumption_mode == PACKET_SHADOW and packet_record is not None:
+        manifest = packet_ctx.get("component_manifest") if isinstance(packet_ctx, Mapping) else None
+        for name in _PACKET_COMPONENT_NAMES:
+            if _packet_component_payload(name) is None:
+                continue
+            if name == "scenario":
+                direct_present = (
+                    isinstance(scenario_context, Mapping)
+                    and derived_meta.get("scenario_context_status") != "malformed"
+                )
+                parity_components[name] = (
+                    "NONCOMPARABLE_SEMANTICS" if direct_present else "PACKET_ONLY"
+                )
+                continue
+            sibling_key = _PACKET_DIRECT_SIBLING_KEY[name]
+            sibling = ticker_context.get(sibling_key)
+            meta_key = _PACKET_DIRECT_SIBLING_MALFORMED_META_KEY[name]
+            if not isinstance(sibling, Mapping) or derived_meta.get(meta_key) == "malformed":
+                parity_components[name] = "PACKET_ONLY"
+                continue
+            manifest_entry = manifest.get(name) if isinstance(manifest, Mapping) else None
+            packet_identity = manifest_entry.get("source_artifact_identity") if isinstance(manifest_entry, Mapping) else None
+            sibling_identity = sibling.get("source_artifact_identity")
+            parity_components[name] = (
+                "CONFLICT_FAIL_CLOSED"
+                if name in packet_component_conflicts
+                else "EQUIVALENT"
+                if isinstance(packet_identity, str) and packet_identity == sibling_identity
+                else "IDENTITY_UNAVAILABLE"
+            )
+
+        if "current_decision_context" in packet_component_conflicts:
+            parity_components["current_decision_context"] = "CONFLICT_FAIL_CLOSED"
+        elif (
+            isinstance(packet_record.get("current_decision_context"), Mapping)
+            and isinstance(tactical, Mapping)
+            and tactical.get("status") in {"classified", "insufficient_data"}
+        ):
+            parity_components["current_decision_context"] = "EQUIVALENT"
+
+        # priority_tier / eligible_strategies belong to current_opportunity_prioritization,
+        # while the direct daily queue is a distinct contract.  Preserve both as adjacent
+        # metadata for review, but never force them into equality or let either override
+        # the other merely because their labels are similar.
+        decision = packet_record.get("current_decision_context")
+        if (
+            isinstance(decision, Mapping)
+            and isinstance(opportunity, Mapping)
+            and any(key in decision for key in ("priority_tier", "eligible_strategies"))
+        ):
+            parity_components["opportunity_priority_metadata"] = "NONCOMPARABLE_SEMANTICS"
+
+    if packet_consumption_mode == LEGACY_DIRECT or packet_record is None:
+        parity_status = "LEGACY_ONLY"
+    elif any(status == "CONFLICT_FAIL_CLOSED" for status in parity_components.values()):
+        parity_status = "DUAL_CONFLICT_FAIL_CLOSED"
+    elif any(status == "NONCOMPARABLE_SEMANTICS" for status in parity_components.values()):
+        parity_status = "DUAL_NONCOMPARABLE_SEMANTICS"
+    elif any(status == "EQUIVALENT" for status in parity_components.values()):
+        parity_status = "DUAL_EQUIVALENT"
+    else:
+        parity_status = "PACKET_ONLY"
+    derived_meta["packet_legacy_parity"] = {
+        "status": parity_status,
+        "components": parity_components,
+    }
 
     # --- 3. Derive known, citable evidence references from the context's own provenance ---
     known_refs: set[str] = set()
@@ -383,7 +492,7 @@ def accept_structured_research_synthesis(
     # above), the direct sibling's own pre-existing refs above remain the sole citation
     # path -- this loop deliberately adds nothing in that case, so the same upstream fact
     # is never cited twice through two transport paths.
-    if packet_record is not None:
+    if packet_consumption_mode == PACKET_SHADOW and packet_record is not None:
         for name in _PACKET_COMPONENT_NAMES:
             if name in packet_component_conflicts:
                 continue
@@ -452,13 +561,14 @@ def accept_structured_research_synthesis(
     # A positively-detected packet-vs-direct-sibling conflict fails closed for the
     # affected component on BOTH transport paths -- neither representation may be cited,
     # and neither is silently preferred over the other.
-    for name in packet_component_conflicts:
-        sibling_key = _PACKET_DIRECT_SIBLING_KEY.get(name)
-        if sibling_key is not None:
-            known_refs.discard(sibling_key)
-            known_refs = {ref for ref in known_refs if not ref.startswith(f"{sibling_key}.")}
-        known_refs.discard(f"current_research_decision_packet.{name}")
-        known_refs = {ref for ref in known_refs if not ref.startswith(f"current_research_decision_packet.{name}.")}
+    if packet_consumption_mode == PACKET_SHADOW:
+        for name in packet_component_conflicts:
+            sibling_key = _PACKET_DIRECT_SIBLING_KEY.get(name)
+            if sibling_key is not None:
+                known_refs.discard(sibling_key)
+                known_refs = {ref for ref in known_refs if not ref.startswith(f"{sibling_key}.")}
+            known_refs.discard(f"current_research_decision_packet.{name}")
+            known_refs = {ref for ref in known_refs if not ref.startswith(f"current_research_decision_packet.{name}.")}
 
     derived_meta["known_evidence_refs"] = sorted(known_refs)
 

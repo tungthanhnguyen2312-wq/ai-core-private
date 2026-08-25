@@ -91,6 +91,9 @@ _ALLOWED_CONTRACT_METADATA_KEYS = {
     "expected_scenario_context_summary",
     "current_research_decision_packet_status",
     "current_research_decision_packet_component_conflicts",
+    "current_research_decision_packet_product_metadata",
+    "packet_consumption_mode",
+    "packet_legacy_parity",
 }
 
 _NEGATION_MARKERS = (

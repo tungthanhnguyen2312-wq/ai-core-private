@@ -253,7 +253,8 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
         self.assertIn("market_wide_current_valuation.metrics.<method>", PROMPT)
 
     def test_decision_packet_documented_in_single_ticker_template(self):
-        self.assertIn("If `current_research_decision_packet` is present", PROMPT)
+        self.assertIn("explicitly selects `PACKET_SHADOW`", PROMPT)
+        self.assertIn("`LEGACY_DIRECT` remains the default path", PROMPT)
         self.assertIn("COHESION/TRANSPORT boundary", PROMPT)
         self.assertIn("never two independent confirmations", PROMPT)
         self.assertIn("current_evidence_bound_scenario", PROMPT)

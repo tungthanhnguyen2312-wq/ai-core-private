@@ -1932,7 +1932,9 @@ def _packet_context(*, decision_context=None, components=None, identities=None, 
 
 
 def _known_refs(ctx):
-    return set(accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]["known_evidence_refs"])
+    return set(accept_structured_research_synthesis(
+        ctx, {}, packet_consumption_mode="PACKET_SHADOW",
+    )["derived_contract_metadata"]["known_evidence_refs"])
 
 
 def _drop_sibling(ctx, key):
@@ -1949,14 +1951,14 @@ class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
     # --- Absence / malformed whole packet ---
     def test_packet_absent_no_status_key(self):
         ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
-        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        meta = accept_structured_research_synthesis(ctx, {}, packet_consumption_mode="PACKET_SHADOW")["derived_contract_metadata"]
         self.assertNotIn("current_research_decision_packet_status", meta)
         self.assertNotIn("current_research_decision_packet_component_conflicts", meta)
 
     def test_packet_malformed_whole_envelope(self):
         ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
         ctx["current_research_decision_packet"] = {"status": "malformed", "is_actionable": False, "reason_codes": ["x"]}
-        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        meta = accept_structured_research_synthesis(ctx, {}, packet_consumption_mode="PACKET_SHADOW")["derived_contract_metadata"]
         self.assertEqual("malformed", meta["current_research_decision_packet_status"])
         self.assertEqual([], meta["current_research_decision_packet_component_conflicts"])
 
@@ -1973,6 +1975,127 @@ class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
         result = accept_structured_research_synthesis(ctx, resp)
         self.assertEqual("accepted", result["status"])
         self.assertNotIn("current_research_decision_packet_status", result["derived_contract_metadata"])
+
+    def test_default_mode_remains_legacy_when_a_packet_is_attached(self):
+        """No packet attachment may silently alter the established direct route."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_decision_packet"] = _packet_context(
+            identities={"risk_register": "current_research_risk_register:DIFFERENT_HASH"},
+        )
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertEqual("LEGACY_DIRECT", meta["packet_consumption_mode"])
+        self.assertEqual("LEGACY_ONLY", meta["packet_legacy_parity"]["status"])
+        self.assertIn("current_research_risk_register", meta["known_evidence_refs"])
+
+    def test_shadow_packet_only_product_rendering_preserves_provenance(self):
+        """A packet-only packet can render the existing product when explicitly selected."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        for key in (
+            "watchlist_tactical_entry_classifier", "current_opportunity_decision_context",
+            "current_research_risk_register", "current_market_sector_leadership_context",
+            "current_financial_momentum_context", "current_corporate_event_context",
+            "market_wide_current_valuation", "market_wide_historical_research_context",
+            "current_research_scenario_context",
+        ):
+            _drop_sibling(ctx, key)
+        ctx["provenance"] = [
+            entry for entry in ctx["provenance"]
+            if entry.get("source_dataset") != "daily_opportunity_decision_queue"
+        ]
+        ctx["current_research_decision_packet"] = _packet_context()
+        response = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        response.pop("scenario_context_summary")
+        response["upstream_decision_context"] = {}
+        response["thesis"] = "Packet-retained financial and risk context is available for descriptive research."
+        response["supporting_evidence"] = ["Packet financial momentum includes an AVAILABLE revenue-growth component."]
+        response["counter_thesis"] = "Packet risk-register context retains a material financial-stress item."
+        response["counter_evidence"] = ["Packet risk-register evidence remains material and descriptive."]
+        response["historical_context_summary"] = "Historical direct context is not supplied; packet metadata preserves its component status."
+        response["valuation_context_summary"] = "Direct valuation context is not supplied; no valuation conclusion is made."
+        response["market_context_summary"] = "Direct market context is not supplied."
+        response["sector_context_summary"] = "Direct sector context is not supplied."
+        response["relative_strength_context"] = []
+        response["catalyst_context"] = []
+        response["risk_context"] = ["Packet risk-register context is retained as descriptive context."]
+        response["unresolved_questions"] = ["Packet component limitations remain qualified rather than inferred."]
+        response["authority_limitations"] = ["Only packet-shadow research inputs are supplied."]
+        response["provenance_references"] = [
+            "current_research_decision_packet.risk_register.material_risks.packet-only-risk",
+            "current_research_decision_packet.financial_momentum.components.revenue_growth",
+        ]
+        result = accept_structured_research_synthesis(
+            ctx, response, packet_consumption_mode="PACKET_SHADOW",
+        )
+        self.assertEqual("accepted", result["status"])
+        meta = result["derived_contract_metadata"]
+        self.assertEqual("PACKET_ONLY", meta["packet_legacy_parity"]["status"])
+        self.assertEqual("current_research_decision_packet:packet1", meta["current_research_decision_packet_product_metadata"]["source_artifact_identity"])
+        self.assertEqual("PRESENT", meta["current_research_decision_packet_product_metadata"]["component_manifest"]["risk_register"]["status"])
+
+    def test_shadow_parity_classifies_equivalent_noncomparable_and_conflicting_inputs(self):
+        equivalent = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        _drop_sibling(equivalent, "current_research_scenario_context")
+        _drop_sibling(equivalent, "current_opportunity_decision_context")
+        equivalent["current_research_decision_packet"] = _packet_context()
+        equivalent_meta = accept_structured_research_synthesis(
+            equivalent, {}, packet_consumption_mode="PACKET_SHADOW",
+        )["derived_contract_metadata"]
+        self.assertEqual("DUAL_EQUIVALENT", equivalent_meta["packet_legacy_parity"]["status"])
+
+        noncomparable = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        noncomparable["current_research_decision_packet"] = _packet_context()
+        noncomparable_meta = accept_structured_research_synthesis(
+            noncomparable, {}, packet_consumption_mode="PACKET_SHADOW",
+        )["derived_contract_metadata"]
+        self.assertEqual("DUAL_NONCOMPARABLE_SEMANTICS", noncomparable_meta["packet_legacy_parity"]["status"])
+        self.assertEqual("NONCOMPARABLE_SEMANTICS", noncomparable_meta["packet_legacy_parity"]["components"]["scenario"])
+
+        conflicting = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        conflicting["current_research_decision_packet"] = _packet_context(
+            identities={"risk_register": "current_research_risk_register:DIFFERENT_HASH"},
+        )
+        conflict_meta = accept_structured_research_synthesis(
+            conflicting, {}, packet_consumption_mode="PACKET_SHADOW",
+        )["derived_contract_metadata"]
+        self.assertEqual("DUAL_CONFLICT_FAIL_CLOSED", conflict_meta["packet_legacy_parity"]["status"])
+        self.assertEqual("CONFLICT_FAIL_CLOSED", conflict_meta["packet_legacy_parity"]["components"]["risk_register"])
+
+    def test_packet_priority_metadata_stays_noncomparable_to_daily_queue(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_decision_packet"] = _packet_context(
+            decision_context={**_PACKET_DECISION_CONTEXT, "priority_tier": "EXCLUDED", "eligible_strategies": []},
+        )
+        meta = accept_structured_research_synthesis(
+            ctx, {}, packet_consumption_mode="PACKET_SHADOW",
+        )["derived_contract_metadata"]
+        self.assertNotIn("current_decision_context", meta["current_research_decision_packet_component_conflicts"])
+        self.assertEqual(
+            "NONCOMPARABLE_SEMANTICS",
+            meta["packet_legacy_parity"]["components"]["opportunity_priority_metadata"],
+        )
+        self.assertEqual(_EXPECTED_UPSTREAM, meta["expected_upstream_decision_context"])
+
+    def test_shadow_local_component_failure_preserves_other_packet_components(self):
+        ctx = _drop_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), "current_research_risk_register")
+        _drop_sibling(ctx, "current_financial_momentum_context")
+        components = copy.deepcopy(_PACKET_FULL_COMPONENTS)
+        components["risk_register"] = {
+            "status": "malformed",
+            "reason_codes": ["current_research_decision_packet_component_risk_register_malformed"],
+        }
+        ctx["current_research_decision_packet"] = _packet_context(components=components)
+        meta = accept_structured_research_synthesis(
+            ctx, {}, packet_consumption_mode="PACKET_SHADOW",
+        )["derived_contract_metadata"]
+        self.assertNotIn("current_research_decision_packet.risk_register", meta["known_evidence_refs"])
+        self.assertIn(
+            "current_research_decision_packet.financial_momentum.components.revenue_growth",
+            meta["known_evidence_refs"],
+        )
+        self.assertEqual(
+            "malformed",
+            meta["current_research_decision_packet_product_metadata"]["component_local_status"]["risk_register"],
+        )
 
     # --- Packet-only citability (14/15/16): valid packet component, no usable direct sibling ---
     def test_packet_only_risk_register_citable(self):
@@ -2038,7 +2161,7 @@ class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
         refs = _known_refs(ctx)
         self.assertIn(f"current_research_risk_register.material_risks.{material_id}", refs)
         self.assertFalse(any(r.startswith("current_research_decision_packet.risk_register") for r in refs))
-        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        meta = accept_structured_research_synthesis(ctx, {}, packet_consumption_mode="PACKET_SHADOW")["derived_contract_metadata"]
         self.assertEqual([], meta["current_research_decision_packet_component_conflicts"])
 
     # --- Conflicting dual representation (18/19/20): fail closed both ways ---
@@ -2049,7 +2172,7 @@ class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
         self.assertIn(f"current_research_risk_register.material_risks.{material_id}", baseline_refs)  # present pre-conflict
 
         ctx["current_research_decision_packet"] = _packet_context(identities={"risk_register": "current_research_risk_register:DIFFERENT_HASH"})
-        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        meta = accept_structured_research_synthesis(ctx, {}, packet_consumption_mode="PACKET_SHADOW")["derived_contract_metadata"]
         self.assertIn("risk_register", meta["current_research_decision_packet_component_conflicts"])
         refs = set(meta["known_evidence_refs"])
         # Conflict does not silently choose the direct sibling:
@@ -2072,7 +2195,7 @@ class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
         ctx["current_research_decision_packet"] = _packet_context(
             decision_context={**_PACKET_DECISION_CONTEXT, "entry_action": "AVOID"},
         )
-        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        meta = accept_structured_research_synthesis(ctx, {}, packet_consumption_mode="PACKET_SHADOW")["derived_contract_metadata"]
         self.assertEqual(_EXPECTED_UPSTREAM, meta["expected_upstream_decision_context"])
         self.assertIn("current_decision_context", meta["current_research_decision_packet_component_conflicts"])
 
@@ -2081,7 +2204,7 @@ class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
         ctx["current_research_decision_packet"] = _packet_context(
             decision_context={**_PACKET_DECISION_CONTEXT, "tactical_state": "DOWNTREND"},
         )
-        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        meta = accept_structured_research_synthesis(ctx, {}, packet_consumption_mode="PACKET_SHADOW")["derived_contract_metadata"]
         self.assertEqual(_EXPECTED_UPSTREAM, meta["expected_upstream_decision_context"])
         self.assertIn("current_decision_context", meta["current_research_decision_packet_component_conflicts"])
 
@@ -2096,7 +2219,7 @@ class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
         ctx["current_research_decision_packet"] = _packet_context(
             decision_context={**_PACKET_DECISION_CONTEXT, "priority_tier": "EXCLUDED", "eligible_strategies": []},
         )
-        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        meta = accept_structured_research_synthesis(ctx, {}, packet_consumption_mode="PACKET_SHADOW")["derived_contract_metadata"]
         self.assertEqual(_EXPECTED_UPSTREAM, meta["expected_upstream_decision_context"])
 
     def test_current_decision_context_never_contributes_known_refs(self):
@@ -2111,7 +2234,7 @@ class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
         ctx["current_research_decision_packet"] = _packet_context(
             identities={"historical": "market_wide_historical_research_context:UNRELATED"},
         )
-        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        meta = accept_structured_research_synthesis(ctx, {}, packet_consumption_mode="PACKET_SHADOW")["derived_contract_metadata"]
         self.assertEqual("2026-08-20", meta["historical_context_session"])
         self.assertEqual("2026-08-24", meta["valuation_context_session"])
 
