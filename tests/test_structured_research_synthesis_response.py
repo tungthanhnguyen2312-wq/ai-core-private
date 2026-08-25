@@ -392,6 +392,98 @@ class StructuredResearchSynthesisResponseTests(unittest.TestCase):
         self.assertEqual("rejected", result["status"])
         self.assertIn("prohibited_recommendation_or_action_claim", result["reasons"])
 
+    def test_risk_score_claim_rejected(self):
+        """No numeric/global risk score exists anywhere in this schema."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["risk_context"].append("Risk score is 7/10.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_risk_score_claim", result["reasons"])
+
+    def test_risk_grade_and_overall_risk_claims_rejected(self):
+        for phrase in ("The overall risk here is elevated.", "This ticker has a risk grade of C."):
+            with self.subTest(phrase=phrase):
+                resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+                resp["risk_context"].append(phrase)
+                result = validate_structured_research_synthesis_output(resp)
+                self.assertEqual("rejected", result["status"])
+                self.assertIn("prohibited_risk_score_claim", result["reasons"])
+
+    def test_low_risk_or_safe_claim_rejected(self):
+        """absence_is_not_low_risk: an empty material-risk list can never become a
+        LOW_RISK/safe conclusion."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["risk_context"].append("The stock is low risk.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_low_risk_or_safe_claim", result["reasons"])
+
+    def test_few_risk_flags_implies_safer_claim_rejected(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["unresolved_questions"].append("Few risk flags mean the stock is safer.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_low_risk_or_safe_claim", result["reasons"])
+
+    def test_no_material_risk_established_factual_text_accepted(self):
+        """Explicit false-positive guard named in the milestone spec: the exact
+        NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE factual framing must never
+        itself be rejected as a low-risk/safe claim."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["risk_context"].append(
+            "No material risk has been established from the available evidence, but several data limitations remain."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_valuation_authority_limited_factual_text_accepted(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["unresolved_questions"].append(
+            "Valuation authority is limited; no authoritative cheapness conclusion is available."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_risk_quantification_claims_rejected(self):
+        """18. cannot generate probability/expected loss/VaR from risk evidence."""
+        for phrase in (
+            "These risks imply a 65% downside probability.",
+            "The expected loss from this position is material.",
+            "Value at risk is elevated given the financial stress.",
+        ):
+            with self.subTest(phrase=phrase):
+                resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+                resp["risk_context"].append(phrase)
+                result = validate_structured_research_synthesis_output(resp)
+                self.assertEqual("rejected", result["status"])
+                self.assertIn("prohibited_risk_quantification_claim", result["reasons"])
+
+    def test_risk_override_claim_rejected(self):
+        """Risk evidence may explain a deterministic action, never claim to override it --
+        prohibited even when upstream_decision_context itself is untouched, since the
+        false-authority framing is itself the harm."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["counter_thesis"] = resp["counter_thesis"] + " The risk register overrides EARLY_ENTRY to WAIT."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_risk_override_claim", result["reasons"])
+
+    def test_risk_sizing_inference_claim_rejected(self):
+        """19. cannot generate position sizing/participation from risk evidence."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["counter_thesis"] = resp["counter_thesis"] + " Risk register means position size should be reduced to 3%."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_risk_sizing_inference_claim", result["reasons"])
+
+    def test_negated_risk_score_language_accepted(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["authority_limitations"].append(
+            "This synthesis does not compute a risk score; risk evidence is reported as separate qualitative items only."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
     def test_capacity_or_participation_claim_rejected(self):
         """This contract consumes no liquidity/traded-value lane (e.g. the currently
         restricted ADTV20_MATCHED_VALUE Producer lane); it must never imply how much

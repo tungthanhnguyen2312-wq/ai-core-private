@@ -2383,6 +2383,138 @@ def apply_bundle_current_corporate_event_context_contract(context: dict[str, Any
     return context
 
 
+_RISK_REGISTER_FORBIDDEN_USES = {
+    "numeric_risk_score", "risk_adjusted_return", "expected_loss", "VaR", "probability",
+    "position_size", "participation_cap", "recommendation", "strategy_eligibility",
+    "research_priority", "entry_action", "VALUE", "daily_decision_queue",
+}
+_RISK_REGISTER_ITEM_STATUSES = {"ESTABLISHED", "WATCH", "DATA_LIMITATION", "UNRESOLVED_CONFLICT"}
+_RISK_REGISTER_STATUSES = {"MATERIAL_RISKS_ESTABLISHED", "NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE"}
+_RISK_REGISTER_SOURCE_CONTEXT_NAMES = {"historical", "leadership", "financial", "event", "valuation"}
+
+
+def _risk_register_item_valid(item: Any, *, ticker: str, expected_status: str) -> bool:
+    """One risk-register item: category membership fixes its own status exactly."""
+    if not isinstance(item, Mapping):
+        return False
+    severity = item.get("severity_band")
+    source_as_of = item.get("source_as_of")
+    return (
+        isinstance(item.get("risk_id"), str) and item["risk_id"].startswith(f"{ticker}:")
+        and isinstance(item.get("risk_domain"), str) and item["risk_domain"]
+        and isinstance(item.get("risk_type"), str) and item["risk_type"]
+        and item.get("status") == expected_status
+        and item.get("status") in _RISK_REGISTER_ITEM_STATUSES
+        and (severity is None or isinstance(severity, str))
+        and isinstance(item.get("source_context"), str) and item["source_context"]
+        and (source_as_of is None or isinstance(source_as_of, str))
+        and isinstance(item.get("observed_facts"), Mapping)
+        and isinstance(item.get("reason_codes"), list)
+        and isinstance(item.get("authority_tier"), str) and item["authority_tier"]
+        and isinstance(item.get("allowed_uses"), list)
+        and isinstance(item.get("prohibited_uses"), list)
+        and _RISK_REGISTER_FORBIDDEN_USES <= set(item["prohibited_uses"])
+    )
+
+
+def _current_research_risk_register_valid(raw: Any, *, ticker: str) -> bool:
+    if not isinstance(raw, Mapping):
+        return False
+    source_contexts = raw.get("source_contexts")
+    risk_register = raw.get("risk_register")
+    blocked_outputs = raw.get("blocked_outputs")
+    authority_boundary = raw.get("authority_boundary")
+    if not (
+        raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and isinstance(raw.get("source_artifact_identity"), str)
+        and raw["source_artifact_identity"].startswith("current_research_risk_register:")
+        and isinstance(source_contexts, Mapping)
+        and _RISK_REGISTER_SOURCE_CONTEXT_NAMES <= set(source_contexts)
+        and all(
+            isinstance(source_contexts[name], Mapping) and isinstance(source_contexts[name].get("available"), bool)
+            for name in _RISK_REGISTER_SOURCE_CONTEXT_NAMES
+        )
+        and isinstance(risk_register, Mapping)
+        and isinstance(blocked_outputs, Mapping)
+        and all(blocked_outputs.get(use) == "NOT_EMITTED_OR_MODIFIED" for use in _RISK_REGISTER_FORBIDDEN_USES)
+        and isinstance(authority_boundary, Mapping)
+        and authority_boundary.get("is_actionable") is False
+        and authority_boundary.get("no_numeric_risk_score") is True
+        and authority_boundary.get("absence_is_not_low_risk") is True
+        and authority_boundary.get("data_limitation_is_not_economic_risk") is True
+        and authority_boundary.get("source_sessions_preserved_independently") is True
+        and authority_boundary.get("no_upstream_decision_mutation") is True
+        and authority_boundary.get("no_sizing_or_participation") is True
+        and authority_boundary.get("pit") == "BLOCKED"
+    ):
+        return False
+    material = risk_register.get("material_risks")
+    watch = risk_register.get("watch_risks")
+    limitations = risk_register.get("data_authority_limitations")
+    conflicts = risk_register.get("unresolved_conflicts")
+    if not (
+        risk_register.get("ticker") == ticker
+        and isinstance(material, list) and all(_risk_register_item_valid(i, ticker=ticker, expected_status="ESTABLISHED") for i in material)
+        and isinstance(watch, list) and all(_risk_register_item_valid(i, ticker=ticker, expected_status="WATCH") for i in watch)
+        and isinstance(limitations, list) and all(_risk_register_item_valid(i, ticker=ticker, expected_status="DATA_LIMITATION") for i in limitations)
+        and isinstance(conflicts, list) and all(_risk_register_item_valid(i, ticker=ticker, expected_status="UNRESOLVED_CONFLICT") for i in conflicts)
+        and risk_register.get("risk_register_status") in _RISK_REGISTER_STATUSES
+        # The absence-is-not-low-risk semantic, hard-checked: whether material risk exists
+        # is exactly what selects between the two status values, never independently set.
+        and (
+            (bool(material) and risk_register["risk_register_status"] == "MATERIAL_RISKS_ESTABLISHED")
+            or (not material and risk_register["risk_register_status"] == "NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE")
+        )
+    ):
+        return False
+    return True
+
+
+def current_research_risk_register_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail-closed pass-through for the opt-in current research risk register.
+
+    Canonical location: tickers[ticker].current_research_risk_register, attached by
+    stock-core-private's export_ai_bundle.py only with
+    --include-current-research-risk-register. A descriptive, multi-domain projection of
+    already-retained context (historical/leadership/financial/event/valuation), never a
+    numeric score, probability, expected loss, VaR, sizing, or upstream-decision mutation.
+    Absence of an emitted material_risks item means only
+    NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE, never LOW_RISK/SAFE. Consumer
+    performs no recomputation of any risk classification and never merges
+    material_risks/watch_risks/data_authority_limitations/unresolved_conflicts into one list.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_research_risk_register") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not _current_research_risk_register_valid(raw, ticker=ticker):
+        return {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_research_risk_register_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_research_risk_register_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_research_risk_register_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_research_risk_register"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "current_research_risk_register",
+            "transformation": "Pass through the Producer's current multi-domain research risk register verbatim: each item's risk_id, risk_domain, risk_type, status, severity_band, source_context, source_as_of, observed_facts, reason_codes, and authority_tier, keeping material_risks, watch_risks, data_authority_limitations, and unresolved_conflicts as four separate lists, plus risk_register_status, per-source session identities, blocked outputs, and authority boundary. Consumer performs no recomputation of any risk classification, severity, or status, and never collapses the four categories into one.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-current-research-risk-register).",
+                "No numeric risk score, risk-adjusted return, expected loss, VaR, or probability is ever computed or implied by this section.",
+                "An empty material_risks list means NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE only -- never LOW_RISK, SAFE, or suitable for large sizing.",
+                "A data_authority_limitation (e.g. blocked valuation authority, unknown sector, missing exact-session data) is a coverage gap, never itself an investment-risk direction or a cheapness/expense conclusion.",
+                "An unresolved_conflicts item is reported as an unresolved conflict, never silently resolved to one interpretation.",
+                "strategy_eligibility, research_priority, and entry_action are never modified by this section; each source context's own as-of identity stays independent and is never unified into one synthesized session.",
+            ],
+        })
+    return context
+
+
 _MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES = {
     "AVAILABLE", "PARTIAL", "INSUFFICIENT_HISTORY", "MISSING", "NOT_APPLICABLE",
 }
@@ -4378,6 +4510,7 @@ def build_context_package(
     apply_bundle_current_market_sector_leadership_context_contract(context, bundle_payload)
     apply_bundle_current_financial_momentum_context_contract(context, bundle_payload)
     apply_bundle_current_corporate_event_context_contract(context, bundle_payload)
+    apply_bundle_current_research_risk_register_contract(context, bundle_payload)
     apply_bundle_market_wide_historical_research_context_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_current_market_flow_positioning_contract(context, bundle_payload)

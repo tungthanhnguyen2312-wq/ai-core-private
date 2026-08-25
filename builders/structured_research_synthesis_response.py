@@ -83,6 +83,8 @@ _ALLOWED_CONTRACT_METADATA_KEYS = {
     "financial_momentum_context_status",
     "corporate_event_context_session",
     "corporate_event_context_status",
+    "risk_register_status",
+    "risk_register_source_sessions",
 }
 
 _NEGATION_MARKERS = (
@@ -185,6 +187,56 @@ _AFFIRMATIVE_EVENT_STATUS_INFERENCE_RE = re.compile(
     r"\b(?:should\s+be\s+treated\s+as|can\s+be\s+(?:considered|treated\s+as)|effectively|assume[ds]?\s+(?:to\s+be\s+)?)\s+(?:already\s+)?executed\b"
     r"|\btreat\w*\s+(?:it|this)\s+as\s+executed\b"
     r"|\bassum\w*\s+execution\s+(?:has\s+)?occurr\w*\b",
+    re.IGNORECASE,
+)
+# No numeric/global risk score exists anywhere in this schema (the register keeps
+# material/watch/limitation/conflict as separate lists, never an aggregate); guard
+# against the AI inventing risk_score/risk_grade/overall_risk-shaped prose.
+_AFFIRMATIVE_RISK_SCORE_RE = re.compile(
+    r"\brisk\s+score\b"
+    r"|\brisk[- ]grade\b"
+    r"|\boverall\s+risk\b"
+    r"|\brisk\s+rating\b"
+    r"|\brisk[- ]adjusted\b",
+    re.IGNORECASE,
+)
+# absence_is_not_low_risk is a binding authority-boundary fact: an empty material_risks
+# list means only NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE, never LOW_RISK or
+# SAFE -- guard against the AI collapsing "no material risk found" into a safety verdict.
+_AFFIRMATIVE_LOW_RISK_OR_SAFE_RE = re.compile(
+    r"\blow[- ]risk\b"
+    r"|\b(?:is|remains?|considered)\s+safe\b"
+    r"|\bsafer\b"
+    r"|\bfew(?:er)?\s+risk\s+flags?\s+(?:mean|means|imply|implies|suggest|suggests)\b",
+    re.IGNORECASE,
+)
+# The register never computes a probability, expected loss, or VaR; guard against risk
+# evidence being turned into a quantified downside/upside claim (a shape the existing
+# probability/expected-return regex does not fully cover, e.g. "N% downside probability").
+_AFFIRMATIVE_RISK_QUANTIFICATION_RE = re.compile(
+    r"\d+(?:\.\d+)?%\s*(?:downside|upside|probability|chance|likelihood)\b"
+    r"|\bprobability\s+of\s+(?:a\s+)?(?:downside|loss|decline|drop)\b"
+    r"|\bexpected\s+loss\b"
+    r"|\bvalue[- ]at[- ]risk\b|\bVaR\b"
+    r"|\brisk[- ]adjusted\s+return\b",
+    re.IGNORECASE,
+)
+# no_upstream_decision_mutation is binding: risk evidence may explain an existing
+# deterministic action/priority/eligibility, never claim to override, upgrade, or
+# downgrade it -- that claim is prohibited even when the upstream_decision_context field
+# itself is untouched, since the false authority claim is the harm.
+_AFFIRMATIVE_RISK_OVERRIDE_CLAIM_RE = re.compile(
+    r"\brisk\w*\s+(?:register|evidence|context)\s+(?:overrides?|upgrades?|downgrades?|changes?|alters?)\b"
+    r"|\boverrides?\s+(?:entry[_ ]action|research[_ ]priority|strategy\s+eligib\w*)\b",
+    re.IGNORECASE,
+)
+# position_size/participation_cap are explicit FORBIDDEN_USES the register never
+# authorizes; guard against risk evidence being turned into a sizing/participation
+# instruction even when phrased as an inference rather than a bare position_size figure.
+_AFFIRMATIVE_RISK_SIZING_INFERENCE_RE = re.compile(
+    r"\brisk\w*\s+(?:register|evidence|context)\s+(?:means?|implies?|suggests?|justif(?:y|ies))\s+(?:position\s+siz\w*|sizing|participation)\b"
+    r"|\bposition\s+size\s+should\s+be\s+(?:reduced|cut|increased|raised)\b"
+    r"|\breduce\s+position\s+size\s+to\s+\d",
     re.IGNORECASE,
 )
 
@@ -369,6 +421,26 @@ def validate_structured_research_synthesis_output(
         if any(kw in item_lower for kw in ("executed", "execution")):
             if _AFFIRMATIVE_EVENT_STATUS_INFERENCE_RE.search(item_lower) and not is_negated:
                 reasons.append("prohibited_event_status_inference_claim")
+
+        if any(kw in item_lower for kw in ("risk score", "risk grade", "overall risk", "risk rating", "risk-adjusted", "risk adjusted")):
+            if _AFFIRMATIVE_RISK_SCORE_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_risk_score_claim")
+
+        if any(kw in item_lower for kw in ("low risk", "low-risk", "safe", "safer")):
+            if _AFFIRMATIVE_LOW_RISK_OR_SAFE_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_low_risk_or_safe_claim")
+
+        if any(kw in item_lower for kw in ("downside", "upside", "expected loss", "value at risk", "var", "risk-adjusted", "risk adjusted")):
+            if _AFFIRMATIVE_RISK_QUANTIFICATION_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_risk_quantification_claim")
+
+        if any(kw in item_lower for kw in ("overrides", "override", "upgrades", "downgrades")):
+            if _AFFIRMATIVE_RISK_OVERRIDE_CLAIM_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_risk_override_claim")
+
+        if any(kw in item_lower for kw in ("position size", "sizing", "participation")):
+            if _AFFIRMATIVE_RISK_SIZING_INFERENCE_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_risk_sizing_inference_claim")
 
     if reasons:
         return _reject(*reasons)

@@ -38,10 +38,12 @@ _SIBLING_KEYS = (
     "current_market_sector_leadership_context",
     "current_financial_momentum_context",
     "current_corporate_event_context",
+    "current_research_risk_register",
 )
 
 _VALUATION_USABLE_STATUSES = {"READY", "RESEARCH_USABLE"}
 _FINANCIAL_MOMENTUM_COMPONENT_USABLE_STATUSES = {"AVAILABLE", "PARTIAL"}
+_RISK_REGISTER_CATEGORIES = ("material_risks", "watch_risks", "data_authority_limitations", "unresolved_conflicts")
 
 
 def _reject_boundary(*reasons: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -153,6 +155,27 @@ def accept_structured_research_synthesis(
         else:
             derived_meta["corporate_event_context_status"] = "malformed"
 
+    # The risk register carries no single unified session -- it has five independent
+    # source-context as-of identities instead (historical/leadership/financial/event/
+    # valuation), so track its own content status plus that per-source map, never
+    # collapsing them into one synthesized "session" the way every other sibling has one.
+    risk_register = ticker_context.get("current_research_risk_register")
+    if isinstance(risk_register, Mapping):
+        register_body = risk_register.get("risk_register")
+        source_contexts = risk_register.get("source_contexts")
+        register_status = register_body.get("risk_register_status") if isinstance(register_body, Mapping) else None
+        if (
+            isinstance(register_body, Mapping)
+            and register_status in {"MATERIAL_RISKS_ESTABLISHED", "NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE"}
+            and isinstance(source_contexts, Mapping)
+        ):
+            derived_meta["risk_register_status"] = register_status
+            derived_meta["risk_register_source_sessions"] = {
+                name: entry.get("as_of") for name, entry in source_contexts.items() if isinstance(entry, Mapping)
+            }
+        else:
+            derived_meta["risk_register_status"] = "malformed"
+
     # --- 3. Derive known, citable evidence references from the context's own provenance ---
     known_refs: set[str] = set()
     provenance = ticker_context.get("provenance")
@@ -186,6 +209,16 @@ def accept_structured_research_synthesis(
                 if isinstance(event, Mapping) and isinstance(event.get("event_id"), str):
                     known_refs.add(f"current_corporate_event_context.events.{event['event_id']}")
 
+    # Every risk-register item (material, watch, data-authority limitation, or unresolved
+    # conflict alike) is a real Producer-computed record, never a placeholder for absent
+    # data -- so each is independently citable, keeping the four categories distinct in the
+    # reference path itself (never collapsed into one undifferentiated "risk item" ref).
+    if isinstance(risk_register, Mapping) and isinstance(register_body, Mapping):
+        for category in _RISK_REGISTER_CATEGORIES:
+            for item in register_body.get(category) or []:
+                if isinstance(item, Mapping) and isinstance(item.get("risk_id"), str):
+                    known_refs.add(f"current_research_risk_register.{category}.{item['risk_id']}")
+
     # A malformed sibling is recorded (processed) in provenance, but must never be
     # citable as if its content were usable evidence -- strip it back out here.
     if derived_meta.get("tactical_entry_classifier_status") == "malformed":
@@ -206,6 +239,9 @@ def accept_structured_research_synthesis(
     if derived_meta.get("corporate_event_context_status") == "malformed":
         known_refs.discard("current_corporate_event_context")
         known_refs = {ref for ref in known_refs if not ref.startswith("current_corporate_event_context.")}
+    if derived_meta.get("risk_register_status") == "malformed":
+        known_refs.discard("current_research_risk_register")
+        known_refs = {ref for ref in known_refs if not ref.startswith("current_research_risk_register.")}
 
     derived_meta["known_evidence_refs"] = sorted(known_refs)
 

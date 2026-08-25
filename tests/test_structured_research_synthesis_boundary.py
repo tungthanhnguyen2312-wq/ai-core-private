@@ -144,6 +144,41 @@ _CORPORATE_EVENT_FIXTURE = {
         "has_qualified_event": True, "does_not_enable_event_driven": True,
     },
 }
+_RISK_REGISTER_MATERIAL_ID = "TEST_TICKER:FINANCIAL:FINANCIAL_STRESS"
+_RISK_REGISTER_LIMITATION_ID = "TEST_TICKER:VALUATION_AUTHORITY:VALUATION_METRICS_BLOCKED"
+_RISK_REGISTER_FIXTURE = {
+    "ticker": "TEST_TICKER",
+    "source_artifact_identity": "current_research_risk_register:abc123",
+    "source_contexts": {
+        "historical": {"artifact_identity": "market_wide_historical_research_context:h1", "as_of": "2026-08-20", "available": True},
+        "leadership": {"artifact_identity": "current_market_sector_leadership_context:l1", "as_of": "2026-08-25", "available": True},
+        "financial": {"artifact_identity": "current_financial_momentum_context:f1", "as_of": "2026-08-24", "available": True},
+        "event": {"artifact_identity": "current_corporate_event_context:e1", "as_of": "2026-08-21", "available": True},
+        "valuation": {"artifact_identity": "market_wide_current_valuation_input_scaleout:v1", "as_of": "2026-08-24", "available": True},
+    },
+    "risk_register": {
+        "ticker": "TEST_TICKER",
+        "material_risks": [
+            {
+                "risk_id": _RISK_REGISTER_MATERIAL_ID, "risk_domain": "FINANCIAL", "risk_type": "FINANCIAL_STRESS",
+                "status": "ESTABLISHED", "severity_band": "MATERIAL", "source_context": "current_financial_momentum_context:f1",
+                "source_as_of": "2026-08-24", "observed_facts": {"financial_momentum_state": "LOSS_MAKING_OR_STRESSED"},
+                "reason_codes": ["LOSS_MAKING_OR_STRESSED_STATE"], "authority_tier": "OFFICIAL_QUALIFIED",
+            },
+        ],
+        "watch_risks": [],
+        "data_authority_limitations": [
+            {
+                "risk_id": _RISK_REGISTER_LIMITATION_ID, "risk_domain": "VALUATION_AUTHORITY", "risk_type": "VALUATION_METRICS_BLOCKED",
+                "status": "DATA_LIMITATION", "severity_band": "DATA_LIMITATION", "source_context": "market_wide_current_valuation_input_scaleout:v1",
+                "source_as_of": "2026-08-24", "observed_facts": {"metric_status_counts": {"BLOCKED": 1}},
+                "reason_codes": ["PER_METRIC_BLOCKED_STATUS_PRESERVED"], "authority_tier": "CURRENT_VALUATION_RESEARCH",
+            },
+        ],
+        "unresolved_conflicts": [],
+        "risk_register_status": "MATERIAL_RISKS_ESTABLISHED",
+    },
+}
 _PROVENANCE_FIXTURE = [
     {"source_dataset": "historical_fundamental_brief"},
     {"source_dataset": "market_wide_historical_research_context"},
@@ -153,6 +188,7 @@ _PROVENANCE_FIXTURE = [
     {"source_dataset": "current_market_sector_leadership_context"},
     {"source_dataset": "current_financial_momentum_context"},
     {"source_dataset": "current_corporate_event_context"},
+    {"source_dataset": "current_research_risk_register"},
 ]
 _TICKER_CONTEXT_FIXTURE = {
     "ticker": "TEST_TICKER",
@@ -164,6 +200,7 @@ _TICKER_CONTEXT_FIXTURE = {
     "current_market_sector_leadership_context": _MARKET_SECTOR_FIXTURE,
     "current_financial_momentum_context": _FINANCIAL_MOMENTUM_FIXTURE,
     "current_corporate_event_context": _CORPORATE_EVENT_FIXTURE,
+    "current_research_risk_register": _RISK_REGISTER_FIXTURE,
 }
 _EXPECTED_UPSTREAM = {
     "tactical_entry_classifier": {
@@ -204,12 +241,14 @@ _AI_RESPONSE_FIXTURE = {
     "risk_context": [
         "market_wide_historical_research_context reports a DETERIORATION structural state as a descriptive risk factor.",
         "current_financial_momentum_context reports net_margin_change as a weakening dimension despite expanding revenue and earnings.",
+        "current_research_risk_register reports a MATERIAL FINANCIAL_STRESS item sourced from current_financial_momentum_context's LOSS_MAKING_OR_STRESSED state.",
     ],
     "invalidation_conditions": [
         "watchlist_tactical_entry_classifier invalidation: close below the prior base low.",
     ],
     "unresolved_questions": [
         "market_wide_current_valuation reports EV/EBITDA as BLOCKED; unresolved whether it would corroborate P/B.",
+        "current_research_risk_register reports valuation authority as limited (VALUATION_METRICS_BLOCKED); no authoritative cheapness or expense conclusion is available.",
     ],
     "authority_limitations": [
         "EV/EBITDA is BLOCKED and EV/Sales is NOT_APPLICABLE; neither is usable valuation evidence.",
@@ -225,6 +264,8 @@ _AI_RESPONSE_FIXTURE = {
         "current_financial_momentum_context.components.earnings_growth",
         "current_financial_momentum_context.components.net_margin_change",
         f"current_corporate_event_context.events.{_CORPORATE_EVENT_UPCOMING_ID}",
+        f"current_research_risk_register.material_risks.{_RISK_REGISTER_MATERIAL_ID}",
+        f"current_research_risk_register.data_authority_limitations.{_RISK_REGISTER_LIMITATION_ID}",
     ],
     "is_actionable": False,
 }
@@ -911,6 +952,270 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         resp["catalyst_context"] = []
         resp["provenance_references"] = [
             r for r in resp["provenance_references"] if not r.startswith("current_corporate_event_context")
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    # --- AI_RISK_REGISTER_SYNTHESIS_INTEGRATION_V1 TESTS ---
+
+    def test_valid_material_risk_survives(self):
+        """1. valid material risk survives."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("MATERIAL_RISKS_ESTABLISHED", result["derived_contract_metadata"]["risk_register_status"])
+
+    def test_valid_watch_risk_survives(self):
+        """2. valid watch risk survives, distinct from a material risk."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        watch_id = "TEST_TICKER:PRICE_TECHNICAL:ELEVATED_HISTORICAL_VOLATILITY_REGIME"
+        ctx["current_research_risk_register"]["risk_register"]["watch_risks"] = [{
+            "risk_id": watch_id, "risk_domain": "PRICE_TECHNICAL", "risk_type": "ELEVATED_HISTORICAL_VOLATILITY_REGIME",
+            "status": "WATCH", "severity_band": "WATCH", "source_context": "market_wide_historical_research_context:h1",
+            "source_as_of": "2026-08-20", "observed_facts": {"volatility_regime": "HIGH"},
+            "reason_codes": ["WITHIN_TICKER_VOLATILITY_REGIME_HIGH"], "authority_tier": "RETROSPECTIVE_DESCRIPTIVE",
+        }]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["risk_context"] = list(resp["risk_context"]) + [
+            f"current_research_risk_register reports a WATCH item ({watch_id}) for elevated historical volatility.",
+        ]
+        resp["provenance_references"] = list(resp["provenance_references"]) + [
+            f"current_research_risk_register.watch_risks.{watch_id}",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_data_limitation_remains_limitation(self):
+        """3. data limitation remains limitation, not folded into material/watch risk."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        register = ctx["current_research_risk_register"]["risk_register"]
+        self.assertEqual(1, len(register["data_authority_limitations"]))
+        self.assertEqual(0, len(register["watch_risks"]))
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        known_refs = result["derived_contract_metadata"]["known_evidence_refs"]
+        self.assertIn(f"current_research_risk_register.data_authority_limitations.{_RISK_REGISTER_LIMITATION_ID}", known_refs)
+
+    def test_conflict_remains_conflict(self):
+        """4. conflict remains conflict -- citable specifically as an unresolved conflict."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        conflict_id = "TEST_TICKER:CORPORATE_EVENT:EVENT_EVIDENCE_CONFLICT"
+        ctx["current_research_risk_register"]["risk_register"]["unresolved_conflicts"] = [{
+            "risk_id": conflict_id, "risk_domain": "CORPORATE_EVENT", "risk_type": "EVENT_EVIDENCE_CONFLICT",
+            "status": "UNRESOLVED_CONFLICT", "severity_band": None, "source_context": "current_corporate_event_context:e1",
+            "source_as_of": "2026-08-21", "observed_facts": {"conflicting_count": 1},
+            "reason_codes": ["CONFLICTING_EVIDENCE"], "authority_tier": "CONFLICTING_EVIDENCE",
+        }]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["risk_context"] = list(resp["risk_context"]) + [
+            f"current_research_risk_register reports an unresolved event-evidence conflict ({conflict_id}); the conflict is not resolved by source preference.",
+        ]
+        resp["provenance_references"] = list(resp["provenance_references"]) + [
+            f"current_research_risk_register.unresolved_conflicts.{conflict_id}",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_no_material_risk_established_does_not_become_low_risk(self):
+        """5. no-material-risk-established does not become a LOW_RISK/safe claim."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_risk_register"]["risk_register"]["material_risks"] = []
+        ctx["current_research_risk_register"]["risk_register"]["risk_register_status"] = "NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE"
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["risk_context"] = [
+            "current_research_risk_register reports NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE, but the valuation-authority data limitation remains.",
+        ]
+        resp["provenance_references"] = [r for r in resp["provenance_references"] if not r.startswith("current_research_risk_register.material_risks")]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        # The prohibited framing is rejected even though the underlying fact is accurate.
+        resp["risk_context"].append("The absence of an established material risk means the stock is low risk.")
+        rejected = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", rejected["status"])
+        self.assertIn("prohibited_low_risk_or_safe_claim", rejected["reasons"])
+
+    def test_blocked_valuation_authority_does_not_become_expensive_or_cheap(self):
+        """6. blocked valuation authority does not become an expensive/cheap claim."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["unresolved_questions"] = [
+            "current_research_risk_register reports valuation authority as limited; the stock is undervalued relative to peers.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_valuation_overclaim", result["reasons"])
+
+    def test_unknown_sector_does_not_become_economic_sector_risk(self):
+        """7. unknown sector is a data/authority limitation, never reframed as an economic
+        sector risk -- Producer classifies it as DATA_AUTHORITY, and the citation must
+        match that classification rather than upgrading it to SECTOR_RELATIVE risk."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        sector_limit_id = "TEST_TICKER:DATA_AUTHORITY:SECTOR_CONTEXT_UNAVAILABLE"
+        ctx["current_research_risk_register"]["risk_register"]["data_authority_limitations"].append({
+            "risk_id": sector_limit_id, "risk_domain": "DATA_AUTHORITY", "risk_type": "SECTOR_CONTEXT_UNAVAILABLE",
+            "status": "DATA_LIMITATION", "severity_band": "DATA_LIMITATION", "source_context": "current_market_sector_leadership_context:l1",
+            "source_as_of": "2026-08-25", "observed_facts": {"sector_status": "UNAVAILABLE", "reason": "SECTOR_IDENTITY_UNKNOWN"},
+            "reason_codes": ["SECTOR_IDENTITY_UNKNOWN"], "authority_tier": "CURRENT_SESSION_DESCRIPTIVE",
+        })
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["unresolved_questions"] = list(resp["unresolved_questions"]) + [
+            f"current_research_risk_register ({sector_limit_id}) reports the ticker's sector identity as unavailable; this is a data-authority limitation, not an economic sector risk.",
+        ]
+        resp["provenance_references"] = list(resp["provenance_references"]) + [
+            f"current_research_risk_register.data_authority_limitations.{sector_limit_id}",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_risk_evidence_supports_counter_thesis(self):
+        """8. risk evidence can support counter-thesis."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["counter_thesis"] = resp["counter_thesis"] + " current_research_risk_register also reports a MATERIAL FINANCIAL_STRESS item, reinforcing the caution."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_risk_evidence_supports_risk_context(self):
+        """9. risk evidence can support risk_context (already exercised by the base
+        fixture; this confirms the citation is independently traceable)."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertTrue(any("current_research_risk_register" in item for item in result["accepted_output"]["risk_context"]))
+
+    def test_absent_risk_register_sibling_allows_partial_synthesis(self):
+        """10. absent sibling allows a valid PARTIAL synthesis."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        del ctx["current_research_risk_register"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_research_risk_register"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["risk_context"] = resp["risk_context"][:2]
+        resp["unresolved_questions"] = resp["unresolved_questions"][:1]
+        resp["provenance_references"] = [
+            r for r in resp["provenance_references"] if not r.startswith("current_research_risk_register")
+        ]
+        resp["authority_limitations"] = list(resp["authority_limitations"]) + [
+            "current_research_risk_register is not supplied for this ticker.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("risk_register_status", result["derived_contract_metadata"])
+
+    def test_malformed_risk_register_sibling_cannot_be_cited(self):
+        """11. malformed sibling cannot be cited."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_risk_register"] = {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_research_risk_register_malformed"],
+        }
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("rejected", result["status"])
+        self.assertTrue(any(r.startswith("unknown_evidence_reference:") for r in result["reasons"]))
+        self.assertEqual("malformed", result["derived_contract_metadata"]["risk_register_status"])
+
+    def test_risk_item_provenance_survives(self):
+        """12. item provenance survives."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        material_ref = f"current_research_risk_register.material_risks.{_RISK_REGISTER_MATERIAL_ID}"
+        limitation_ref = f"current_research_risk_register.data_authority_limitations.{_RISK_REGISTER_LIMITATION_ID}"
+        self.assertIn(material_ref, result["accepted_output"]["provenance_references"])
+        self.assertIn(material_ref, result["derived_contract_metadata"]["known_evidence_refs"])
+        self.assertIn(limitation_ref, result["derived_contract_metadata"]["known_evidence_refs"])
+
+    def test_risk_register_source_sessions_remain_independent(self):
+        """13. source sessions remain independent -- the register's own five source
+        as-of identities are tracked distinctly from each other and from every other
+        sibling's session."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        sessions = result["derived_contract_metadata"]["risk_register_source_sessions"]
+        self.assertEqual("2026-08-20", sessions["historical"])
+        self.assertEqual("2026-08-24", sessions["financial"])
+        self.assertEqual("2026-08-24", sessions["valuation"])
+        self.assertEqual("2026-08-21", sessions["event"])
+        self.assertNotEqual(sessions["historical"], sessions["event"])
+
+    def test_risk_register_cannot_alter_strategy_eligibility(self):
+        """14. risk register cannot alter strategy eligibility (no strategy-eligibility
+        field exists to mint)."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["strategy_eligibility"] = "NOT_ELIGIBLE"
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_top_level_key:strategy_eligibility", result["reasons"])
+
+    def test_risk_register_cannot_alter_research_priority(self):
+        """15. cannot alter research_priority, even cited as justification."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["upstream_decision_context"]["opportunity_decision_queue"]["research_priority_tier"] = "DEPRIORITIZED"
+        resp["counter_thesis"] = resp["counter_thesis"] + " The material financial-stress risk justifies deprioritizing research."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+
+    def test_risk_register_cannot_alter_entry_action(self):
+        """16. cannot alter entry_action, and cannot claim to override it either."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["upstream_decision_context"]["tactical_entry_classifier"]["entry_action"] = "AVOID"
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+        # The prose framing "overrides" the deterministic action is independently rejected,
+        # even without touching upstream_decision_context itself.
+        resp2 = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp2["counter_thesis"] = resp2["counter_thesis"] + " The risk register overrides ACCUMULATE_IN_BASE to WAIT."
+        result2 = accept_structured_research_synthesis(ctx, resp2)
+        self.assertEqual("rejected", result2["status"])
+        self.assertIn("prohibited_risk_override_claim", result2["reasons"])
+
+    def test_risk_register_cannot_generate_risk_score(self):
+        """17. cannot generate a numeric/global risk score."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["risk_context"].append("Risk score is 7/10.")
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_risk_score_claim", result["reasons"])
+
+    def test_risk_register_cannot_generate_probability_expected_loss_or_var(self):
+        """18. cannot generate probability/expected loss/VaR."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        for phrase, reason in (
+            ("These risks imply a 65% downside probability.", "prohibited_risk_quantification_claim"),
+            ("The expected loss from this position is material.", "prohibited_risk_quantification_claim"),
+            ("Value at risk is elevated given the financial stress.", "prohibited_risk_quantification_claim"),
+        ):
+            with self.subTest(phrase=phrase):
+                resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+                resp["risk_context"].append(phrase)
+                result = accept_structured_research_synthesis(ctx, resp)
+                self.assertEqual("rejected", result["status"])
+                self.assertIn(reason, result["reasons"])
+
+    def test_risk_register_cannot_generate_position_sizing_or_participation(self):
+        """19. cannot generate position sizing/participation."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["counter_thesis"] = resp["counter_thesis"] + " Risk register means position size should be reduced to 3%."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_risk_sizing_inference_claim", result["reasons"])
+
+    def test_existing_synthesis_without_risk_register_sibling_backward_compatible(self):
+        """20. old synthesis without risk sibling remains backward compatible."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        del ctx["current_research_risk_register"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_research_risk_register"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["risk_context"] = resp["risk_context"][:2]
+        resp["unresolved_questions"] = resp["unresolved_questions"][:1]
+        resp["provenance_references"] = [
+            r for r in resp["provenance_references"] if not r.startswith("current_research_risk_register")
         ]
         result = accept_structured_research_synthesis(ctx, resp)
         self.assertEqual("accepted", result["status"])

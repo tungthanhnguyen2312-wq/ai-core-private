@@ -106,6 +106,47 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
         ):
             self.assertIn(forbidden, PROMPT)
 
+    def test_risk_register_documented_in_single_ticker_template(self):
+        self.assertIn("If `current_research_risk_register` is present", PROMPT)
+        self.assertIn(
+            "never merge them, and never derive a numeric or global risk score, grade, or rating from their counts",
+            PROMPT,
+        )
+        self.assertIn(
+            "an empty `material_risks` list means only that no material risk has been established "
+            "from the available evidence -- never LOW_RISK, SAFE, or suitable for large sizing",
+            PROMPT,
+        )
+        self.assertIn(
+            "a blocked valuation authority does not mean the stock is expensive, and an unknown sector "
+            "does not mean the sector is a source of risk",
+            PROMPT,
+        )
+        self.assertIn("this register has no single unified session of its own", PROMPT)
+        self.assertIn("it can never override, upgrade, or downgrade `entry_action`, `research_priority`, or strategy eligibility", PROMPT)
+
+    def test_risk_register_routed_through_existing_synthesis_fields(self):
+        self.assertIn(
+            "cited directly into `risk_context`, `counter_thesis`, `counter_evidence`, `unresolved_questions`, "
+            "and `authority_limitations`",
+            PROMPT,
+        )
+        self.assertIn("it does not get its own dedicated summary field", PROMPT)
+        self.assertIn("this is never rephrased as LOW_RISK, SAFE, or a sizing endorsement", PROMPT)
+
+    def test_risk_register_prohibited_claims_extend_master_list(self):
+        for forbidden in (
+            "deriving a numeric or global risk score, grade, rating, or \"overall risk\" figure from `current_research_risk_register`'s item counts",
+            "treating an empty `risk_register.material_risks` list, or `risk_register_status=\"NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE\"`, as a LOW_RISK, SAFE, or \"few risk flags mean it's safer\" conclusion",
+            "treating a `data_authority_limitations` item",
+            "fabricating a probability, expected loss, or Value-at-Risk figure from `current_research_risk_register` evidence",
+            "claiming `current_research_risk_register` overrides, upgrades, or downgrades `entry_action`, `research_priority`, or strategy eligibility",
+            "deriving a position-size or participation-capacity instruction or inference from `current_research_risk_register` evidence",
+            "silently resolving an `unresolved_conflicts` item to one interpretation",
+            "merging `material_risks`, `watch_risks`, `data_authority_limitations`, and `unresolved_conflicts` into one undifferentiated risk list or count",
+        ):
+            self.assertIn(forbidden, PROMPT)
+
     def test_counter_thesis_is_mandatory(self):
         self.assertIn("`counter_thesis` is mandatory", PROMPT)
         self.assertIn("a generic disclaimer is not a counter-thesis", PROMPT)
