@@ -29,10 +29,13 @@ _STRING_FIELDS = (
     "counter_thesis",
     "historical_context_summary",
     "valuation_context_summary",
+    "market_context_summary",
+    "sector_context_summary",
 )
 _LIST_FIELDS = (
     "supporting_evidence",
     "counter_evidence",
+    "relative_strength_context",
     "catalyst_context",
     "risk_context",
     "invalidation_conditions",
@@ -43,6 +46,7 @@ _LIST_FIELDS = (
 _REQUIRED_NON_EMPTY_STRING_FIELDS = (
     "ticker", "analysis_session", "thesis", "counter_thesis",
     "historical_context_summary", "valuation_context_summary",
+    "market_context_summary", "sector_context_summary",
 )
 _REQUIRED_NON_EMPTY_LIST_FIELDS = ("supporting_evidence", "counter_evidence", "provenance_references")
 
@@ -73,6 +77,8 @@ _ALLOWED_CONTRACT_METADATA_KEYS = {
     "historical_context_status",
     "valuation_context_session",
     "valuation_context_status",
+    "market_sector_context_session",
+    "market_sector_context_status",
 }
 
 _NEGATION_MARKERS = (
@@ -114,6 +120,15 @@ _AFFIRMATIVE_CAPACITY_OR_PARTICIPATION_RE = re.compile(
     r"|\bexecution\s+capacity\b",
     re.IGNORECASE,
 )
+# Nothing in this schema computes a single number across lanes (market breadth, sector
+# leadership, technical, valuation); guard against the AI inventing one in prose even
+# though no numeric score field exists anywhere in the structured output.
+_AFFIRMATIVE_COMBINED_SCORE_RE = re.compile(
+    r"\b(?:combined|composite|overall|aggregate|blended)\s+(?:score|rating)\b"
+    r"|\bscore\s+of\s+\d"
+    r"|\b\d+(?:\.\d+)?\s*(?:/|out of)\s*\d+\s*(?:score|rating)\b",
+    re.IGNORECASE,
+)
 
 
 def _reject(*reasons: str) -> dict[str, Any]:
@@ -125,12 +140,22 @@ def _reject(*reasons: str) -> dict[str, Any]:
     }
 
 
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
 def _collect_all_text(output: Mapping[str, Any]) -> list[str]:
+    """Split multi-sentence summary strings into sentences before safety scanning.
+
+    A negation earlier in a long summary field (e.g. "...not a trade signal.") must not
+    shield an unrelated affirmative claim later in the same field ("...we recommend BUY.")
+    -- negation is scoped per sentence, not per field. List-field items are already
+    atomic short claims and are used as-is.
+    """
     items: list[str] = []
     for field in _STRING_FIELDS:
         value = output.get(field)
-        if isinstance(value, str):
-            items.append(value)
+        if isinstance(value, str) and value.strip():
+            items.extend(sentence for sentence in _SENTENCE_SPLIT_RE.split(value.strip()) if sentence.strip())
     for field in _LIST_FIELDS:
         for item in output.get(field) or []:
             if isinstance(item, str):
@@ -260,6 +285,10 @@ def validate_structured_research_synthesis_output(
         )):
             if _AFFIRMATIVE_CAPACITY_OR_PARTICIPATION_RE.search(item_lower) and not is_negated:
                 reasons.append("prohibited_capacity_or_participation_claim")
+
+        if any(kw in item_lower for kw in ("score", "composite", "aggregate", "blended rating")):
+            if _AFFIRMATIVE_COMBINED_SCORE_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_combined_score_claim")
 
     if reasons:
         return _reject(*reasons)

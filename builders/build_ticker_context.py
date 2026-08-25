@@ -1985,6 +1985,110 @@ def apply_bundle_market_wide_current_fundamental_research_contract(context: dict
     return context
 
 
+_CURRENT_MARKET_SECTOR_BREADTH_STATES = {
+    "BROAD_PARTICIPATION", "DETERIORATING_BREADTH", "NARROW_LEADERSHIP", "MIXED_BREADTH", "DATA_LIMITED",
+}
+_CURRENT_MARKET_SECTOR_TICKER_STATUSES = {"AVAILABLE", "PARTIAL", "DATA_LIMITED"}
+_CURRENT_MARKET_SECTOR_BREADTH_SUPPORT_STATES = {
+    "MARKET_AND_GROUP_BREADTH_SUPPORT", "GROUP_ONLY_SUPPORT_MARKET_NOT_BROAD",
+    "MARKET_ONLY_SUPPORT_GROUP_NOT_BROAD", "DATA_LIMITED", "ISOLATED_OR_MIXED_PARTICIPATION",
+}
+_CURRENT_MARKET_SECTOR_LEADERSHIP_STATUSES = {"AVAILABLE", "DATA_LIMITED", "UNAVAILABLE"}
+
+
+def _current_market_sector_leadership_context_valid(raw: Any, *, ticker: str) -> bool:
+    if not isinstance(raw, Mapping):
+        return False
+    market = raw.get("market")
+    ticker_context = raw.get("ticker_context")
+    blocked_outputs = raw.get("blocked_outputs")
+    authority_boundary = raw.get("authority_boundary")
+    if not (
+        raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and raw.get("status") in {"available", "data_limited"}
+        and isinstance(raw.get("session"), str)
+        and isinstance(raw.get("source_artifact_identity"), str)
+        and raw["source_artifact_identity"].startswith("current_market_sector_leadership_context:")
+        and raw.get("research_mode") == "CURRENT_SESSION_DESCRIPTIVE_MARKET_AND_SECTOR_CONTEXT"
+        and isinstance(market, Mapping)
+        and isinstance(ticker_context, Mapping)
+        and isinstance(raw.get("coverage"), Mapping)
+        and isinstance(blocked_outputs, Mapping)
+        and isinstance(authority_boundary, Mapping)
+        and authority_boundary.get("is_actionable") is False
+        and authority_boundary.get("no_strategy_priority_entry_or_sizing_mutation") is True
+        and authority_boundary.get("no_opaque_global_score") is True
+        and authority_boundary.get("missing_current_session_bar_is_not_zero") is True
+        and blocked_outputs.get("research_priority") == "NOT_MODIFIED"
+        and blocked_outputs.get("entry_action") == "NOT_MODIFIED"
+        and blocked_outputs.get("strategy_eligibility") == "NOT_MODIFIED"
+        and blocked_outputs.get("global_or_ticker_ranking_score") == "NOT_EMITTED"
+    ):
+        return False
+    if not (
+        isinstance(market.get("session"), str)
+        and isinstance(market.get("official_universe_count"), int)
+        and isinstance(market.get("exact_session_observed_count"), int)
+        and isinstance(market.get("missing_current_session_count"), int)
+        and market.get("current_breadth_state") in _CURRENT_MARKET_SECTOR_BREADTH_STATES
+        and isinstance(market.get("warnings"), list)
+    ):
+        return False
+    if not (
+        ticker_context.get("ticker") == ticker
+        and ticker_context.get("status") in _CURRENT_MARKET_SECTOR_TICKER_STATUSES
+        and isinstance(ticker_context.get("market_relative_momentum"), Mapping)
+        and isinstance(ticker_context.get("sector_relative_momentum"), Mapping)
+        and isinstance(ticker_context.get("sector_leadership_context"), Mapping)
+        and ticker_context["sector_leadership_context"].get("status") in _CURRENT_MARKET_SECTOR_LEADERSHIP_STATUSES
+        and ticker_context.get("breadth_support_state") in _CURRENT_MARKET_SECTOR_BREADTH_SUPPORT_STATES
+        and isinstance(ticker_context.get("coverage_limitations"), list)
+    ):
+        return False
+    return True
+
+
+def current_market_sector_leadership_context_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail-closed pass-through for the opt-in current market/sector leadership context.
+
+    Canonical location: tickers[ticker].current_market_sector_leadership_context, attached by
+    stock-core-private's export_ai_bundle.py only with
+    --include-current-market-sector-leadership-context. Descriptive current-session breadth/
+    leadership only; Producer's own blocked_outputs and authority_boundary mark
+    research_priority/entry_action/strategy_eligibility/sizing as never modified and no opaque
+    score as ever emitted. Consumer performs no recomputation of any ratio, percentile, or state.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_market_sector_leadership_context") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not _current_market_sector_leadership_context_valid(raw, ticker=ticker):
+        return {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_market_sector_leadership_context_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_market_sector_leadership_context_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_market_sector_leadership_context_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_market_sector_leadership_context"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "current_market_sector_leadership_context",
+            "transformation": "Pass through the Producer's current-session official-universe market breadth, this ticker's own row (market/sector-relative momentum, breadth_support_state, sector_leadership_context), coverage counts, blocked outputs, and authority boundary verbatim. Consumer performs no recomputation of any ratio, percentile, breadth state, or leadership state.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-current-market-sector-leadership-context).",
+                "CURRENT_SESSION_DESCRIPTIVE_MARKET_AND_SECTOR_CONTEXT only: current cross-sectional relative strength, not historical, not PIT, not a backtest.",
+                "A missing current-session technical bar is an explicit coverage gap, never an unchanged or zero return.",
+                "An unknown sector identity stays unknown; never inferred from ticker name or model knowledge.",
+                "No opaque global or ticker ranking score; research_priority, entry_action, strategy_eligibility, and sizing/execution are never modified by this section.",
+            ],
+        })
+    return context
+
+
 _MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES = {
     "AVAILABLE", "PARTIAL", "INSUFFICIENT_HISTORY", "MISSING", "NOT_APPLICABLE",
 }
@@ -3977,6 +4081,7 @@ def build_context_package(
     apply_bundle_market_wide_current_liquidity_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_descriptive_research_contract(context, bundle_payload)
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
+    apply_bundle_current_market_sector_leadership_context_contract(context, bundle_payload)
     apply_bundle_market_wide_historical_research_context_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_current_market_flow_positioning_contract(context, bundle_payload)

@@ -83,12 +83,30 @@ _VALUATION_FIXTURE = {
         "ev_sales": {"status": "NOT_APPLICABLE", "value": None},
     },
 }
+_MARKET_SECTOR_FIXTURE = {
+    "ticker": "TEST_TICKER",
+    "session": "2026-08-25",
+    "status": "available",
+    "is_actionable": False,
+    "research_mode": "CURRENT_SESSION_DESCRIPTIVE_MARKET_AND_SECTOR_CONTEXT",
+    "market": {"current_breadth_state": "MIXED_BREADTH", "missing_current_session_count": 12},
+    "ticker_context": {
+        "ticker": "TEST_TICKER", "status": "AVAILABLE",
+        "breadth_support_state": "MARKET_AND_GROUP_BREADTH_SUPPORT",
+        "sector_leadership_context": {
+            "status": "AVAILABLE", "leadership_state": "LEADING",
+            "group_key": "QUALIFIED_CLASSIFICATION|QUALIFIED_ENTITY_CLASS|Steel",
+        },
+        "market_relative_momentum": {"status": "AVAILABLE", "momentum_bucket": "TOP_QUINTILE"},
+    },
+}
 _PROVENANCE_FIXTURE = [
     {"source_dataset": "historical_fundamental_brief"},
     {"source_dataset": "market_wide_historical_research_context"},
     {"source_dataset": "market_wide_current_valuation"},
     {"source_dataset": "watchlist_tactical_entry_classifier"},
     {"source_dataset": "daily_opportunity_decision_queue"},
+    {"source_dataset": "current_market_sector_leadership_context"},
 ]
 _TICKER_CONTEXT_FIXTURE = {
     "ticker": "TEST_TICKER",
@@ -97,6 +115,7 @@ _TICKER_CONTEXT_FIXTURE = {
     "current_opportunity_decision_context": _OPPORTUNITY_FIXTURE,
     "market_wide_historical_research_context": _HISTORICAL_FIXTURE,
     "market_wide_current_valuation": _VALUATION_FIXTURE,
+    "current_market_sector_leadership_context": _MARKET_SECTOR_FIXTURE,
 }
 _EXPECTED_UPSTREAM = {
     "tactical_entry_classifier": {
@@ -123,6 +142,12 @@ _AI_RESPONSE_FIXTURE = {
     ],
     "historical_context_summary": "As of session 2026-08-20, market_wide_historical_research_context reports a DETERIORATION structural state; descriptive only, not an entry action.",
     "valuation_context_summary": "As of price session 2026-08-24, P/B is READY (1.2) while EV/EBITDA is BLOCKED and EV/Sales is NOT_APPLICABLE; no ticker-wide valuation verdict is implied.",
+    "market_context_summary": "As of session 2026-08-25, current_market_sector_leadership_context reports MIXED_BREADTH market-wide participation; descriptive context, not a trade signal.",
+    "sector_context_summary": "The ticker's own sector_leadership_context is AVAILABLE with leadership_state=LEADING on observed participation; descriptive only, not a research-priority upgrade.",
+    "relative_strength_context": [
+        "market_relative_momentum reports the ticker in the TOP_QUINTILE momentum bucket.",
+        "breadth_support_state=MARKET_AND_GROUP_BREADTH_SUPPORT: both market and sector breadth corroborate the ticker's own technical posture.",
+    ],
     "catalyst_context": [],
     "risk_context": [
         "market_wide_historical_research_context reports a DETERIORATION structural state as a descriptive risk factor.",
@@ -142,6 +167,7 @@ _AI_RESPONSE_FIXTURE = {
         "daily_opportunity_decision_queue",
         "market_wide_historical_research_context",
         "market_wide_current_valuation.metrics.pb",
+        "current_market_sector_leadership_context",
     ],
     "is_actionable": False,
 }
@@ -172,6 +198,176 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         self.assertEqual(resp["provenance_references"], result["accepted_output"]["provenance_references"])
         result["accepted_output"]["provenance_references"].append("mutated")
         self.assertNotIn("mutated", resp["provenance_references"])
+
+    # --- AI_MARKET_SECTOR_CONTEXT_SYNTHESIS_INTEGRATION_V1 TESTS ---
+
+    def test_valid_market_context_passes(self):
+        """1. valid market context passes."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("available", result["derived_contract_metadata"]["market_sector_context_status"])
+
+    def test_valid_sector_leadership_passes(self):
+        """2. valid sector leadership passes."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        self.assertEqual("LEADING", ctx["current_market_sector_leadership_context"]["ticker_context"]["sector_leadership_context"]["leadership_state"])
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+
+    def test_ticker_relative_context_preserved(self):
+        """3. ticker-relative context preserved (relative_strength_context survives verbatim)."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual(resp["relative_strength_context"], result["accepted_output"]["relative_strength_context"])
+
+    def test_market_data_limited_stays_limited(self):
+        """4. market DATA_LIMITED stays a limitation, distinct from AVAILABLE -- never neutral/positive."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_market_sector_leadership_context"]["status"] = "data_limited"
+        ctx["current_market_sector_leadership_context"]["market"]["current_breadth_state"] = "DATA_LIMITED"
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["market_context_summary"] = "As of session 2026-08-25, market breadth is DATA_LIMITED (below the minimum observed cohort); this is a coverage limitation, not a neutral or positive signal."
+        resp["authority_limitations"].append("Market breadth is DATA_LIMITED for this session.")
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("data_limited", result["derived_contract_metadata"]["market_sector_context_status"])
+        self.assertNotEqual("available", result["derived_contract_metadata"]["market_sector_context_status"])
+
+    def test_unknown_sector_stays_unknown(self):
+        """5. unknown sector stays unknown -- never inferred by the AI from the ticker name."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_market_sector_leadership_context"]["ticker_context"]["sector_leadership_context"] = {
+            "status": "UNAVAILABLE", "reason": "SECTOR_IDENTITY_UNKNOWN",
+        }
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["sector_context_summary"] = "The ticker's sector identity is UNAVAILABLE (SECTOR_IDENTITY_UNKNOWN); no sector leadership claim can be made."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_missing_current_session_names_do_not_become_unchanged_or_zero(self):
+        """6. missing current-session observations are coverage gaps, never unchanged/zero returns."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_market_sector_leadership_context"]["market"]["missing_current_session_count"] = 47
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["market_context_summary"] = "As of session 2026-08-25, 47 official-universe tickers have no current-session bar; this is an explicit coverage gap, not an unchanged or zero return, over the remaining MIXED_BREADTH participation."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_malformed_market_sector_sibling_fails_closed(self):
+        """7. malformed context fails closed -- cannot be cited once malformed."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_market_sector_leadership_context"] = {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_market_sector_leadership_context_malformed"],
+        }
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("rejected", result["status"])
+        self.assertTrue(any(r.startswith("unknown_evidence_reference:") for r in result["reasons"]))
+        self.assertEqual("malformed", result["derived_contract_metadata"]["market_sector_context_status"])
+
+    def test_absent_market_sector_sibling_allows_partial_synthesis(self):
+        """8. absent sibling allows a valid PARTIAL synthesis."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        del ctx["current_market_sector_leadership_context"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_market_sector_leadership_context"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["market_context_summary"] = "current_market_sector_leadership_context is not supplied in this context package."
+        resp["sector_context_summary"] = "current_market_sector_leadership_context is not supplied in this context package."
+        resp["relative_strength_context"] = []
+        resp["provenance_references"] = [r for r in resp["provenance_references"] if r != "current_market_sector_leadership_context"]
+        resp["authority_limitations"].append("Current market/sector leadership context is unavailable for this ticker.")
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("market_sector_context_status", result["derived_contract_metadata"])
+
+    def test_market_sector_provenance_reference_survives(self):
+        """9. provenance reference to the new sibling survives where supplied."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertIn("current_market_sector_leadership_context", result["accepted_output"]["provenance_references"])
+        self.assertIn("current_market_sector_leadership_context", result["derived_contract_metadata"]["known_evidence_refs"])
+
+    def test_market_sector_evidence_cannot_change_research_priority(self):
+        """10. market/sector context cannot change research_priority, even cited as justification."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["upstream_decision_context"]["opportunity_decision_queue"]["research_priority_tier"] = "PRIORITY_NOW_UPGRADED"
+        resp["thesis"] = resp["thesis"] + " Broad market and sector breadth support upgrading research priority."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+
+    def test_market_sector_evidence_cannot_change_entry_action(self):
+        """11. market/sector context cannot change entry_action, even cited as justification."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["upstream_decision_context"]["tactical_entry_classifier"]["entry_action"] = "BUY_ON_CONFIRMATION"
+        resp["thesis"] = resp["thesis"] + " Strong sector leadership justifies the stronger entry action."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+
+    def test_market_sector_context_cannot_create_recommendation(self):
+        """12. cannot create a BUY/SELL/HOLD recommendation from market/sector evidence."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["market_context_summary"] = resp["market_context_summary"] + " Broad breadth means we recommend BUY."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_recommendation_or_action_claim", result["reasons"])
+
+    def test_market_sector_context_cannot_create_numeric_probability(self):
+        """13. cannot create a numeric probability/confidence from market/sector evidence."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["sector_context_summary"] = resp["sector_context_summary"] + " This gives an 85% probability of continued leadership."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_probability_or_expected_return_claim", result["reasons"])
+
+    def test_no_opaque_combined_score_across_lanes(self):
+        """14. no opaque combined score across market + sector + technical + valuation."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " Combined market, sector, and valuation score of 8.5/10."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_combined_score_claim", result["reasons"])
+
+    def test_strong_ticker_weak_sector_supports_counter_thesis_without_action(self):
+        """15. strong ticker + weak sector can support a counter-thesis without becoming an action."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_market_sector_leadership_context"]["ticker_context"]["sector_leadership_context"]["leadership_state"] = "WEAKENING"
+        ctx["current_market_sector_leadership_context"]["ticker_context"]["breadth_support_state"] = "ISOLATED_OR_MIXED_PARTICIPATION"
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["counter_thesis"] = (
+            "The ticker's own technical structure is base-building, but its sector is currently WEAKENING and "
+            "participation is ISOLATED_OR_MIXED, so the setup is relatively isolated rather than broadly confirmed."
+        )
+        resp["counter_evidence"] = resp["counter_evidence"] + [
+            "current_market_sector_leadership_context reports sector_leadership_context.leadership_state=WEAKENING.",
+            "current_market_sector_leadership_context reports breadth_support_state=ISOLATED_OR_MIXED_PARTICIPATION.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_existing_synthesis_without_market_sector_sibling_backward_compatible(self):
+        """16. existing synthesis (built before this milestone, with no market/sector sibling
+        at all) remains backward compatible -- identical to the absent-sibling PARTIAL case,
+        proving nothing in the schema became newly mandatory for old-shape contexts."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        del ctx["current_market_sector_leadership_context"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_market_sector_leadership_context"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["market_context_summary"] = "current_market_sector_leadership_context is not supplied in this context package."
+        resp["sector_context_summary"] = "current_market_sector_leadership_context is not supplied in this context package."
+        resp["relative_strength_context"] = []
+        resp["provenance_references"] = [r for r in resp["provenance_references"] if r != "current_market_sector_leadership_context"]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
 
     # --- VALIDATION #1: upstream preserved, WAIT cannot become BUY ---
     def test_upstream_decision_context_preserved(self):

@@ -11,8 +11,9 @@ real ticker context, so it alone can:
 2. Derive which evidence sections/metrics are actually present and usable, so cited
    provenance is traceable to real supplied context and a malformed or absent sibling
    cannot be cited as if it were legitimate evidence.
-3. Keep each sibling's own session identity separate (historical vs. valuation), never
-   unifying them into one synthesized "current" timestamp.
+3. Keep each sibling's own session identity separate (historical, valuation, and current
+   market/sector leadership context), never unifying them into one synthesized "current"
+   timestamp.
 4. Delegate structural and textual safety checks to structured_research_synthesis_response.
 """
 
@@ -34,6 +35,7 @@ _SIBLING_KEYS = (
     "current_opportunity_decision_context",
     "market_wide_historical_research_context",
     "market_wide_current_valuation",
+    "current_market_sector_leadership_context",
 )
 
 _VALUATION_USABLE_STATUSES = {"READY", "RESEARCH_USABLE"}
@@ -115,6 +117,14 @@ def accept_structured_research_synthesis(
         else:
             derived_meta["valuation_context_status"] = "malformed"
 
+    market_sector = ticker_context.get("current_market_sector_leadership_context")
+    if isinstance(market_sector, Mapping):
+        if isinstance(market_sector.get("session"), str) and market_sector.get("status") in {"available", "data_limited"}:
+            derived_meta["market_sector_context_session"] = market_sector["session"]
+            derived_meta["market_sector_context_status"] = market_sector["status"]
+        else:
+            derived_meta["market_sector_context_status"] = "malformed"
+
     # --- 3. Derive known, citable evidence references from the context's own provenance ---
     known_refs: set[str] = set()
     provenance = ticker_context.get("provenance")
@@ -140,6 +150,8 @@ def accept_structured_research_synthesis(
     if derived_meta.get("valuation_context_status") == "malformed":
         known_refs.discard("market_wide_current_valuation")
         known_refs = {ref for ref in known_refs if not ref.startswith("market_wide_current_valuation.")}
+    if derived_meta.get("market_sector_context_status") == "malformed":
+        known_refs.discard("current_market_sector_leadership_context")
 
     derived_meta["known_evidence_refs"] = sorted(known_refs)
 

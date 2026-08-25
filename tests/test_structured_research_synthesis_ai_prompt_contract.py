@@ -18,10 +18,33 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
         for field in (
             "`ticker`", "`analysis_session`", "`synthesis_status`", "`thesis`", "`supporting_evidence`",
             "`counter_thesis`", "`counter_evidence`", "`historical_context_summary`", "`valuation_context_summary`",
+            "`market_context_summary`", "`sector_context_summary`", "`relative_strength_context`",
             "`catalyst_context`", "`risk_context`", "`invalidation_conditions`", "`unresolved_questions`",
             "`authority_limitations`", "`upstream_decision_context`", "`provenance_references`", "`is_actionable`",
         ):
             self.assertIn(field, PROMPT)
+
+    def test_market_sector_leadership_context_documented_in_single_ticker_template(self):
+        self.assertIn("If `current_market_sector_leadership_context` is present", PROMPT)
+        self.assertIn("never a trade signal by itself", PROMPT)
+        self.assertIn("an unknown sector identity stays unknown and must never be inferred", PROMPT)
+        self.assertIn("CURRENT_CROSS_SECTIONAL_DESCRIPTIVE_NOT_ORDINAL_RANKING", PROMPT)
+
+    def test_market_sector_authority_boundary_in_synthesis_template(self):
+        self.assertIn("if upstream `entry_action` is `WAIT`, strong sector leadership cannot turn it into entry", PROMPT)
+        self.assertIn("market breadth cannot promote it", PROMPT)
+        self.assertIn("Never combine market, sector, technical, and valuation evidence into one opaque synthetic confidence score", PROMPT)
+        self.assertIn("never an unchanged or zero return", PROMPT)
+
+    def test_market_sector_prohibited_claims_extend_master_list(self):
+        for forbidden in (
+            "treating `current_market_sector_leadership_context.market.current_breadth_state` as a trade signal by itself",
+            "treating `sector_leadership_context`'s `leadership_state` as strategy eligibility",
+            "inferring a ticker's sector identity from its name or general knowledge",
+            "treating a `missing_current_session_count` ticker as an unchanged or zero return",
+            "combining `current_market_sector_leadership_context` with technical, valuation, or historical evidence into one opaque combined score",
+        ):
+            self.assertIn(forbidden, PROMPT)
 
     def test_counter_thesis_is_mandatory(self):
         self.assertIn("`counter_thesis` is mandatory", PROMPT)

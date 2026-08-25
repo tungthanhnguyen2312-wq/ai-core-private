@@ -34,6 +34,12 @@ _VALID_RESPONSE_FIXTURE = {
     ],
     "historical_context_summary": "As of session 2026-08-20, market_wide_historical_research_context reports a DETERIORATION structural state; descriptive only, not an entry action.",
     "valuation_context_summary": "As of the valuation lane's own price session, P/B is RESEARCH_USABLE while EV/EBITDA is BLOCKED; RESEARCH_USABLE remains research-only.",
+    "market_context_summary": "As of session 2026-08-25, current_market_sector_leadership_context reports MIXED_BREADTH market-wide participation; descriptive context, not a trade signal.",
+    "sector_context_summary": "The ticker's own sector_leadership_context is AVAILABLE with leadership_state=LEADING on observed participation; descriptive only, not a research-priority upgrade.",
+    "relative_strength_context": [
+        "market_relative_momentum reports the ticker in the TOP_QUINTILE momentum bucket versus the current official-universe cohort.",
+        "breadth_support_state=MARKET_AND_GROUP_BREADTH_SUPPORT: both market and sector breadth corroborate the ticker's own technical posture.",
+    ],
     "catalyst_context": [
         "historical_decision_analysis lists a qualified catalyst window.",
     ],
@@ -64,6 +70,7 @@ _VALID_RESPONSE_FIXTURE = {
         "market_wide_historical_research_context",
         "market_wide_current_valuation.metrics.pb",
         "watchlist_tactical_entry_classifier",
+        "current_market_sector_leadership_context",
     ],
     "is_actionable": False,
 }
