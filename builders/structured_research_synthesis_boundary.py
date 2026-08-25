@@ -37,6 +37,7 @@ _SIBLING_KEYS = (
     "market_wide_current_valuation",
     "current_market_sector_leadership_context",
     "current_financial_momentum_context",
+    "current_corporate_event_context",
 )
 
 _VALUATION_USABLE_STATUSES = {"READY", "RESEARCH_USABLE"}
@@ -140,6 +141,18 @@ def accept_structured_research_synthesis(
         else:
             derived_meta["financial_momentum_context_status"] = "malformed"
 
+    # Corporate events' own research_session is Producer-required (never legitimately
+    # absent, unlike financial momentum's) -- track it independently of every other
+    # session, never unified with historical/valuation/market-sector/financial-momentum.
+    corporate_events = ticker_context.get("current_corporate_event_context")
+    if isinstance(corporate_events, Mapping):
+        ce_session = corporate_events.get("research_session")
+        if isinstance(ce_session, str) and ce_session and corporate_events.get("status") in {"available", "data_limited"}:
+            derived_meta["corporate_event_context_session"] = ce_session
+            derived_meta["corporate_event_context_status"] = corporate_events["status"]
+        else:
+            derived_meta["corporate_event_context_status"] = "malformed"
+
     # --- 3. Derive known, citable evidence references from the context's own provenance ---
     known_refs: set[str] = set()
     provenance = ticker_context.get("provenance")
@@ -161,6 +174,18 @@ def accept_structured_research_synthesis(
                 if isinstance(component, Mapping) and component.get("status") in _FINANCIAL_MOMENTUM_COMPONENT_USABLE_STATUSES:
                     known_refs.add(f"current_financial_momentum_context.components.{component_name}")
 
+    # Every retained event (any event_status, including CONFLICTING_EVIDENCE/DATA_LIMITED/
+    # CANCELLED) is a real record, unlike a financial-momentum BLOCKED/UNAVAILABLE component
+    # which means no data exists -- so each event_id is independently citable, letting the
+    # synthesis explain temporal gaps and conflicts as evidence rather than only clean facts.
+    if isinstance(corporate_events, Mapping):
+        ce_ticker_context = corporate_events.get("ticker_context")
+        events = ce_ticker_context.get("events") if isinstance(ce_ticker_context, Mapping) else None
+        if isinstance(events, list):
+            for event in events:
+                if isinstance(event, Mapping) and isinstance(event.get("event_id"), str):
+                    known_refs.add(f"current_corporate_event_context.events.{event['event_id']}")
+
     # A malformed sibling is recorded (processed) in provenance, but must never be
     # citable as if its content were usable evidence -- strip it back out here.
     if derived_meta.get("tactical_entry_classifier_status") == "malformed":
@@ -178,6 +203,9 @@ def accept_structured_research_synthesis(
     if derived_meta.get("financial_momentum_context_status") == "malformed":
         known_refs.discard("current_financial_momentum_context")
         known_refs = {ref for ref in known_refs if not ref.startswith("current_financial_momentum_context.")}
+    if derived_meta.get("corporate_event_context_status") == "malformed":
+        known_refs.discard("current_corporate_event_context")
+        known_refs = {ref for ref in known_refs if not ref.startswith("current_corporate_event_context.")}
 
     derived_meta["known_evidence_refs"] = sorted(known_refs)
 

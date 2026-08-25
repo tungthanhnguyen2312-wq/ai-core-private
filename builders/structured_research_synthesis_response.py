@@ -81,6 +81,8 @@ _ALLOWED_CONTRACT_METADATA_KEYS = {
     "market_sector_context_status",
     "financial_momentum_context_session",
     "financial_momentum_context_status",
+    "corporate_event_context_session",
+    "corporate_event_context_status",
 }
 
 _NEGATION_MARKERS = (
@@ -95,7 +97,10 @@ _AFFIRMATIVE_RECOMMENDATION_RE = re.compile(
     r"|\b(?:buy|sell|hold)\s+recommendation\b"
     r"|\btarget\s+price\s+(?:of|is|\=|\:)\s*\d+"
     r"|\bposition\s+size\s+(?:of|is|\=|\:)\s*\d+%?"
-    r"|\bportfolio\s+allocation\s+(?:of|is|\=|\:)\s*\d+%?",
+    r"|\bportfolio\s+allocation\s+(?:of|is|\=|\:)\s*\d+%?"
+    # Event-based imperative timing action (e.g. "Buy before the record date."): the
+    # declarative "is a buy" alternative above does not catch an imperative verb.
+    r"|\b(?:buy|sell)\s+(?:before|ahead\s+of|prior\s+to)\s+(?:the\s+)?(?:record\s+date|ex[- ]?date)\b",
     re.IGNORECASE,
 )
 _AFFIRMATIVE_PROBABILITY_OR_RETURN_RE = re.compile(
@@ -140,6 +145,46 @@ _AFFIRMATIVE_FORECAST_RE = re.compile(
     r"|\bwill\s+likely\s+(?:grow|improve|increase|earn|expand|decline)\b"
     r"|\bproject(?:ed|s)?\s+to\s+(?:grow|improve|increase|earn|expand|decline)\b"
     r"|\bnext\s+(?:year|quarter)(?:'s)?\s+(?:earnings|revenue|margin)\s+(?:will|are\s+expected|is\s+expected)\b",
+    re.IGNORECASE,
+)
+# A corporate event's existence/status is a temporal/evidentiary fact, never a price-
+# direction claim; guard against the AI turning a retained event into an implied market
+# reaction even though no price-impact field exists anywhere in the structured output.
+_AFFIRMATIVE_EVENT_IMPACT_RE = re.compile(
+    r"\bbullish\b|\bbearish\b"
+    r"|\b(?:positive|negative)\s+(?:price\s+)?reaction\b"
+    r"|\bpositive\s+price\s+impact\b|\bnegative\s+price\s+impact\b"
+    r"|\b(?:should|will|is\s+(?:likely|expected)\s+to)\s+(?:lift|boost|support|pressure|depress|weigh\s+on|drag\s+down|push\s+up|push\s+down)\s+(?:the\s+)?(?:share\s+)?price\b"
+    r"|\b(?:react|reacts|reacted|reacting)\s+(?:positively|negatively)\b",
+    re.IGNORECASE,
+)
+# EVENT_DRIVEN eligibility is a separate deterministic strategy-classification authority
+# this contract never consumes; a retained corporate event can never mint or upgrade it.
+_AFFIRMATIVE_EVENT_DRIVEN_ELIGIBILITY_RE = re.compile(
+    r"\bconfirms?\s+event[_ ]driven\s+eligib\w*\b"
+    r"|\bevent[_ ]driven\s+eligib\w*\s+(?:is\s+)?confirmed\b"
+    r"|\bqualif(?:y|ies|ied)\s+for\s+event[_ ]driven\b"
+    r"|\bevent[_ ]driven\s+strategy\s+eligib\w*\b"
+    r"|\b(?:is|becomes?)\s+event[_ ]driven[- ]eligible\b"
+    r"|\benables?\s+event[_ ]driven\b",
+    re.IGNORECASE,
+)
+# record_date != ex_date is a binding authority-boundary fact; guard against the AI
+# reconstructing a missing ex_date with the "record_date minus one trading day" heuristic
+# (or any equivalent inference) that the boundary explicitly forbids.
+_AFFIRMATIVE_INFERRED_EX_DATE_RE = re.compile(
+    r"\bex[- ]?date\s+(?:is\s+|can\s+be\s+|should\s+be\s+)?(?:estimated|assumed|inferred|likely|probably|approximat\w*|calculated)\b"
+    r"|\bex[- ]?date\s*(?:=|is\s+equal\s+to|equals)\s*record[- ]?date\b"
+    r"|\b(?:one|1)\s+trading\s+day\s+(?:before|prior\s+to)\s+(?:the\s+)?record\s+date\b"
+    r"|\bassum\w*\s+the\s+ex[- ]?date\b",
+    re.IGNORECASE,
+)
+# planned/approved != executed; guard against the AI self-inferring completion from a
+# planned/approved record that carries no retained execution evidence.
+_AFFIRMATIVE_EVENT_STATUS_INFERENCE_RE = re.compile(
+    r"\b(?:should\s+be\s+treated\s+as|can\s+be\s+(?:considered|treated\s+as)|effectively|assume[ds]?\s+(?:to\s+be\s+)?)\s+(?:already\s+)?executed\b"
+    r"|\btreat\w*\s+(?:it|this)\s+as\s+executed\b"
+    r"|\bassum\w*\s+execution\s+(?:has\s+)?occurr\w*\b",
     re.IGNORECASE,
 )
 
@@ -306,6 +351,24 @@ def validate_structured_research_synthesis_output(
         if any(kw in item_lower for kw in ("forecast", "project", "will likely", "next year", "next quarter")):
             if _AFFIRMATIVE_FORECAST_RE.search(item_lower) and not is_negated:
                 reasons.append("prohibited_forecast_claim")
+
+        if any(kw in item_lower for kw in (
+            "bullish", "bearish", "reaction", "price impact", "react",
+        )):
+            if _AFFIRMATIVE_EVENT_IMPACT_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_event_impact_claim")
+
+        if "event_driven" in item_lower or "event driven" in item_lower:
+            if _AFFIRMATIVE_EVENT_DRIVEN_ELIGIBILITY_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_event_driven_eligibility_claim")
+
+        if any(kw in item_lower for kw in ("ex-date", "ex date", "ex_date")):
+            if _AFFIRMATIVE_INFERRED_EX_DATE_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_inferred_ex_date_claim")
+
+        if any(kw in item_lower for kw in ("executed", "execution")):
+            if _AFFIRMATIVE_EVENT_STATUS_INFERENCE_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_event_status_inference_claim")
 
     if reasons:
         return _reject(*reasons)

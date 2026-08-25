@@ -121,6 +121,29 @@ _FINANCIAL_MOMENTUM_FIXTURE = {
         "weakening_dimensions": ["net_margin_change"],
     },
 }
+_CORPORATE_EVENT_UPCOMING_ID = "current_corporate_event:test-upcoming-dividend"
+_CORPORATE_EVENT_FIXTURE = {
+    "ticker": "TEST_TICKER",
+    "research_session": "2026-08-21",
+    "status": "available",
+    "is_actionable": False,
+    "research_mode": "CURRENT_RESEARCH_ONLY",
+    "ticker_context": {
+        "ticker": "TEST_TICKER",
+        "research_session": "2026-08-21",
+        "events": [
+            {
+                "ticker": "TEST_TICKER", "event_type": "CASH_DIVIDEND", "event_status": "CONFIRMED_UPCOMING",
+                "evidence_tier": "OFFICIAL_QUALIFIED", "record_date": "2026-09-03", "ex_date": "2026-08-28",
+                "execution_date": None, "known_at": "2026-08-10", "temporal_completeness": "COMPLETE",
+                "conflicts": [], "warnings": [], "insufficient_for_event_driven": False,
+                "event_id": _CORPORATE_EVENT_UPCOMING_ID,
+            },
+        ],
+        "confirmed_upcoming_count": 1, "planned_unresolved_count": 0, "conflicting_count": 0,
+        "has_qualified_event": True, "does_not_enable_event_driven": True,
+    },
+}
 _PROVENANCE_FIXTURE = [
     {"source_dataset": "historical_fundamental_brief"},
     {"source_dataset": "market_wide_historical_research_context"},
@@ -129,6 +152,7 @@ _PROVENANCE_FIXTURE = [
     {"source_dataset": "daily_opportunity_decision_queue"},
     {"source_dataset": "current_market_sector_leadership_context"},
     {"source_dataset": "current_financial_momentum_context"},
+    {"source_dataset": "current_corporate_event_context"},
 ]
 _TICKER_CONTEXT_FIXTURE = {
     "ticker": "TEST_TICKER",
@@ -139,6 +163,7 @@ _TICKER_CONTEXT_FIXTURE = {
     "market_wide_current_valuation": _VALUATION_FIXTURE,
     "current_market_sector_leadership_context": _MARKET_SECTOR_FIXTURE,
     "current_financial_momentum_context": _FINANCIAL_MOMENTUM_FIXTURE,
+    "current_corporate_event_context": _CORPORATE_EVENT_FIXTURE,
 }
 _EXPECTED_UPSTREAM = {
     "tactical_entry_classifier": {
@@ -173,7 +198,9 @@ _AI_RESPONSE_FIXTURE = {
         "market_relative_momentum reports the ticker in the TOP_QUINTILE momentum bucket.",
         "breadth_support_state=MARKET_AND_GROUP_BREADTH_SUPPORT: both market and sector breadth corroborate the ticker's own technical posture.",
     ],
-    "catalyst_context": [],
+    "catalyst_context": [
+        "current_corporate_event_context reports a CONFIRMED_UPCOMING CASH_DIVIDEND event with an evidenced ex_date of 2026-08-28; a confirmed research catalyst, not an implied price direction.",
+    ],
     "risk_context": [
         "market_wide_historical_research_context reports a DETERIORATION structural state as a descriptive risk factor.",
         "current_financial_momentum_context reports net_margin_change as a weakening dimension despite expanding revenue and earnings.",
@@ -197,6 +224,7 @@ _AI_RESPONSE_FIXTURE = {
         "current_financial_momentum_context.components.revenue_growth",
         "current_financial_momentum_context.components.earnings_growth",
         "current_financial_momentum_context.components.net_margin_change",
+        f"current_corporate_event_context.events.{_CORPORATE_EVENT_UPCOMING_ID}",
     ],
     "is_actionable": False,
 }
@@ -619,6 +647,270 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         resp["risk_context"] = resp["risk_context"][:1]
         resp["provenance_references"] = [
             r for r in resp["provenance_references"] if not r.startswith("current_financial_momentum_context")
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    # --- AI_CORPORATE_EVENT_SYNTHESIS_INTEGRATION_V1 TESTS ---
+
+    def test_valid_corporate_event_context_passes(self):
+        """1. valid confirmed-upcoming event passes."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("available", result["derived_contract_metadata"]["corporate_event_context_status"])
+
+    def test_executed_event_status_preserved(self):
+        """2. valid executed event passes, distinct from CONFIRMED_UPCOMING."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        event["event_status"] = "EXECUTED"
+        event["execution_date"] = "2026-06-20"
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = [
+            "current_corporate_event_context reports the CASH_DIVIDEND event as EXECUTED with execution_date=2026-06-20.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_planned_not_executed_supports_unresolved_questions(self):
+        """3. planned-not-executed stays planned -- reported as an open question, not an
+        upgraded action."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        event["event_status"] = "PLANNED_NOT_EXECUTED"
+        event["ex_date"] = None
+        event["execution_date"] = None
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = []
+        resp["unresolved_questions"] = list(resp["unresolved_questions"]) + [
+            "current_corporate_event_context reports the CASH_DIVIDEND event as PLANNED_NOT_EXECUTED; whether it will be executed is not yet resolved.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_record_date_only_event_has_no_ex_date(self):
+        """4. record-date-only event retains no ex-date."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        event["event_status"] = "TEMPORAL_DETAILS_INCOMPLETE"
+        event["ex_date"] = None
+        event["temporal_completeness"] = "INCOMPLETE"
+        self.assertIsNone(event["ex_date"])
+        self.assertIsNotNone(event["record_date"])
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = [
+            "current_corporate_event_context reports record_date=2026-09-03 for the CASH_DIVIDEND event; ex_date is not retained, so the event is TEMPORAL_DETAILS_INCOMPLETE.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_temporal_incomplete_event_limits_conclusion(self):
+        """5. temporal-incomplete remains incomplete -- cited as a limiting factor."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        event["event_status"] = "TEMPORAL_DETAILS_INCOMPLETE"
+        event["ex_date"] = None
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = []
+        resp["authority_limitations"] = list(resp["authority_limitations"]) + [
+            "current_corporate_event_context's CASH_DIVIDEND event is temporally incomplete, so a stronger event interpretation is unavailable.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_conflicting_evidence_event_remains_conflict(self):
+        """6. conflicting evidence remains conflict, not silently resolved."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        event["event_status"] = "CONFLICTING_EVIDENCE"
+        event["conflicts"] = ["ex_date"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = []
+        resp["risk_context"] = list(resp["risk_context"]) + [
+            "current_corporate_event_context reports CONFLICTING_EVIDENCE on the CASH_DIVIDEND event's ex_date; the conflict is unresolved, not decided by source preference.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_known_at_and_session_discipline_preserved(self):
+        """7. known-at/as-of discipline preserved: the event's own known_at and this
+        sibling's own research_session are tracked independently of every other session."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        self.assertEqual("2026-08-10", event["known_at"])
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        meta = result["derived_contract_metadata"]
+        self.assertEqual("2026-08-21", meta["corporate_event_context_session"])
+        self.assertEqual("2026-08-24", meta["valuation_context_session"])
+        self.assertNotEqual(meta["corporate_event_context_session"], meta["valuation_context_session"])
+
+    def test_corporate_event_provenance_survives(self):
+        """9. exact event provenance survives."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        ref = f"current_corporate_event_context.events.{_CORPORATE_EVENT_UPCOMING_ID}"
+        self.assertIn(ref, result["accepted_output"]["provenance_references"])
+        self.assertIn(ref, result["derived_contract_metadata"]["known_evidence_refs"])
+
+    def test_absent_corporate_event_sibling_allows_partial_synthesis(self):
+        """10. absent event sibling allows a valid PARTIAL synthesis."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        del ctx["current_corporate_event_context"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_corporate_event_context"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = []
+        resp["provenance_references"] = [
+            r for r in resp["provenance_references"] if not r.startswith("current_corporate_event_context")
+        ]
+        resp["authority_limitations"] = list(resp["authority_limitations"]) + [
+            "current_corporate_event_context is not supplied for this ticker.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("corporate_event_context_status", result["derived_contract_metadata"])
+
+    def test_malformed_corporate_event_sibling_cannot_be_cited(self):
+        """11. malformed event sibling cannot be cited."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_corporate_event_context"] = {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_corporate_event_context_malformed"],
+        }
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("rejected", result["status"])
+        self.assertTrue(any(r.startswith("unknown_evidence_reference:") for r in result["reasons"]))
+        self.assertEqual("malformed", result["derived_contract_metadata"]["corporate_event_context_status"])
+
+    def test_event_evidence_supports_thesis(self):
+        """12. event evidence can support thesis."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " A confirmed upcoming cash dividend with an evidenced ex_date is a qualified near-term catalyst."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_event_evidence_supports_counter_thesis_or_risk(self):
+        """13. event evidence can support counter-thesis/risk -- a cancelled event removes
+        a prior catalyst rather than only ever supporting the thesis."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        event["event_status"] = "CANCELLED"
+        event["ex_date"] = None
+        ctx["current_corporate_event_context"]["ticker_context"]["confirmed_upcoming_count"] = 0
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = []
+        resp["counter_thesis"] = resp["counter_thesis"] + " The previously retained cash-dividend event is now CANCELLED, removing a prior research catalyst."
+        resp["risk_context"] = list(resp["risk_context"]) + [
+            "current_corporate_event_context reports the cash-dividend event as CANCELLED.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_corporate_event_context_cannot_enable_event_driven(self):
+        """14. event context cannot enable EVENT_DRIVEN eligibility."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " The confirmed dividend event confirms EVENT_DRIVEN eligibility."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_driven_eligibility_claim", result["reasons"])
+
+    def test_corporate_event_cannot_change_research_priority(self):
+        """15. cannot modify research_priority."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["upstream_decision_context"]["opportunity_decision_queue"]["research_priority_tier"] = "PRIORITY_NOW_UPGRADED"
+        resp["thesis"] = resp["thesis"] + " The confirmed dividend event supports upgrading research priority."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+
+    def test_corporate_event_cannot_change_entry_action(self):
+        """16. cannot modify entry_action, even cited as justification."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["upstream_decision_context"]["tactical_entry_classifier"]["entry_action"] = "BUY_ON_CONFIRMATION"
+        resp["thesis"] = resp["thesis"] + " The confirmed dividend event justifies a stronger entry action."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+
+    def test_corporate_event_cannot_fabricate_price_impact(self):
+        """17. cannot fabricate price impact (bullish/bearish/reaction language)."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " This dividend confirmation is bullish and should lift the share price."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_impact_claim", result["reasons"])
+
+    def test_corporate_event_cannot_fabricate_probability(self):
+        """18. cannot fabricate an event reaction probability."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " The event has a 70% probability of a positive reaction."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_probability_or_expected_return_claim", result["reasons"])
+
+    def test_corporate_event_cannot_fabricate_recommendation_or_sizing(self):
+        """19. cannot fabricate a recommendation or sizing figure from event evidence."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " Buy before the record date to capture the dividend."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_recommendation_or_action_claim", result["reasons"])
+        for key, value in (("recommendation", "BUY"), ("position_size", "5%")):
+            with self.subTest(key=key):
+                resp2 = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+                resp2[key] = value
+                result2 = accept_structured_research_synthesis(ctx, resp2)
+                self.assertEqual("rejected", result2["status"])
+                self.assertIn(f"prohibited_top_level_key:{key}", result2["reasons"])
+
+    def test_corporate_event_cannot_infer_missing_ex_date(self):
+        """RESPONSE GUARDS: free-text synthesis cannot fabricate an inferred ex-date, e.g.
+        the 'record_date minus one trading day' heuristic the authority boundary forbids."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        event["event_status"] = "TEMPORAL_DETAILS_INCOMPLETE"
+        event["ex_date"] = None
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = [
+            "current_corporate_event_context reports record_date without ex_date; the ex-date is estimated as one trading day before the record date.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_inferred_ex_date_claim", result["reasons"])
+
+    def test_corporate_event_cannot_invent_execution_status(self):
+        """RESPONSE GUARDS: free-text synthesis cannot invent an execution status a
+        PLANNED_NOT_EXECUTED record does not carry."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        event = ctx["current_corporate_event_context"]["ticker_context"]["events"][0]
+        event["event_status"] = "PLANNED_NOT_EXECUTED"
+        event["execution_date"] = None
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = [
+            "The approved issuance should be treated as already executed given the strength of the other evidence.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_status_inference_claim", result["reasons"])
+
+    def test_existing_synthesis_without_corporate_event_sibling_backward_compatible(self):
+        """20. existing synthesis (built before this milestone, with no corporate-event
+        sibling at all) remains backward compatible."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        del ctx["current_corporate_event_context"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_corporate_event_context"]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["catalyst_context"] = []
+        resp["provenance_references"] = [
+            r for r in resp["provenance_references"] if not r.startswith("current_corporate_event_context")
         ]
         result = accept_structured_research_synthesis(ctx, resp)
         self.assertEqual("accepted", result["status"])

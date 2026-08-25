@@ -2221,6 +2221,168 @@ def apply_bundle_current_financial_momentum_context_contract(context: dict[str, 
     return context
 
 
+_CORPORATE_EVENT_STATUSES = {
+    "CONFIRMED_UPCOMING", "CONFIRMED_RECENT", "EXECUTED", "PLANNED_NOT_EXECUTED",
+    "CANCELLED", "TEMPORAL_DETAILS_INCOMPLETE", "CONFLICTING_EVIDENCE", "DATA_LIMITED",
+}
+_CORPORATE_EVENT_TEMPORAL_COMPLETENESS_STATES = {"COMPLETE", "INCOMPLETE"}
+_CORPORATE_EVENT_CONTEXT_STATUSES = {"available", "data_limited"}
+_CORPORATE_EVENT_FORBIDDEN_USES = {
+    "EVENT_DRIVEN_eligibility", "price_impact", "probability", "target",
+    "research_priority", "entry_action", "recommendation", "sizing",
+}
+_CORPORATE_EVENT_NULLABLE_STRING_FIELDS = (
+    "source", "published_at", "observed_at", "known_at", "announcement_date",
+    "record_date", "ex_date", "effective_date", "execution_date",
+    "qualification", "source_event_id", "source_record_identity",
+)
+_CORPORATE_EVENT_TICKER_CONTEXT_COUNT_FIELDS = (
+    "confirmed_upcoming_count", "recent_confirmed_count", "executed_count",
+    "recent_confirmed_or_executed_count", "planned_unresolved_count",
+    "conflicting_count", "data_limited_count", "temporal_incomplete_count",
+    "qualified_event_count",
+)
+
+
+def _corporate_event_valid(event: Any, *, ticker: str) -> bool:
+    """One retained event record: every temporal field independent, none inferred."""
+    if not isinstance(event, Mapping):
+        return False
+    if not (
+        event.get("ticker") == ticker
+        and isinstance(event.get("event_type"), str) and event["event_type"]
+        and event.get("event_status") in _CORPORATE_EVENT_STATUSES
+        and isinstance(event.get("status_reason"), str) and event["status_reason"]
+        and isinstance(event.get("evidence_tier"), str) and event["evidence_tier"]
+        and event.get("temporal_completeness") in _CORPORATE_EVENT_TEMPORAL_COMPLETENESS_STATES
+        and isinstance(event.get("conflicts"), list)
+        and isinstance(event.get("warnings"), list)
+        and isinstance(event.get("blockers"), list)
+        and isinstance(event.get("materiality_status"), str)
+        and isinstance(event.get("source_identities"), list)
+        and isinstance(event.get("supporting_evidence"), list)
+        and all(isinstance(item, Mapping) for item in event["supporting_evidence"])
+        and isinstance(event.get("insufficient_for_event_driven"), bool)
+        and isinstance(event.get("allowed_uses"), list)
+        and isinstance(event.get("prohibited_uses"), list)
+        and _CORPORATE_EVENT_FORBIDDEN_USES <= set(event["prohibited_uses"])
+        and isinstance(event.get("event_id"), str)
+        and event["event_id"].startswith("current_corporate_event:")
+    ):
+        return False
+    for field in _CORPORATE_EVENT_NULLABLE_STRING_FIELDS:
+        value = event.get(field)
+        if value is not None and not isinstance(value, str):
+            return False
+    return True
+
+
+def _current_corporate_event_context_valid(raw: Any, *, ticker: str) -> bool:
+    if not isinstance(raw, Mapping):
+        return False
+    ticker_context = raw.get("ticker_context")
+    blocked_outputs = raw.get("blocked_outputs")
+    authority_boundary = raw.get("authority_boundary")
+    if not (
+        raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and raw.get("status") in _CORPORATE_EVENT_CONTEXT_STATUSES
+        and isinstance(raw.get("research_session"), str) and raw["research_session"]
+        and isinstance(raw.get("source_artifact_identity"), str)
+        and raw["source_artifact_identity"].startswith("current_corporate_event_context:")
+        and raw.get("research_mode") == "CURRENT_RESEARCH_ONLY"
+        and isinstance(ticker_context, Mapping)
+        and isinstance(raw.get("coverage"), Mapping)
+        and isinstance(blocked_outputs, Mapping)
+        and blocked_outputs.get("strategy_eligibility") == "NOT_MODIFIED"
+        and blocked_outputs.get("event_driven_strategy") == "NOT_ENABLED_BY_THIS_CONTEXT"
+        and blocked_outputs.get("research_priority") == "NOT_MODIFIED"
+        and blocked_outputs.get("entry_action") == "NOT_MODIFIED"
+        and isinstance(authority_boundary, Mapping)
+        and authority_boundary.get("is_actionable") is False
+        and authority_boundary.get("corporate_event_context_is_not_event_driven_eligibility") is True
+        and authority_boundary.get("corporate_event_context_is_not_price_impact") is True
+        and authority_boundary.get("corporate_event_context_is_not_probability") is True
+        and authority_boundary.get("corporate_event_context_is_not_target") is True
+        and authority_boundary.get("corporate_event_context_is_not_research_priority") is True
+        and authority_boundary.get("corporate_event_context_is_not_entry_action") is True
+        and authority_boundary.get("corporate_event_context_is_not_recommendation") is True
+        and authority_boundary.get("corporate_event_context_is_not_sizing") is True
+        and authority_boundary.get("record_date_is_not_ex_date") is True
+        and authority_boundary.get("planned_is_not_executed") is True
+        and authority_boundary.get("announcement_is_not_execution") is True
+        and authority_boundary.get("ex_date_not_inferred") is True
+        and authority_boundary.get("execution_date_not_inferred") is True
+        and authority_boundary.get("no_look_ahead") is True
+        and authority_boundary.get("pit") == "BLOCKED"
+    ):
+        return False
+    events = ticker_context.get("events")
+    if not (
+        ticker_context.get("ticker") == ticker
+        # Both fields are set from the same artifact-level session by Producer; a
+        # mismatch is a tampered/inconsistent artifact, not a legitimate variant.
+        and ticker_context.get("research_session") == raw["research_session"]
+        and isinstance(events, list)
+        and all(_corporate_event_valid(event, ticker=ticker) for event in events)
+        and all(
+            isinstance(ticker_context.get(field), int) and not isinstance(ticker_context.get(field), bool)
+            for field in _CORPORATE_EVENT_TICKER_CONTEXT_COUNT_FIELDS
+        )
+        and isinstance(ticker_context.get("has_qualified_event"), bool)
+        and ticker_context.get("does_not_enable_event_driven") is True
+        and isinstance(ticker_context.get("allowed_uses"), list)
+        and isinstance(ticker_context.get("prohibited_uses"), list)
+        and _CORPORATE_EVENT_FORBIDDEN_USES <= set(ticker_context["prohibited_uses"])
+    ):
+        return False
+    return True
+
+
+def current_corporate_event_context_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail-closed pass-through for the opt-in current corporate event context.
+
+    Canonical location: tickers[ticker].current_corporate_event_context, attached by
+    stock-core-private's export_ai_bundle.py only with
+    --include-current-corporate-event-context. Descriptive current-research-only
+    projection of retained official exchange events and retained issuer/VSDC corporate-
+    action chains; Producer's own blocked_outputs/authority_boundary mark
+    strategy_eligibility/research_priority/entry_action as never modified and EVENT_DRIVEN
+    strategy as never enabled by this context. Consumer performs no recomputation of any
+    event status and never infers a missing ex_date, execution_date, or effective_date
+    from record_date or any other related date.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_corporate_event_context") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not _current_corporate_event_context_valid(raw, ticker=ticker):
+        return {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_corporate_event_context_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_corporate_event_context_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_corporate_event_context_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_corporate_event_context"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "current_corporate_event_context",
+            "transformation": "Pass through the Producer's current corporate-event research context verbatim: per-event identity, event_type, event_status, evidence_tier, source/evidence identities, every temporal field (published_at, observed_at, known_at, announcement_date, record_date, ex_date, effective_date, execution_date) independently, temporal_completeness, conflicts, warnings, blockers, materiality_status, insufficient_for_event_driven, ticker-level event counts, coverage, blocked outputs, and authority boundary. Consumer performs no recomputation of any event status and never infers ex_date, execution_date, or effective_date from a related date.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-current-corporate-event-context).",
+                "CURRENT_RESEARCH_ONLY: event existence is never a price-impact, reaction-probability, EVENT_DRIVEN-eligibility, research_priority, entry_action, recommendation, or sizing claim.",
+                "record_date without ex_date stays record_date without ex_date; ex_date is never synthesized as record_date minus one trading day or any equivalent heuristic.",
+                "Planned/approved issuance (PLANNED_NOT_EXECUTED) stays planned/approved unless the retained record itself carries execution evidence; announcement is never treated as execution.",
+                "A CONFLICTING_EVIDENCE event's conflicting dates are never silently resolved to one value by source preference.",
+                "An upcoming or recent event was itself known by the retained known_at/published_at boundary; this context never admits future-unannounced information.",
+            ],
+        })
+    return context
+
+
 _MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES = {
     "AVAILABLE", "PARTIAL", "INSUFFICIENT_HISTORY", "MISSING", "NOT_APPLICABLE",
 }
@@ -4215,6 +4377,7 @@ def build_context_package(
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
     apply_bundle_current_market_sector_leadership_context_contract(context, bundle_payload)
     apply_bundle_current_financial_momentum_context_contract(context, bundle_payload)
+    apply_bundle_current_corporate_event_context_contract(context, bundle_payload)
     apply_bundle_market_wide_historical_research_context_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_current_market_flow_positioning_contract(context, bundle_payload)

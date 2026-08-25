@@ -70,6 +70,42 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
         ):
             self.assertIn(forbidden, PROMPT)
 
+    def test_corporate_event_context_documented_in_single_ticker_template(self):
+        self.assertIn("If `current_corporate_event_context` is present", PROMPT)
+        self.assertIn(
+            "`CONFIRMED_UPCOMING`, `CONFIRMED_RECENT`, `EXECUTED`, `PLANNED_NOT_EXECUTED`, `CANCELLED`, "
+            "`TEMPORAL_DETAILS_INCOMPLETE`, `CONFLICTING_EVIDENCE`, or `DATA_LIMITED`",
+            PROMPT,
+        )
+        self.assertIn("never bullish/bearish, positive/negative, or a reaction probability", PROMPT)
+        self.assertIn("`record_date` without `ex_date` stays `record_date` without `ex_date`", PROMPT)
+        self.assertIn("never synthesize a missing `ex_date` as `record_date` minus one trading day", PROMPT)
+        self.assertIn("PLANNED_NOT_EXECUTED` stays planned/approved unless the retained record itself carries execution evidence", PROMPT)
+        self.assertIn("insufficient_for_event_driven=true", PROMPT)
+        self.assertIn("this sibling alone can never mint or upgrade it", PROMPT)
+
+    def test_corporate_event_context_routed_through_existing_synthesis_fields(self):
+        self.assertIn(
+            "cited directly into `thesis`, `supporting_evidence`, `counter_thesis`, `counter_evidence`, "
+            "`catalyst_context`, `risk_context`, and `unresolved_questions`",
+            PROMPT,
+        )
+        self.assertIn("`catalyst_context` is its natural home for a confirmed/upcoming event", PROMPT)
+        self.assertIn("This sibling can never itself confirm, create, or upgrade `EVENT_DRIVEN` strategy eligibility", PROMPT)
+
+    def test_corporate_event_prohibited_claims_extend_master_list(self):
+        for forbidden in (
+            "describing a `current_corporate_event_context` event as bullish, bearish, or otherwise implying a price direction",
+            "fabricating an event reaction probability",
+            "inferring a missing `ex_date` from `record_date`",
+            "describing a `PLANNED_NOT_EXECUTED` event as executed, completed, or effectively done",
+            "silently resolving a `CONFLICTING_EVIDENCE` event's conflicting dates to one value by source preference",
+            "treating a retained corporate event, its recency, its status, or its official evidence tier as itself confirming, creating, or upgrading `EVENT_DRIVEN` strategy eligibility",
+            "issuing a BUY/SELL/HOLD recommendation timed to a `record_date`/`ex_date`",
+            "asserting an event was known or confirmed earlier than its own retained `known_at`/`published_at` boundary",
+        ):
+            self.assertIn(forbidden, PROMPT)
+
     def test_counter_thesis_is_mandatory(self):
         self.assertIn("`counter_thesis` is mandatory", PROMPT)
         self.assertIn("a generic disclaimer is not a counter-thesis", PROMPT)

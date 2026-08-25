@@ -320,6 +320,78 @@ class StructuredResearchSynthesisResponseTests(unittest.TestCase):
         result = validate_structured_research_synthesis_output(resp)
         self.assertEqual("accepted", result["status"])
 
+    def test_event_impact_claim_rejected(self):
+        """Corporate-event existence is a temporal/evidentiary fact, never a price-
+        direction claim -- 'bullish'/'bearish' language is prohibited."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["catalyst_context"].append("The confirmed dividend event is bullish for the stock.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_impact_claim", result["reasons"])
+
+    def test_event_reaction_language_rejected(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " The market should react positively to this confirmed event."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_impact_claim", result["reasons"])
+
+    def test_negated_event_impact_language_accepted(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["authority_limitations"].append(
+            "This synthesis does not claim the confirmed dividend event is bullish; event existence is not a price-impact claim."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_event_driven_eligibility_claim_rejected(self):
+        """EVENT_DRIVEN eligibility is a separate deterministic authority this contract
+        never mints; a retained corporate event cannot confirm or enable it."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["catalyst_context"].append("This retained event confirms EVENT_DRIVEN eligibility.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_driven_eligibility_claim", result["reasons"])
+
+    def test_inferred_ex_date_claim_rejected(self):
+        """record_date != ex_date is binding; the 'minus one trading day' heuristic (or
+        any equivalent inference) is prohibited."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["catalyst_context"].append(
+            "The retained record has record_date without ex_date; the ex-date is assumed to be one trading day before the record date."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_inferred_ex_date_claim", result["reasons"])
+
+    def test_negated_ex_date_inference_language_accepted(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["authority_limitations"].append(
+            "The ex-date is not estimated or inferred from the record date; only the retained ex_date field, when present, is used."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_event_status_inference_claim_rejected(self):
+        """planned/approved != executed; the AI cannot self-infer completion from a
+        planned/approved record with no retained execution evidence."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["catalyst_context"].append(
+            "The approved issuance can be considered executed given the strength of the other evidence."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_status_inference_claim", result["reasons"])
+
+    def test_buy_before_record_date_claim_rejected(self):
+        """Event-based imperative timing action ('Buy before the record date.') is a
+        BUY/SELL claim the declarative recommendation regex alone would not catch."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " Buy before the record date to capture the dividend."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_recommendation_or_action_claim", result["reasons"])
+
     def test_capacity_or_participation_claim_rejected(self):
         """This contract consumes no liquidity/traded-value lane (e.g. the currently
         restricted ADTV20_MATCHED_VALUE Producer lane); it must never imply how much
