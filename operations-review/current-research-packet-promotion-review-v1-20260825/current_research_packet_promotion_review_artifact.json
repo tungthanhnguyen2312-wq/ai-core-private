@@ -1,0 +1,172 @@
+{
+  "artifact_identity": "current_research_packet_promotion_review:47b29c60c17fdbc1da620fc616ab35557a1403c081c4572fc0a25b4a93a557a6",
+  "artifact_sha256": "47b29c60c17fdbc1da620fc616ab35557a1403c081c4572fc0a25b4a93a557a6",
+  "authority_boundary": {
+    "default_path_remains": "LEGACY_DIRECT",
+    "does_not_authorize_cutover": true,
+    "is_actionable": false,
+    "prohibited_authority_claims": [
+      "probability",
+      "expected_return",
+      "target_price",
+      "intrinsic_value",
+      "BUY_SELL_HOLD",
+      "new_entry_action_vocabulary",
+      "scalar_risk_score",
+      "position_size",
+      "participation_or_capacity",
+      "leverage",
+      "PIT_authority",
+      "RAW_AS_TRADED_authority"
+    ],
+    "preserved_limitations": [
+      "event_status_and_date_limitations",
+      "historical_ADJUSTED_RETROSPECTIVE_only",
+      "valuation_per_metric_blocked_or_research_only_status",
+      "source_identity_and_provenance_requirements",
+      "upstream_decision_passthrough_only"
+    ]
+  },
+  "component_promotion_disposition": {
+    "corporate_event": {
+      "disposition": "PACKET_PRIMARY_CANDIDATE_WITH_LEGACY_SIDECAR_AND_PARITY_GUARD",
+      "parity_evidence": "DUAL_EQUIVALENT:1507",
+      "legacy_semantics_to_retain_initially": ["full_event_provenance", "direct_product_detail_fields"]
+    },
+    "financial_momentum": {
+      "disposition": "PACKET_PRIMARY_CANDIDATE_WITH_LEGACY_SIDECAR_AND_PARITY_GUARD",
+      "parity_evidence": "DUAL_EQUIVALENT:1507",
+      "legacy_semantics_to_retain_initially": ["price_momentum_context", "direct_product_detail_fields"]
+    },
+    "historical": {
+      "disposition": "PACKET_PRIMARY_CANDIDATE_WITH_LEGACY_FALLBACK_AND_PARITY_GUARD",
+      "parity_evidence": "DUAL_EQUIVALENT:1071;PACKET_ONLY:436",
+      "legacy_semantics_to_retain_initially": ["full_retrospective_descriptive_detail", "field_level_coverage_and_blockers"],
+      "packet_only_population_risk": "NO_PACKET_TRANSPORT_BLOCKER; retain direct fallback because the packet projection is not a reason to erase richer historical presentation fields."
+    },
+    "market_sector": {
+      "disposition": "PACKET_PRIMARY_CANDIDATE_WITH_LEGACY_SIDECAR_AND_PARITY_GUARD",
+      "parity_evidence": "DUAL_EQUIVALENT:1507",
+      "legacy_semantics_to_retain_initially": ["direct_product_detail_fields"]
+    },
+    "risk_register": {
+      "disposition": "PACKET_PRIMARY_CANDIDATE_WITH_LEGACY_SIDECAR_AND_PARITY_GUARD",
+      "parity_evidence": "DUAL_EQUIVALENT:1507",
+      "legacy_semantics_to_retain_initially": ["source_context_session_map", "direct_product_detail_fields"]
+    },
+    "scenario": {
+      "disposition": "PERMANENT_REQUIRED_COEXISTENCE",
+      "parity_evidence": "DUAL_NONCOMPARABLE_SEMANTICS:1507",
+      "packet_contract": "current_evidence_bound_scenario Bear/Base/Bull",
+      "required_direct_contract": "current_research_scenario_context CONSERVATIVE/BASE/SPECULATIVE",
+      "rule": "Never normalize, compare as equal, conflict-resolve, or substitute these scenario families."
+    },
+    "valuation": {
+      "disposition": "PACKET_PRIMARY_CANDIDATE_WITH_LEGACY_SIDECAR_AND_PARITY_GUARD",
+      "parity_evidence": "DUAL_EQUIVALENT:1507",
+      "legacy_semantics_to_retain_initially": ["per_metric_values", "full_price_and_share_basis_detail", "direct_product_detail_fields"],
+      "rule": "Blocked or limited metric status remains blocked or limited after transport promotion."
+    }
+  },
+  "contract_version": "current_research_packet_promotion_review/v1",
+  "cutover_candidate_plan": {
+    "configuration_change_after_owner_approval_only": {
+      "from": "accept_structured_research_synthesis(..., packet_consumption_mode=LEGACY_DIRECT)",
+      "to": "accept_structured_research_synthesis(..., packet_consumption_mode=PACKET_PRIMARY)",
+      "constraint": "A future implementation must add PACKET_PRIMARY explicitly; this review does not add it or change the LEGACY_DIRECT default."
+    },
+    "future_implementation_files": [
+      "builders/structured_research_synthesis_boundary.py",
+      "builders/structured_research_synthesis_response.py",
+      "builders/current_research_packet_shadow_parity.py",
+      "prompts/ai_analysis_templates.md",
+      "tests/test_structured_research_synthesis_boundary.py",
+      "tests/test_structured_research_synthesis_response.py",
+      "tests/test_current_research_packet_shadow_parity.py",
+      "tests/test_current_research_packet_shadow_parity_market_wide_frozen_time_e2e.py"
+    ],
+    "stages": [
+      "LEGACY_DIRECT default",
+      "PACKET_SHADOW parity proven",
+      "OWNER_APPROVED_PACKET_PRIMARY",
+      "PACKET_PRIMARY with retained direct sidecars, fallback, and parity guard",
+      "optional later per-component retirement review"
+    ],
+    "initial_packet_primary_behavior": [
+      "Use packet components as the canonical transport only where the product field is represented by the packet projection.",
+      "Retain direct sidecars for richer product semantics and for permanent noncomparable contracts.",
+      "Use direct fallback only when the packet component is absent or locally malformed; never infer or reconstruct it.",
+      "On a comparable identity conflict, fail closed locally for the component and preserve unaffected components.",
+      "Do not delete direct paths in the initial promotion."
+    ],
+    "post_promotion_observability": {
+      "required_guard": "current_research_packet_shadow_parity/v1 retained on each governed packet-primary release",
+      "must_hold": [
+        "packet_present_count equals denominator",
+        "zero DUAL_CONFLICT_FAIL_CLOSED unless the affected component is locally suppressed and owner review is recorded",
+        "zero malformed_or_local_fail_closed and unresolved_component before a clean promotion release",
+        "scenario DUAL_EQUIVALENT and DUAL_CONFLICT_FAIL_CLOSED remain zero",
+        "unexplained_residual_count remains zero",
+        "packet and legacy source identities, statuses, limitations, and warnings remain preserved"
+      ]
+    }
+  },
+  "findings": {
+    "answer_1_packet_transport_technically_suitable": "YES_FOR_OWNER_APPROVAL_REVIEW: the retained market-wide parity gate proves the packet is a working, content-identified Consumer transport over the full 1,507-ticker denominator. This is transport suitability, not authority promotion or a completed cutover.",
+    "answer_2_required_legacy_paths": [
+      "current_research_scenario_context permanently, because CONSERVATIVE/BASE/SPECULATIVE is distinct from packet Bear/Base/Bull.",
+      "current_opportunity_decision_context and daily_opportunity_decision_queue, because packet priority_tier and eligible_strategies are distinct from daily prioritization fields.",
+      "watchlist_tactical_entry_classifier, because its confirmation, invalidation, horizon, and full tactical semantics are not replaced by packet decision metadata.",
+      "direct sibling sidecars initially where the product needs detail not included in the packet projection, especially historical and valuation detail."
+    ],
+    "answer_3_duplicate_transport_candidates": [
+      "risk_register",
+      "market_sector",
+      "financial_momentum",
+      "corporate_event",
+      "valuation transport status and blocker projection",
+      "historical transport status and selected retrospective projection"
+    ],
+    "answer_4_historical_packet_only_risk": "The 436 historical PACKET_ONLY cells are not a cutover blocker: the packet is present and its component remains usable while the direct sibling is absent. They do require retained direct fallback and sidecar review because packet-only transport availability is not proof that every richer direct historical presentation field is represented.",
+    "answer_5_scenario_coexistence": "YES_PERMANENT: packet current_evidence_bound_scenario Bear/Base/Bull and direct current_research_scenario_context CONSERVATIVE/BASE/SPECULATIVE are distinct deterministic contracts.",
+    "answer_6_opportunity_priority_coexistence": "YES_PERMANENT_DIRECT_CONSUMPTION: 1,507 DUAL_NONCOMPARABLE_SEMANTICS records preserve the distinction between packet priority_tier/eligible_strategies and daily opportunity prioritization. Neither may override the other.",
+    "answer_7_rollback": "A future packet-primary change must be a single explicit configuration/default reversal to LEGACY_DIRECT, retain direct sidecars and the parity artifact, and locally suppress only affected packet components. Roll back immediately on a new comparable conflict, malformed/unresolved packet component, missing packet coverage, nonzero unexplained residual, or violated scenario-separation invariant.",
+    "answer_8_telemetry": "Keep the deterministic market-wide parity artifact, component breakdown, source identities, packet/direct coverage, conflict and malformed counts, unresolved counts, scenario-separation invariant, and residual reconciliation for every governed packet-primary release.",
+    "answer_9_prohibited_claims": "All existing authority prohibitions remain: no probability, expected return, target, intrinsic value, BUY/SELL/HOLD, new action vocabulary, scalar risk score, sizing, capacity, leverage, PIT, or RAW_AS_TRADED authority.",
+    "answer_10_owner_approval_blocker": "NO_CURRENT_TECHNICAL_OR_INTEGRITY_BLOCKER_TO_REQUEST_OWNER_APPROVAL. Owner approval remains required because the scope and semantics of a default transport change are an architecture decision."
+  },
+  "owner_decision": {
+    "decision_status": "OWNER_APPROVAL_REQUIRED",
+    "review_disposition": "READY_FOR_OWNER_DECISION",
+    "requested_decision": "Whether to authorize a separate bounded implementation of PACKET_PRIMARY with the retained coexistence, fallback, parity, and rollback controls in this artifact.",
+    "not_authorized_by_this_review": ["default_cutover", "legacy_deletion", "authority_promotion", "production_write"]
+  },
+  "parity_evidence": {
+    "denominator": 1507,
+    "legacy_present_count": 1507,
+    "malformed_context_count": 0,
+    "packet_present_count": 1507,
+    "summary": {
+      "DUAL_CONFLICT_FAIL_CLOSED": 0,
+      "DUAL_EQUIVALENT": 8606,
+      "DUAL_NONCOMPARABLE_SEMANTICS": 1507,
+      "PACKET_ONLY": 436,
+      "unexplained_residual_count": 0,
+      "unresolved_component_count": 0
+    }
+  },
+  "reviewed_artifacts": {
+    "consumer_packet_shadow_checkpoint": "2bdf7c0",
+    "consumer_packet_shadow_product_checkpoint": "9b824eb",
+    "packet_artifact_identity": "current_research_decision_packet:489e04894b5be6b1a0c8d4c69c41140706d32cf6dcec46b916b1ee7a95afb763",
+    "parity_artifact_identity": "current_research_packet_shadow_parity:7ad54890c3119c6976745832e8beb2ce38f78564084514d1b26a3e86c2534b4d",
+    "parity_artifact_path": "operations-review/current-research-packet-shadow-parity-v1-20260825/current_research_packet_shadow_parity_artifact.json",
+    "producer_packet_hardening_checkpoint": "4d9eabb"
+  },
+  "schema_version": "1.0.0",
+  "unresolved_risks": [
+    "The packet is a selected projection; future packet-primary implementation must preserve any direct-only product fields rather than treating transport equivalence as full presentation equivalence.",
+    "Future governed releases require the parity guard because current zero-conflict evidence does not predict future artifact lineage or component integrity.",
+    "Owner approval is required before any default-path configuration changes."
+  ]
+}
