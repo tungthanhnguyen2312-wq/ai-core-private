@@ -75,6 +75,15 @@ _VALID_RESPONSE_FIXTURE = {
     "is_actionable": False,
 }
 
+# TEST_FIXTURE_ONLY -- shape matches current_research_scenario_context_contract's
+# scenario_context_summary derivation (per-axis scenario_status/status_rule only;
+# supporting/opposing/risk evidence routes through the existing prose fields above).
+_SCENARIO_CONTEXT_SUMMARY_FIXTURE = {
+    "CONSERVATIVE": {"scenario_status": "SUPPORTED", "status_rule": "CONSERVATIVE_CONFIRMED_TREND_NO_MATERIAL_RISK"},
+    "BASE": {"scenario_status": "SUPPORTED", "status_rule": "BASE_CURRENT_CLASSIFIED_STATE"},
+    "SPECULATIVE": {"scenario_status": "NOT_SUPPORTED", "status_rule": "NO_EXPLICIT_EARLY_OR_HIGHER_UNCERTAINTY_EVIDENCE"},
+}
+
 
 class StructuredResearchSynthesisResponseTests(unittest.TestCase):
     # --- VALID CASES ---
@@ -564,6 +573,184 @@ class StructuredResearchSynthesisResponseTests(unittest.TestCase):
         result = validate_structured_research_synthesis_output(resp, contract_metadata={"bogus_key": 1})
         self.assertEqual("rejected", result["status"])
         self.assertIn("unexpected_contract_metadata_fields:bogus_key", result["reasons"])
+
+    # --- AI_SCENARIO_SYNTHESIS_INTEGRATION_V1 TESTS ---
+
+    def test_scenario_context_summary_optional_field_accepted(self):
+        """The new field is additive and optional -- present as a structured object,
+        it does not disturb an otherwise-valid response."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["scenario_context_summary"] = copy.deepcopy(_SCENARIO_CONTEXT_SUMMARY_FIXTURE)
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual(_SCENARIO_CONTEXT_SUMMARY_FIXTURE, result["accepted_output"]["scenario_context_summary"])
+
+    def test_scenario_context_summary_wrong_type_rejected(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["scenario_context_summary"] = "CONSERVATIVE supported, BASE supported, SPECULATIVE not supported."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("wrong_field_type:scenario_context_summary", result["reasons"])
+
+    def test_scenario_context_summary_exact_match_accepted(self):
+        """22. old synthesis semantics preserved for the new field too: byte-exact
+        quoting of the boundary's derived truth, never a recomputation."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["scenario_context_summary"] = copy.deepcopy(_SCENARIO_CONTEXT_SUMMARY_FIXTURE)
+        result = validate_structured_research_synthesis_output(
+            resp, contract_metadata={"expected_scenario_context_summary": _SCENARIO_CONTEXT_SUMMARY_FIXTURE},
+        )
+        self.assertEqual("accepted", result["status"])
+
+    def test_scenario_context_summary_mismatch_rejected(self):
+        """Consumer never recomputes an axis status -- any divergence from the
+        boundary's derived truth (here, an upgraded SPECULATIVE status) is rejected."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        tampered = copy.deepcopy(_SCENARIO_CONTEXT_SUMMARY_FIXTURE)
+        tampered["SPECULATIVE"]["scenario_status"] = "SUPPORTED"
+        resp["scenario_context_summary"] = tampered
+        result = validate_structured_research_synthesis_output(
+            resp, contract_metadata={"expected_scenario_context_summary": _SCENARIO_CONTEXT_SUMMARY_FIXTURE},
+        )
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("scenario_context_summary_mismatch", result["reasons"])
+
+    def test_scenario_context_summary_may_be_omitted_when_truth_available(self):
+        """The field stays optional even when the boundary has real scenario truth to
+        offer -- omitting it must never itself be a rejection reason."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        self.assertNotIn("scenario_context_summary", resp)
+        result = validate_structured_research_synthesis_output(
+            resp, contract_metadata={"expected_scenario_context_summary": _SCENARIO_CONTEXT_SUMMARY_FIXTURE},
+        )
+        self.assertEqual("accepted", result["status"])
+
+    def test_scenario_context_summary_cannot_cite_malformed_sibling(self):
+        """19/20 (provenance boundary extended to this field too): a malformed
+        scenario sibling cannot be cited through scenario_context_summary either."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["scenario_context_summary"] = copy.deepcopy(_SCENARIO_CONTEXT_SUMMARY_FIXTURE)
+        result = validate_structured_research_synthesis_output(
+            resp, contract_metadata={"scenario_context_status": "malformed"},
+        )
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("scenario_context_summary_cites_malformed_sibling", result["reasons"])
+
+    def test_existing_response_without_scenario_field_backward_compatible(self):
+        """22. old synthesis without the scenario sibling (and without this field at
+        all) remains backward compatible -- nothing about this schema became newly
+        mandatory."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("scenario_context_summary", result["accepted_output"])
+
+    def test_base_most_likely_claim_rejected(self):
+        """5. BASE cannot become most-likely."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " BASE is the most likely scenario here."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_scenario_likelihood_claim", result["reasons"])
+
+    def test_base_expected_case_claim_rejected(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["supporting_evidence"].append("BASE is the expected case.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_scenario_likelihood_claim", result["reasons"])
+
+    def test_speculative_less_likely_claim_rejected(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["counter_evidence"].append("SPECULATIVE is less likely given current evidence.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_scenario_likelihood_claim", result["reasons"])
+
+    def test_negated_scenario_likelihood_language_accepted(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["authority_limitations"].append(
+            "This synthesis does not claim BASE is the most likely scenario; BASE is only a current-state interpretation, not a probability."
+        )
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_conservative_safest_claim_rejected(self):
+        """7. CONSERVATIVE cannot become bearish/safe -- including the 'safest'
+        superlative, which the pre-existing bare 'safe'/'safer' guard did not catch."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["risk_context"].append("CONSERVATIVE is the safest outcome.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_low_risk_or_safe_claim", result["reasons"])
+
+    def test_conservative_bearish_bare_word_still_rejected_by_existing_guard(self):
+        """7. CONSERVATIVE cannot become bearish -- already covered by the pre-existing
+        bare bullish/bearish event-impact guard; documents that no new guard was needed
+        for this specific wording (only for 'safest')."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["counter_thesis"] = resp["counter_thesis"] + " CONSERVATIVE is bearish."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_impact_claim", result["reasons"])
+
+    def test_speculative_bullish_bare_word_still_rejected_by_existing_guard(self):
+        """6. SPECULATIVE cannot become bullish -- already covered by the pre-existing
+        bare bullish/bearish event-impact guard."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " SPECULATIVE is bullish."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_event_impact_claim", result["reasons"])
+
+    def test_speculative_higher_return_claim_rejected(self):
+        """6. SPECULATIVE cannot become a higher-expected-return claim -- broader than
+        the existing numeric expected-return regex, which requires a digit."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["counter_evidence"].append("SPECULATIVE offers a higher expected return than the other axes.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_scenario_return_inference_claim", result["reasons"])
+
+    def test_scenario_action_override_claims_rejected(self):
+        """9/10. scenario support/non-support cannot causally create or change an
+        action -- even when upstream_decision_context itself is left untouched."""
+        for phrase, reason in (
+            ("BASE is supported, therefore BUY.", "prohibited_scenario_action_override_claim"),
+            ("SPECULATIVE supported therefore EARLY_ENTRY.", "prohibited_scenario_action_override_claim"),
+            ("CONSERVATIVE is not supported, so downgrade to WAIT.", "prohibited_scenario_action_override_claim"),
+        ):
+            with self.subTest(phrase=phrase):
+                resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+                resp["counter_thesis"] = resp["counter_thesis"] + " " + phrase
+                result = validate_structured_research_synthesis_output(resp)
+                self.assertEqual("rejected", result["status"])
+                self.assertIn(reason, result["reasons"])
+
+    def test_scenario_supported_with_unchanged_action_not_a_false_positive(self):
+        """Explicit false-positive guard named in the milestone spec: scenario support
+        coexisting with an unchanged deterministic action must never itself be
+        rejected."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " SPECULATIVE is supported but entry_action remains WAIT."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_base_supported_while_wait_stays_wait_not_a_false_positive(self):
+        """9. BASE supported + WAIT stays WAIT -- explaining coexistence is not an
+        override claim."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " BASE is supported by the current classified state, while the deterministic entry action remains WAIT."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
+    def test_historical_win_rate_claim_rejected(self):
+        """18. historical context cannot create a win rate."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["historical_context_summary"] = resp["historical_context_summary"] + " The historical win rate for this setup is 70%."
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_historical_win_rate_claim", result["reasons"])
 
 
 if __name__ == "__main__":

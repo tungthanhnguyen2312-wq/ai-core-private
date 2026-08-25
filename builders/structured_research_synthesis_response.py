@@ -50,7 +50,9 @@ _REQUIRED_NON_EMPTY_STRING_FIELDS = (
 )
 _REQUIRED_NON_EMPTY_LIST_FIELDS = ("supporting_evidence", "counter_evidence", "provenance_references")
 
-_ALLOWED_TOP_LEVEL_KEYS = set(_STRING_FIELDS) | set(_LIST_FIELDS) | {"upstream_decision_context", "is_actionable"}
+_ALLOWED_TOP_LEVEL_KEYS = set(_STRING_FIELDS) | set(_LIST_FIELDS) | {
+    "upstream_decision_context", "is_actionable", "scenario_context_summary",
+}
 
 # Deterministic/qualitative uncertainty vocabulary only -- never a synthetic confidence score.
 _SYNTHESIS_STATUSES = {
@@ -85,6 +87,8 @@ _ALLOWED_CONTRACT_METADATA_KEYS = {
     "corporate_event_context_status",
     "risk_register_status",
     "risk_register_source_sessions",
+    "scenario_context_status",
+    "expected_scenario_context_summary",
 }
 
 _NEGATION_MARKERS = (
@@ -207,6 +211,7 @@ _AFFIRMATIVE_LOW_RISK_OR_SAFE_RE = re.compile(
     r"\blow[- ]risk\b"
     r"|\b(?:is|remains?|considered)\s+safe\b"
     r"|\bsafer\b"
+    r"|\bsafest\b"
     r"|\bfew(?:er)?\s+risk\s+flags?\s+(?:mean|means|imply|implies|suggest|suggests)\b",
     re.IGNORECASE,
 )
@@ -237,6 +242,44 @@ _AFFIRMATIVE_RISK_SIZING_INFERENCE_RE = re.compile(
     r"\brisk\w*\s+(?:register|evidence|context)\s+(?:means?|implies?|suggests?|justif(?:y|ies))\s+(?:position\s+siz\w*|sizing|participation)\b"
     r"|\bposition\s+size\s+should\s+be\s+(?:reduced|cut|increased|raised)\b"
     r"|\breduce\s+position\s+size\s+to\s+\d",
+    re.IGNORECASE,
+)
+# No scenario probability exists: BASE is never "most likely"/"the expected case", and
+# no axis is a bare comparative-likelihood claim -- broader than the existing numeric
+# probability regex above, which requires an explicit percent figure.
+_AFFIRMATIVE_SCENARIO_LIKELIHOOD_RE = re.compile(
+    r"\b(?:most|more|less|least)\s+likely\b"
+    r"|\bmost[- ]probable\b"
+    r"|\b(?:is|remains?|as)\s+(?:the\s+)?expected\s+(?:case|scenario|outcome)\b"
+    r"|\bexpected\s+(?:case|scenario|outcome)\s+(?:is|remains?)\b",
+    re.IGNORECASE,
+)
+# SPECULATIVE != higher expected return/bullish; broader than the existing expected-
+# return regex above, which requires an explicit number.
+_AFFIRMATIVE_SCENARIO_RETURN_INFERENCE_RE = re.compile(
+    r"\bhigh(?:er)?[- ]return\b"
+    r"|\bhigher\s+expected\s+return\b"
+    r"|\b(?:more|greater|higher)\s+upside\b",
+    re.IGNORECASE,
+)
+# Scenario support/non-support may explain the existing deterministic action, never
+# cause it: "X supported therefore BUY" or "not supported, so downgrade to WAIT" claims
+# a causal authority no scenario axis has -- the upstream_decision_context byte-exact
+# check alone would miss this since the structured field itself may be left untouched.
+_AFFIRMATIVE_SCENARIO_ACTION_OVERRIDE_RE = re.compile(
+    r"\bsupported\b[^.!?]{0,60}\b(?:therefore|thus|hence)\b[^.!?]{0,40}\b"
+    r"(?:buy|sell|hold|wait|avoid|early[_ ]entry|buy[_ ]on[_ ]confirmation|accumulate[_ ]in[_ ]base)\b"
+    r"|\b(?:therefore|thus|hence)\b[^.!?]{0,40}\b"
+    r"(?:buy|sell|hold|wait|avoid|early[_ ]entry|buy[_ ]on[_ ]confirmation|accumulate[_ ]in[_ ]base)\b"
+    r"|\bdowngrade[d]?\s+to\b|\bupgrade[d]?\s+to\b",
+    re.IGNORECASE,
+)
+# Historical state-frequency context is retrospective/descriptive only; it can never
+# become a win rate or hit rate -- a backtest-probability framing no current-research
+# lane in this contract authorizes.
+_AFFIRMATIVE_HISTORICAL_WIN_RATE_RE = re.compile(
+    r"\bwin[- ]rate\b"
+    r"|\bhit[- ]rate\b",
     re.IGNORECASE,
 )
 
@@ -326,6 +369,12 @@ def validate_structured_research_synthesis_output(
     elif not isinstance(output["upstream_decision_context"], Mapping):
         reasons.append("wrong_field_type:upstream_decision_context")
 
+    # scenario_context_summary is optional (never required, for backward compatibility
+    # with a synthesis produced before the scenario axis sibling existed) -- when
+    # present it must be a structured per-axis object, never prose duplication.
+    if "scenario_context_summary" in output and not isinstance(output["scenario_context_summary"], Mapping):
+        reasons.append("wrong_field_type:scenario_context_summary")
+
     if "is_actionable" not in output:
         reasons.append("missing_field:is_actionable")
     elif output["is_actionable"] is not False:
@@ -361,6 +410,18 @@ def validate_structured_research_synthesis_output(
         unknown = set(output["provenance_references"]) - set(known_refs)
         if unknown:
             reasons.append("unknown_evidence_reference:" + ",".join(sorted(unknown)))
+
+    # scenario_context_summary, when supplied, must quote the boundary's derived truth
+    # byte-exact -- Consumer never recomputes an axis status, so any divergence (a
+    # dropped axis, a reworded status, an upgraded status) is rejected outright. A
+    # sibling the boundary found malformed can never be cited through this field either,
+    # mirroring the "malformed sibling cannot be cited" rule already enforced for
+    # provenance_references via known_evidence_refs.
+    if "expected_scenario_context_summary" in meta:
+        if "scenario_context_summary" in output and output["scenario_context_summary"] != meta["expected_scenario_context_summary"]:
+            reasons.append("scenario_context_summary_mismatch")
+    elif meta.get("scenario_context_status") == "malformed" and "scenario_context_summary" in output:
+        reasons.append("scenario_context_summary_cites_malformed_sibling")
 
     if reasons:
         return _reject(*reasons)
@@ -426,7 +487,7 @@ def validate_structured_research_synthesis_output(
             if _AFFIRMATIVE_RISK_SCORE_RE.search(item_lower) and not is_negated:
                 reasons.append("prohibited_risk_score_claim")
 
-        if any(kw in item_lower for kw in ("low risk", "low-risk", "safe", "safer")):
+        if any(kw in item_lower for kw in ("low risk", "low-risk", "safe", "safer", "safest")):
             if _AFFIRMATIVE_LOW_RISK_OR_SAFE_RE.search(item_lower) and not is_negated:
                 reasons.append("prohibited_low_risk_or_safe_claim")
 
@@ -441,6 +502,35 @@ def validate_structured_research_synthesis_output(
         if any(kw in item_lower for kw in ("position size", "sizing", "participation")):
             if _AFFIRMATIVE_RISK_SIZING_INFERENCE_RE.search(item_lower) and not is_negated:
                 reasons.append("prohibited_risk_sizing_inference_claim")
+
+        if any(kw in item_lower for kw in (
+            "most likely", "less likely", "more likely", "least likely",
+            "most probable", "expected case", "expected scenario", "expected outcome",
+        )):
+            if _AFFIRMATIVE_SCENARIO_LIKELIHOOD_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_scenario_likelihood_claim")
+
+        if any(kw in item_lower for kw in (
+            "high-return", "high return", "higher return", "higher expected return",
+            "more upside", "greater upside", "higher upside",
+        )):
+            if _AFFIRMATIVE_SCENARIO_RETURN_INFERENCE_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_scenario_return_inference_claim")
+
+        if any(kw in item_lower for kw in ("therefore", "thus", "hence", "downgrade", "upgrade")):
+            # Deliberately not gated by the shared per-sentence is_negated flag: the
+            # antecedent clause here is routinely "<AXIS> is not supported" (a real,
+            # legitimate status description), which trips the generic "is not"/"not "
+            # negation markers even though it does not negate the causal claim that
+            # follows -- exactly the milestone's own prohibited example ("Conservative
+            # not supported, so downgrade to WAIT."). The regex itself is already the
+            # precise gate (a causal connector immediately adjacent to an action word).
+            if _AFFIRMATIVE_SCENARIO_ACTION_OVERRIDE_RE.search(item_lower):
+                reasons.append("prohibited_scenario_action_override_claim")
+
+        if any(kw in item_lower for kw in ("win rate", "win-rate", "hit rate", "hit-rate")):
+            if _AFFIRMATIVE_HISTORICAL_WIN_RATE_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_historical_win_rate_claim")
 
     if reasons:
         return _reject(*reasons)

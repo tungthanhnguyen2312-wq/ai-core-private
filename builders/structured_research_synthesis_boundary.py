@@ -39,11 +39,16 @@ _SIBLING_KEYS = (
     "current_financial_momentum_context",
     "current_corporate_event_context",
     "current_research_risk_register",
+    "current_research_scenario_context",
 )
 
 _VALUATION_USABLE_STATUSES = {"READY", "RESEARCH_USABLE"}
 _FINANCIAL_MOMENTUM_COMPONENT_USABLE_STATUSES = {"AVAILABLE", "PARTIAL"}
 _RISK_REGISTER_CATEGORIES = ("material_risks", "watch_risks", "data_authority_limitations", "unresolved_conflicts")
+_SCENARIO_CONTEXT_AXES = ("CONSERVATIVE", "BASE", "SPECULATIVE")
+_SCENARIO_CONTEXT_CONDITION_CATEGORIES = (
+    "supporting_conditions", "opposing_conditions", "authority_limitations", "unresolved_questions", "material_risks",
+)
 
 
 def _reject_boundary(*reasons: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -176,6 +181,39 @@ def accept_structured_research_synthesis(
         else:
             derived_meta["risk_register_status"] = "malformed"
 
+    # The scenario context also carries no single unified session -- like the risk
+    # register it has independent per-source as-of identities. Track its own content
+    # status, and (only when genuinely well-formed) a byte-exact per-axis
+    # scenario_status/status_rule summary the AI may quote verbatim if it chooses to
+    # populate the optional scenario_context_summary field -- Consumer never recomputes
+    # an axis status, so this is quoting, not derivation.
+    scenario_context = ticker_context.get("current_research_scenario_context")
+    if isinstance(scenario_context, Mapping):
+        scenario_record = scenario_context.get("scenario_context")
+        scenario_axes = scenario_record.get("axes") if isinstance(scenario_record, Mapping) else None
+        if (
+            isinstance(scenario_record, Mapping)
+            and isinstance(scenario_axes, Mapping)
+            and set(scenario_axes) == set(_SCENARIO_CONTEXT_AXES)
+            and all(
+                isinstance(scenario_axes[axis], Mapping)
+                and scenario_axes[axis].get("scenario_axis") == axis
+                and isinstance(scenario_axes[axis].get("scenario_status"), str)
+                and isinstance(scenario_axes[axis].get("status_rule"), str)
+                for axis in _SCENARIO_CONTEXT_AXES
+            )
+        ):
+            derived_meta["scenario_context_status"] = "available"
+            derived_meta["expected_scenario_context_summary"] = {
+                axis: {
+                    "scenario_status": scenario_axes[axis]["scenario_status"],
+                    "status_rule": scenario_axes[axis]["status_rule"],
+                }
+                for axis in _SCENARIO_CONTEXT_AXES
+            }
+        else:
+            derived_meta["scenario_context_status"] = "malformed"
+
     # --- 3. Derive known, citable evidence references from the context's own provenance ---
     known_refs: set[str] = set()
     provenance = ticker_context.get("provenance")
@@ -219,6 +257,23 @@ def accept_structured_research_synthesis(
                 if isinstance(item, Mapping) and isinstance(item.get("risk_id"), str):
                     known_refs.add(f"current_research_risk_register.{category}.{item['risk_id']}")
 
+    # Every scenario-axis supporting/opposing condition, authority limitation,
+    # unresolved question, and material risk is a real Producer-computed record,
+    # independently citable per axis and per category -- never collapsed into one
+    # undifferentiated "scenario evidence" reference across CONSERVATIVE/BASE/SPECULATIVE.
+    if isinstance(scenario_context, Mapping) and isinstance(scenario_axes, Mapping):
+        for axis in _SCENARIO_CONTEXT_AXES:
+            row = scenario_axes.get(axis)
+            if not isinstance(row, Mapping):
+                continue
+            for category in _SCENARIO_CONTEXT_CONDITION_CATEGORIES:
+                for item in row.get(category) or []:
+                    if not isinstance(item, Mapping):
+                        continue
+                    item_id = item.get("condition_id") or item.get("risk_id")
+                    if isinstance(item_id, str):
+                        known_refs.add(f"current_research_scenario_context.{axis}.{category}.{item_id}")
+
     # A malformed sibling is recorded (processed) in provenance, but must never be
     # citable as if its content were usable evidence -- strip it back out here.
     if derived_meta.get("tactical_entry_classifier_status") == "malformed":
@@ -242,6 +297,9 @@ def accept_structured_research_synthesis(
     if derived_meta.get("risk_register_status") == "malformed":
         known_refs.discard("current_research_risk_register")
         known_refs = {ref for ref in known_refs if not ref.startswith("current_research_risk_register.")}
+    if derived_meta.get("scenario_context_status") == "malformed":
+        known_refs.discard("current_research_scenario_context")
+        known_refs = {ref for ref in known_refs if not ref.startswith("current_research_scenario_context.")}
 
     derived_meta["known_evidence_refs"] = sorted(known_refs)
 

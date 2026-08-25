@@ -147,6 +147,55 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
         ):
             self.assertIn(forbidden, PROMPT)
 
+    def test_scenario_context_documented_in_single_ticker_template(self):
+        self.assertIn("If `current_research_scenario_context` is present", PROMPT)
+        self.assertIn("three orthogonal current-research/decision-condition axes", PROMPT)
+        self.assertIn("never Bear/Base/Bull price-direction labels, never probabilities, never strategy lanes, and never entry actions", PROMPT)
+        self.assertIn("`CONSERVATIVE` is never bearish or automatically safe/safer/safest", PROMPT)
+        self.assertIn("`BASE` is a current-state interpretation only and is never the most-likely or expected case", PROMPT)
+        self.assertIn("never a bullish or higher-expected-return claim, and it never lowers the evidence standard", PROMPT)
+        self.assertIn("if `entry_action` is `WAIT`, it stays `WAIT` regardless of any axis's status", PROMPT)
+        self.assertIn("never replaces, the existing evidence-bound Bear/Base/Bull scenario overlay", PROMPT)
+
+    def test_scenario_context_routed_through_existing_synthesis_fields(self):
+        self.assertIn(
+            "cited directly into `thesis`, `supporting_evidence`, `counter_thesis`, `counter_evidence`, "
+            "`risk_context`, `invalidation_conditions`, `unresolved_questions`, and `authority_limitations`",
+            PROMPT,
+        )
+        self.assertIn("optional `scenario_context_summary` object", PROMPT)
+        self.assertIn("must quote Producer's own per-axis `scenario_status`/`status_rule` byte-exact", PROMPT)
+        self.assertIn("it can never be cited at all once the sibling itself is malformed", PROMPT)
+        self.assertIn('"BASE is supported, while the deterministic entry action remains WAIT" is a valid explanation', PROMPT)
+        self.assertIn('"BASE supported therefore BUY" or "not supported, so downgrade to WAIT" are not', PROMPT)
+
+    def test_scenario_context_prohibited_claims_extend_master_list(self):
+        for forbidden in (
+            "treating `current_research_scenario_context`'s CONSERVATIVE/BASE/SPECULATIVE axes as Bear/Base/Bull price-direction labels",
+            "fabricating a scenario probability, a \"most likely\"/\"less likely\"/\"more likely\" comparative-likelihood claim",
+            "describing BASE's `scenario_status=\"SUPPORTED\"` as the most-likely or expected outcome",
+            "describing SPECULATIVE's `scenario_status=\"SUPPORTED\"` as bullish, a higher-expected-return, or a higher-upside claim",
+            "describing CONSERVATIVE's `scenario_status` as bearish, or as automatically safe/safer/safest",
+            "claiming a scenario axis's status causes, overrides, upgrades, or downgrades `entry_action`, `research_priority`, or strategy eligibility",
+            "inventing a price level, financial threshold, event date, or target to fill an `UNAVAILABLE` `confirmation_conditions`/`invalidation_conditions` gate",
+            "reporting a `scenario_context_summary` value that does not byte-exactly match Producer's own per-axis `scenario_status`/`status_rule`",
+        ):
+            self.assertIn(forbidden, PROMPT)
+
+    def test_scenario_context_summary_optional_field_documented(self):
+        self.assertIn(
+            "You may additionally include one optional field, `scenario_context_summary`, only when "
+            "`current_research_scenario_context` is present in the attached package; omit it entirely otherwise.",
+            PROMPT,
+        )
+
+    def test_absent_sibling_enumeration_includes_scenario_context(self):
+        self.assertIn(
+            "If a historical, valuation, market/sector, financial-momentum, corporate-event, risk-register, "
+            "or scenario-context sibling is absent, missing, or malformed",
+            PROMPT,
+        )
+
     def test_counter_thesis_is_mandatory(self):
         self.assertIn("`counter_thesis` is mandatory", PROMPT)
         self.assertIn("a generic disclaimer is not a counter-thesis", PROMPT)

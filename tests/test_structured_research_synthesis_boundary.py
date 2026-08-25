@@ -179,6 +179,121 @@ _RISK_REGISTER_FIXTURE = {
         "risk_register_status": "MATERIAL_RISKS_ESTABLISHED",
     },
 }
+_SCENARIO_SOURCE_CONTEXTS = {
+    "official_universe": {"artifact_identity": "current_official_market_universe:ou1", "as_of": None, "available": True},
+    "tactical": {"artifact_identity": "watchlist_tactical_entry_classifier:t1", "as_of": "2026-08-25", "available": True},
+    "opportunity": {"artifact_identity": "current_opportunity_prioritization:o1", "as_of": "2026-08-25", "available": True},
+    "historical": {"artifact_identity": "market_wide_historical_research_context:h1", "as_of": "2026-08-20", "available": True},
+    "leadership": {"artifact_identity": "current_market_sector_leadership_context:l1", "as_of": "2026-08-25", "available": True},
+    "financial": {"artifact_identity": "current_financial_momentum_context:f1", "as_of": "2026-08-24", "available": True},
+    "event": {"artifact_identity": "current_corporate_event_context:e1", "as_of": "2026-08-21", "available": True},
+    "valuation": {"artifact_identity": "market_wide_current_valuation_input_scaleout:v1", "as_of": "2026-08-24", "available": True},
+    "risk_register": {"artifact_identity": "current_research_risk_register:abc123", "as_of": None, "available": True},
+}
+_SCENARIO_AS_OF = {
+    "tactical": "2026-08-25", "opportunity": "2026-08-25", "historical": "2026-08-20",
+    "leadership": "2026-08-25", "financial": "2026-08-24", "event": "2026-08-21", "valuation": "2026-08-24",
+}
+_SCENARIO_EVIDENCE_REFS = sorted(
+    ({"source": name, "identity": ctx["artifact_identity"]} for name, ctx in _SCENARIO_SOURCE_CONTEXTS.items()),
+    key=lambda r: r["source"],
+)
+_SCENARIO_FORBIDDEN_USES = (
+    "probability", "expected_return", "target_price", "upside_pct", "downside_pct",
+    "payoff_ratio", "intrinsic_value", "recommendation", "position_size", "sizing",
+    "strategy_eligibility", "research_priority", "entry_action", "daily_decision_queue",
+    "VALUE", "RAW_AS_TRADED", "PIT", "backtest",
+)
+_SCENARIO_BLOCKED_OUTPUTS = {use: "NOT_EMITTED_OR_MODIFIED" for use in _SCENARIO_FORBIDDEN_USES}
+_SCENARIO_DECISION_CONTEXT = {
+    "research_priority": "MONITOR", "entry_action": "WAIT", "entry_state": "UPTREND_CONFIRMED",
+    "eligible_strategy_lanes": ["TREND_MOMENTUM"], "existing_evidence_bound_scenario_disposition": "SCENARIO_READY",
+    "quoted_not_modified": True,
+}
+_SCENARIO_CONSERVATIVE_SUPPORTING_ID = "TECHNICAL_CONFIRMED_TREND"
+_SCENARIO_SPECULATIVE_LIMITATION_ID = _RISK_REGISTER_LIMITATION_ID
+
+
+def _scenario_axis(axis, *, status, status_rule, reasons, confirmation, invalidation,
+                    supporting=None, opposing=None, material_risks=None, limitations=None, unresolved=None):
+    return {
+        "ticker": "TEST_TICKER", "scenario_axis": axis, "scenario_status": status, "status_rule": status_rule,
+        "status_reasons": reasons, "source_as_of": copy.deepcopy(_SCENARIO_AS_OF),
+        "current_decision_context": copy.deepcopy(_SCENARIO_DECISION_CONTEXT),
+        "eligible_strategy_lanes": list(_SCENARIO_DECISION_CONTEXT["eligible_strategy_lanes"]),
+        "supporting_conditions": supporting or [], "opposing_conditions": opposing or [],
+        "confirmation_conditions": [confirmation], "invalidation_conditions": [invalidation],
+        "material_risks": material_risks or [], "authority_limitations": limitations or [],
+        "unresolved_questions": unresolved or [],
+        "evidence_references": copy.deepcopy(_SCENARIO_EVIDENCE_REFS),
+        "allowed_uses": ["CURRENT_RESEARCH_CONTEXT"], "prohibited_uses": list(_SCENARIO_FORBIDDEN_USES),
+        "base_is_not_most_likely": True if axis == "BASE" else None,
+        "evidence_standard_lowered": False,
+        "material_risk_rule": "MATERIAL_RISK_BLOCKS_CONSERVATIVE_SUPPORTED" if axis == "CONSERVATIVE" else "MATERIAL_RISK_LISTED_NOT_SCORED",
+        "does_not_modify_research_priority": True, "does_not_modify_strategy_eligibility": True,
+        "does_not_modify_entry_action": True,
+    }
+
+
+_AVAILABLE_CONFIRMATION = {"status": "AVAILABLE", "reason": "REUSED_EXISTING_TACTICAL_CONFIRMATION", "text": "Close above the prior base high.", "invented": False}
+_AVAILABLE_INVALIDATION = {"status": "AVAILABLE", "reason": "REUSED_EXISTING_TACTICAL_INVALIDATION", "text": "Close below the prior base low.", "invented": False}
+_UNAVAILABLE_CONFIRMATION = {"status": "UNAVAILABLE", "reason": "QUALIFIED_CONFIRMATION_CONDITION_UNAVAILABLE", "text": None, "invented": False}
+_UNAVAILABLE_INVALIDATION = {"status": "UNAVAILABLE", "reason": "QUALIFIED_INVALIDATION_CONDITION_UNAVAILABLE", "text": None, "invented": False}
+_SCENARIO_CONTEXT_FIXTURE = {
+    "ticker": "TEST_TICKER",
+    "source_artifact_identity": "current_research_scenario_context:abc123",
+    "source_contexts": copy.deepcopy(_SCENARIO_SOURCE_CONTEXTS),
+    "scenario_context": {
+        "ticker": "TEST_TICKER",
+        "current_decision_context": copy.deepcopy(_SCENARIO_DECISION_CONTEXT),
+        "axes": {
+            "CONSERVATIVE": _scenario_axis(
+                "CONSERVATIVE", status="SUPPORTED", status_rule="CONSERVATIVE_CONFIRMED_TREND_NO_MATERIAL_RISK",
+                reasons=["CONSERVATIVE_CONFIRMED_TREND_NO_MATERIAL_RISK"],
+                confirmation=_AVAILABLE_CONFIRMATION, invalidation=_AVAILABLE_INVALIDATION,
+                supporting=[{
+                    "condition_id": _SCENARIO_CONSERVATIVE_SUPPORTING_ID, "domain": "TECHNICAL", "polarity": "SUPPORT",
+                    "code": "CONFIRMED_CONSTRUCTIVE_STATE", "facts": {"entry_state": "UPTREND_CONFIRMED"},
+                    "authority_tier": "CURRENT_SESSION_DESCRIPTIVE", "source_context": "watchlist_tactical_entry_classifier:t1",
+                }],
+            ),
+            "BASE": _scenario_axis(
+                "BASE", status="SUPPORTED", status_rule="BASE_CURRENT_CLASSIFIED_STATE",
+                reasons=["BASE_CURRENT_CLASSIFIED_STATE", "BASE_IS_CURRENT_STATE_INTERPRETATION_NOT_MOST_LIKELY"],
+                confirmation=_AVAILABLE_CONFIRMATION, invalidation=_AVAILABLE_INVALIDATION,
+                supporting=[{
+                    "condition_id": "TECHNICAL_CURRENT_STATE", "domain": "TECHNICAL", "polarity": "SUPPORT",
+                    "code": "ENTRY_STATE_UPTREND_CONFIRMED", "facts": {"entry_state": "UPTREND_CONFIRMED", "entry_action": "WAIT"},
+                    "authority_tier": "CURRENT_SESSION_DESCRIPTIVE", "source_context": "watchlist_tactical_entry_classifier:t1",
+                }],
+            ),
+            "SPECULATIVE": _scenario_axis(
+                "SPECULATIVE", status="NOT_SUPPORTED", status_rule="NO_EXPLICIT_EARLY_OR_HIGHER_UNCERTAINTY_EVIDENCE",
+                reasons=["NO_EXPLICIT_EARLY_OR_HIGHER_UNCERTAINTY_EVIDENCE", "SPECULATIVE_DOES_NOT_FABRICATE_UPSIDE"],
+                confirmation=_UNAVAILABLE_CONFIRMATION, invalidation=_UNAVAILABLE_INVALIDATION,
+                limitations=[copy.deepcopy(_RISK_REGISTER_FIXTURE["risk_register"]["data_authority_limitations"][0])],
+            ),
+        },
+        "source_as_of": copy.deepcopy(_SCENARIO_AS_OF),
+        "blocked_outputs": copy.deepcopy(_SCENARIO_BLOCKED_OUTPUTS),
+    },
+    "authority_boundary": {
+        "is_actionable": False, "research_only": True, "no_probability": True, "no_expected_return": True,
+        "no_target_price": True, "no_sizing": True, "no_recommendation": True,
+        "does_not_modify_research_priority": True, "does_not_modify_strategy_eligibility": True,
+        "does_not_modify_entry_action": True, "does_not_modify_daily_decision_queue": True,
+        "does_not_replace_evidence_bound_bear_base_bull": True, "data_limitation_is_not_economic_risk": True,
+        "material_risk_rule": "MATERIAL_RISK_BLOCKS_CONSERVATIVE_SUPPORTED",
+        "raw_as_traded": "NOT_PROMOTED", "pit": "BLOCKED", "backtest": "NOT_EMITTED",
+    },
+    "blocked_outputs": copy.deepcopy(_SCENARIO_BLOCKED_OUTPUTS),
+    "is_actionable": False,
+}
+_EXPECTED_SCENARIO_CONTEXT_SUMMARY = {
+    "CONSERVATIVE": {"scenario_status": "SUPPORTED", "status_rule": "CONSERVATIVE_CONFIRMED_TREND_NO_MATERIAL_RISK"},
+    "BASE": {"scenario_status": "SUPPORTED", "status_rule": "BASE_CURRENT_CLASSIFIED_STATE"},
+    "SPECULATIVE": {"scenario_status": "NOT_SUPPORTED", "status_rule": "NO_EXPLICIT_EARLY_OR_HIGHER_UNCERTAINTY_EVIDENCE"},
+}
 _PROVENANCE_FIXTURE = [
     {"source_dataset": "historical_fundamental_brief"},
     {"source_dataset": "market_wide_historical_research_context"},
@@ -189,6 +304,7 @@ _PROVENANCE_FIXTURE = [
     {"source_dataset": "current_financial_momentum_context"},
     {"source_dataset": "current_corporate_event_context"},
     {"source_dataset": "current_research_risk_register"},
+    {"source_dataset": "current_research_scenario_context"},
 ]
 _TICKER_CONTEXT_FIXTURE = {
     "ticker": "TEST_TICKER",
@@ -201,6 +317,7 @@ _TICKER_CONTEXT_FIXTURE = {
     "current_financial_momentum_context": _FINANCIAL_MOMENTUM_FIXTURE,
     "current_corporate_event_context": _CORPORATE_EVENT_FIXTURE,
     "current_research_risk_register": _RISK_REGISTER_FIXTURE,
+    "current_research_scenario_context": _SCENARIO_CONTEXT_FIXTURE,
 }
 _EXPECTED_UPSTREAM = {
     "tactical_entry_classifier": {
@@ -220,6 +337,7 @@ _AI_RESPONSE_FIXTURE = {
         "watchlist_tactical_entry_classifier reports entry_state=BASE_BUILDING, action=ACCUMULATE_IN_BASE.",
         "daily_opportunity_decision_queue reports research_priority_tier=PRIORITY_NOW.",
         "current_financial_momentum_context reports OFFICIAL_QUALIFIED evidence_tier with revenue_growth and earnings_growth EXPANDING.",
+        "current_research_scenario_context reports the CONSERVATIVE scenario axis as SUPPORTED, citing a confirmed constructive technical state with no material risk.",
     ],
     "counter_thesis": "The opportunity queue's own entry_action is WAIT, retained history shows a DETERIORATION structural state, and net margin is deteriorating even as revenue expands.",
     "counter_evidence": [
@@ -249,11 +367,13 @@ _AI_RESPONSE_FIXTURE = {
     "unresolved_questions": [
         "market_wide_current_valuation reports EV/EBITDA as BLOCKED; unresolved whether it would corroborate P/B.",
         "current_research_risk_register reports valuation authority as limited (VALUATION_METRICS_BLOCKED); no authoritative cheapness or expense conclusion is available.",
+        "current_research_scenario_context reports the SPECULATIVE scenario axis as NOT_SUPPORTED, citing the same valuation-authority limitation as current_research_risk_register; no explicit early or higher-uncertainty evidence is present.",
     ],
     "authority_limitations": [
         "EV/EBITDA is BLOCKED and EV/Sales is NOT_APPLICABLE; neither is usable valuation evidence.",
     ],
     "upstream_decision_context": copy.deepcopy(_EXPECTED_UPSTREAM),
+    "scenario_context_summary": copy.deepcopy(_EXPECTED_SCENARIO_CONTEXT_SUMMARY),
     "provenance_references": [
         "watchlist_tactical_entry_classifier",
         "daily_opportunity_decision_queue",
@@ -266,6 +386,8 @@ _AI_RESPONSE_FIXTURE = {
         f"current_corporate_event_context.events.{_CORPORATE_EVENT_UPCOMING_ID}",
         f"current_research_risk_register.material_risks.{_RISK_REGISTER_MATERIAL_ID}",
         f"current_research_risk_register.data_authority_limitations.{_RISK_REGISTER_LIMITATION_ID}",
+        f"current_research_scenario_context.CONSERVATIVE.supporting_conditions.{_SCENARIO_CONSERVATIVE_SUPPORTING_ID}",
+        f"current_research_scenario_context.SPECULATIVE.authority_limitations.{_SCENARIO_SPECULATIVE_LIMITATION_ID}",
     ],
     "is_actionable": False,
 }
@@ -1217,6 +1339,288 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         resp["provenance_references"] = [
             r for r in resp["provenance_references"] if not r.startswith("current_research_risk_register")
         ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+
+    # --- AI_SCENARIO_SYNTHESIS_INTEGRATION_V1 TESTS ---
+
+    def _drop_scenario_sibling(self, ctx, resp):
+        del ctx["current_research_scenario_context"]
+        ctx["provenance"] = [p for p in ctx["provenance"] if p["source_dataset"] != "current_research_scenario_context"]
+        resp = copy.deepcopy(resp)
+        resp.pop("scenario_context_summary", None)
+        resp["supporting_evidence"] = resp["supporting_evidence"][:3]
+        resp["unresolved_questions"] = resp["unresolved_questions"][:2]
+        resp["provenance_references"] = [
+            r for r in resp["provenance_references"] if not r.startswith("current_research_scenario_context")
+        ]
+        return ctx, resp
+
+    def test_valid_conservative_axis_passes(self):
+        """1. valid CONSERVATIVE passes."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("available", result["derived_contract_metadata"]["scenario_context_status"])
+        self.assertEqual("SUPPORTED", result["derived_contract_metadata"]["expected_scenario_context_summary"]["CONSERVATIVE"]["scenario_status"])
+
+    def test_valid_base_axis_passes(self):
+        """2. valid BASE passes."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        summary = result["derived_contract_metadata"]["expected_scenario_context_summary"]["BASE"]
+        self.assertEqual("SUPPORTED", summary["scenario_status"])
+        self.assertEqual("BASE_CURRENT_CLASSIFIED_STATE", summary["status_rule"])
+
+    def test_valid_speculative_axis_passes(self):
+        """3. valid SPECULATIVE passes -- NOT_SUPPORTED here, and a SUPPORTED variant
+        elsewhere in this section, both validated the same way."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("NOT_SUPPORTED", result["derived_contract_metadata"]["expected_scenario_context_summary"]["SPECULATIVE"]["scenario_status"])
+
+    def test_axis_identity_preserved_through_boundary(self):
+        """4. axis identity preserved -- a tampered axis label (swapped BASE/CONSERVATIVE)
+        makes the whole sibling malformed, never silently relabelled."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_scenario_context"]["scenario_context"]["axes"]["CONSERVATIVE"]["scenario_axis"] = "BASE"
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("rejected", result["status"])
+        self.assertEqual("malformed", result["derived_contract_metadata"]["scenario_context_status"])
+        self.assertNotIn("expected_scenario_context_summary", result["derived_contract_metadata"])
+
+    def test_base_cannot_become_most_likely_through_boundary(self):
+        """5. BASE cannot become most-likely, end to end."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " BASE is the most likely scenario for this ticker."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_scenario_likelihood_claim", result["reasons"])
+
+    def test_speculative_cannot_become_bullish_or_high_return_through_boundary(self):
+        """6. SPECULATIVE cannot become bullish/high-return, end to end."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["counter_evidence"].append("SPECULATIVE is the higher expected return case.")
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_scenario_return_inference_claim", result["reasons"])
+
+    def test_conservative_cannot_become_bearish_or_safe_through_boundary(self):
+        """7. CONSERVATIVE cannot become bearish/safe, end to end."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["risk_context"].append("CONSERVATIVE is the safest outcome available here.")
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_low_risk_or_safe_claim", result["reasons"])
+
+    def test_scenario_probability_rejected_through_boundary(self):
+        """8. scenario probability rejected, end to end."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["thesis"] = resp["thesis"] + " BASE has a 60% probability of playing out."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_probability_or_expected_return_claim", result["reasons"])
+
+    def test_base_supported_while_wait_stays_wait(self):
+        """9. BASE supported + WAIT stays WAIT."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        self.assertEqual("SUPPORTED", ctx["current_research_scenario_context"]["scenario_context"]["axes"]["BASE"]["scenario_status"])
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("WAIT", result["accepted_output"]["upstream_decision_context"]["opportunity_decision_queue"]["entry_action"])
+
+    def test_speculative_supported_cannot_create_early_entry(self):
+        """10. SPECULATIVE supported cannot create EARLY_ENTRY -- neither by mutating
+        upstream_decision_context nor by an untouched-field prose override claim."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["scenario_status"] = "SUPPORTED"
+
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["scenario_context_summary"]["SPECULATIVE"]["scenario_status"] = "SUPPORTED"
+        resp["upstream_decision_context"]["tactical_entry_classifier"]["entry_action"] = "EARLY_ENTRY"
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("upstream_decision_context_mismatch", result["reasons"])
+
+        resp2 = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp2["scenario_context_summary"]["SPECULATIVE"]["scenario_status"] = "SUPPORTED"
+        resp2["counter_thesis"] = resp2["counter_thesis"] + " SPECULATIVE supported therefore EARLY_ENTRY."
+        result2 = accept_structured_research_synthesis(ctx, resp2)
+        self.assertEqual("rejected", result2["status"])
+        self.assertIn("prohibited_scenario_action_override_claim", result2["reasons"])
+
+    def test_confirmation_unavailable_remains_unavailable_through_boundary(self):
+        """11. confirmation unavailable remains unavailable."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        gate = ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["confirmation_conditions"][0]
+        self.assertEqual("UNAVAILABLE", gate["status"])
+        self.assertIsNone(gate["text"])
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+
+    def test_invalidation_unavailable_remains_unavailable_through_boundary(self):
+        """12. invalidation unavailable remains unavailable."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        gate = ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["invalidation_conditions"][0]
+        self.assertEqual("UNAVAILABLE", gate["status"])
+        self.assertIsNone(gate["text"])
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+
+    def test_value_blocked_does_not_globally_block_scenario_synthesis(self):
+        """13. VALUE blocked does not globally invalidate non-valuation scenario
+        analysis -- EV/EBITDA stays BLOCKED while CONSERVATIVE/BASE remain SUPPORTED
+        and the overall synthesis is still accepted."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        self.assertEqual("BLOCKED", ctx["market_wide_current_valuation"]["metrics"]["ev_ebitda"]["status"])
+        speculative_limitations = ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["authority_limitations"]
+        self.assertTrue(any(item.get("risk_type") == "VALUATION_METRICS_BLOCKED" for item in speculative_limitations))
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("SUPPORTED", result["derived_contract_metadata"]["expected_scenario_context_summary"]["CONSERVATIVE"]["scenario_status"])
+
+    def test_material_risk_on_scenario_axis_remains_risk_not_probability(self):
+        """14. material risk remains risk, not probability -- a material risk quoted
+        onto a scenario axis carries the identical risk-register shape and is citable
+        without becoming a numeric/probability claim."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["scenario_status"] = "SUPPORTED"
+        ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["material_risks"] = [
+            copy.deepcopy(_RISK_REGISTER_FIXTURE["risk_register"]["material_risks"][0]),
+        ]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["scenario_context_summary"]["SPECULATIVE"]["scenario_status"] = "SUPPORTED"
+        resp["risk_context"].append(
+            f"current_research_scenario_context reports a MATERIAL FINANCIAL_STRESS item ({_RISK_REGISTER_MATERIAL_ID}) on the SPECULATIVE axis; explicit, not hidden."
+        )
+        resp["provenance_references"].append(
+            f"current_research_scenario_context.SPECULATIVE.material_risks.{_RISK_REGISTER_MATERIAL_ID}"
+        )
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        # The prohibited framing (material risk -> probability) is independently rejected.
+        resp["risk_context"].append("This material risk implies a 40% probability of decline.")
+        rejected = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", rejected["status"])
+        self.assertIn("prohibited_probability_or_expected_return_claim", rejected["reasons"])
+
+    def test_data_limitation_on_scenario_axis_remains_limitation(self):
+        """15. data limitation remains limitation -- SPECULATIVE's quoted valuation
+        data-authority limitation is distinct from, and never folded into, a risk."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        limitations = ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["authority_limitations"]
+        self.assertEqual(1, len(limitations))
+        self.assertEqual("DATA_LIMITATION", limitations[0]["status"])
+        self.assertEqual([], ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["material_risks"])
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertIn(
+            f"current_research_scenario_context.SPECULATIVE.authority_limitations.{_SCENARIO_SPECULATIVE_LIMITATION_ID}",
+            result["derived_contract_metadata"]["known_evidence_refs"],
+        )
+
+    def test_planned_event_on_scenario_axis_stays_planned(self):
+        """16. planned event stays planned -- a PLANNED_NOT_EXECUTED-derived supporting
+        condition on a scenario axis is cited as planned, never as executed."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["scenario_status"] = "SUPPORTED"
+        ctx["current_research_scenario_context"]["scenario_context"]["axes"]["SPECULATIVE"]["supporting_conditions"] = [{
+            "condition_id": "PLANNED_NOT_EXECUTED_EVENT", "domain": "CORPORATE_EVENT", "polarity": "SUPPORT",
+            "code": "PLANNED_NOT_EXECUTED_PRESERVED", "facts": {"planned_unresolved_count": 1, "planned_is_not_executed": True},
+            "authority_tier": "OFFICIAL_QUALIFIED", "source_context": "current_corporate_event_context:e1",
+        }]
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["scenario_context_summary"]["SPECULATIVE"]["scenario_status"] = "SUPPORTED"
+        resp["catalyst_context"].append(
+            "current_research_scenario_context reports a planned-not-executed corporate event supporting the SPECULATIVE axis; it remains planned, not executed."
+        )
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        # Claiming it as executed is independently rejected by the existing event-status guard.
+        resp["catalyst_context"].append("The planned issuance can be considered executed given the SPECULATIVE support.")
+        rejected = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", rejected["status"])
+        self.assertIn("prohibited_event_status_inference_claim", rejected["reasons"])
+
+    def test_provider_financial_tier_on_scenario_axis_preserved(self):
+        """17. provider financial tier preserved -- a PROVIDER_RESEARCH-tier condition
+        quoted onto a scenario axis is never described as official-qualified."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_scenario_context"]["scenario_context"]["axes"]["BASE"]["supporting_conditions"].append({
+            "condition_id": "FINANCIAL_IMPROVEMENT", "domain": "FINANCIAL", "polarity": "SUPPORT",
+            "code": "PROVIDER_EARNINGS", "facts": {"provider_research_is_not_official": True},
+            "authority_tier": "PROVIDER_RESEARCH", "source_context": "current_financial_momentum_context:f1",
+        })
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        condition = ctx["current_research_scenario_context"]["scenario_context"]["axes"]["BASE"]["supporting_conditions"][-1]
+        self.assertEqual("PROVIDER_RESEARCH", condition["authority_tier"])
+
+    def test_historical_context_cannot_create_win_rate_through_boundary(self):
+        """18. historical context cannot create win rate, end to end."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["historical_context_summary"] = resp["historical_context_summary"] + " The historical win rate here is 70%."
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_historical_win_rate_claim", result["reasons"])
+
+    def test_absent_scenario_sibling_allows_partial_synthesis(self):
+        """19. absent scenario sibling allows a valid PARTIAL synthesis."""
+        ctx, resp = self._drop_scenario_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), _AI_RESPONSE_FIXTURE)
+        resp["authority_limitations"] = list(resp["authority_limitations"]) + [
+            "current_research_scenario_context is not supplied for this ticker.",
+        ]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("scenario_context_status", result["derived_contract_metadata"])
+
+    def test_malformed_scenario_sibling_cannot_be_cited(self):
+        """20. malformed sibling cannot be cited."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_scenario_context"] = {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_research_scenario_context_malformed"],
+        }
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("rejected", result["status"])
+        self.assertTrue(any(r.startswith("unknown_evidence_reference:") for r in result["reasons"]))
+        self.assertEqual("malformed", result["derived_contract_metadata"]["scenario_context_status"])
+
+    def test_malformed_scenario_sibling_blocks_summary_field_too(self):
+        """20 (extended): a malformed scenario sibling cannot be cited through
+        scenario_context_summary either, mirroring the provenance-reference boundary."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_scenario_context"] = {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_research_scenario_context_malformed"],
+        }
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["provenance_references"] = [r for r in resp["provenance_references"] if not r.startswith("current_research_scenario_context")]
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("scenario_context_summary_cites_malformed_sibling", result["reasons"])
+
+    def test_scenario_context_provenance_survives(self):
+        """21. provenance survives."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        conservative_ref = f"current_research_scenario_context.CONSERVATIVE.supporting_conditions.{_SCENARIO_CONSERVATIVE_SUPPORTING_ID}"
+        self.assertIn(conservative_ref, result["accepted_output"]["provenance_references"])
+        self.assertIn(conservative_ref, result["derived_contract_metadata"]["known_evidence_refs"])
+        self.assertIn("current_research_scenario_context", result["derived_contract_metadata"]["known_evidence_refs"])
+        self.assertEqual(_EXPECTED_SCENARIO_CONTEXT_SUMMARY, result["accepted_output"]["scenario_context_summary"])
+
+    def test_existing_synthesis_without_scenario_sibling_backward_compatible(self):
+        """22. old synthesis without scenario sibling remains backward compatible."""
+        ctx, resp = self._drop_scenario_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), _AI_RESPONSE_FIXTURE)
         result = accept_structured_research_synthesis(ctx, resp)
         self.assertEqual("accepted", result["status"])
 

@@ -2515,6 +2515,233 @@ def apply_bundle_current_research_risk_register_contract(context: dict[str, Any]
     return context
 
 
+_SCENARIO_CONTEXT_AXES = ("CONSERVATIVE", "BASE", "SPECULATIVE")
+_SCENARIO_CONTEXT_STATUSES = {
+    "SUPPORTED", "CONDITIONALLY_SUPPORTED", "NOT_SUPPORTED", "DATA_LIMITED", "UNQUALIFIED",
+}
+_SCENARIO_CONTEXT_FORBIDDEN_USES = {
+    "probability", "expected_return", "target_price", "upside_pct", "downside_pct",
+    "payoff_ratio", "intrinsic_value", "recommendation", "position_size", "sizing",
+    "strategy_eligibility", "research_priority", "entry_action", "daily_decision_queue",
+    "VALUE", "RAW_AS_TRADED", "PIT", "backtest",
+}
+_SCENARIO_CONTEXT_SOURCE_CONTEXT_NAMES = {
+    "official_universe", "tactical", "opportunity", "historical", "leadership",
+    "financial", "event", "valuation", "risk_register",
+}
+_SCENARIO_CONTEXT_AS_OF_NAMES = {
+    "tactical", "opportunity", "historical", "leadership", "financial", "event", "valuation",
+}
+
+
+def _scenario_condition_item_valid(item: Any, *, expected_polarity: str) -> bool:
+    """One evidence condition: domain/code/facts plus a polarity fixed by its own list."""
+    if not isinstance(item, Mapping):
+        return False
+    return (
+        isinstance(item.get("condition_id"), str) and bool(item["condition_id"])
+        and isinstance(item.get("domain"), str) and bool(item["domain"])
+        and item.get("polarity") == expected_polarity
+        and isinstance(item.get("code"), str) and bool(item["code"])
+        and isinstance(item.get("facts"), Mapping)
+        and isinstance(item.get("authority_tier"), str) and bool(item["authority_tier"])
+        and isinstance(item.get("source_context"), str) and bool(item["source_context"])
+    )
+
+
+def _scenario_mixed_item_valid(item: Any, *, ticker: str, condition_polarity: str, risk_status: str) -> bool:
+    """A heterogeneous list: either a condition-shaped entry or a quoted risk-register item.
+
+    authority_limitations/unresolved_questions are populated from two different sources in
+    Producer (its own DATA_AUTHORITY/UNRESOLVED conditions, plus quoted risk-register
+    data_authority_limitations/unresolved_conflicts items) -- both shapes are legitimate.
+    """
+    if _scenario_condition_item_valid(item, expected_polarity=condition_polarity):
+        return True
+    return _risk_register_item_valid(item, ticker=ticker, expected_status=risk_status)
+
+
+def _scenario_gate_valid(gate: Any) -> bool:
+    """A confirmation/invalidation gate: UNAVAILABLE never carries invented text."""
+    if not isinstance(gate, Mapping):
+        return False
+    status = gate.get("status")
+    text = gate.get("text")
+    if status not in {"AVAILABLE", "UNAVAILABLE"}:
+        return False
+    if gate.get("invented") is not False:
+        return False
+    if not isinstance(gate.get("reason"), str) or not gate["reason"]:
+        return False
+    if status == "UNAVAILABLE":
+        return text is None
+    return isinstance(text, str) and bool(text)
+
+
+def _scenario_axis_record_valid(
+    row: Any, *, ticker: str, axis: str, decision_context: Mapping[str, Any], source_as_of: Mapping[str, Any],
+) -> bool:
+    if not isinstance(row, Mapping):
+        return False
+    confirmation = row.get("confirmation_conditions")
+    invalidation = row.get("invalidation_conditions")
+    material_risks = row.get("material_risks")
+    limitations = row.get("authority_limitations")
+    unresolved = row.get("unresolved_questions")
+    evidence_refs = row.get("evidence_references")
+    expected_material_risk_rule = (
+        "MATERIAL_RISK_BLOCKS_CONSERVATIVE_SUPPORTED" if axis == "CONSERVATIVE" else "MATERIAL_RISK_LISTED_NOT_SCORED"
+    )
+    return (
+        row.get("ticker") == ticker
+        and row.get("scenario_axis") == axis
+        and row.get("scenario_status") in _SCENARIO_CONTEXT_STATUSES
+        and isinstance(row.get("status_rule"), str) and bool(row["status_rule"])
+        and isinstance(row.get("status_reasons"), list) and all(isinstance(r, str) for r in row["status_reasons"])
+        and row.get("source_as_of") == source_as_of
+        and row.get("current_decision_context") == decision_context
+        and isinstance(row.get("eligible_strategy_lanes"), list)
+        and list(row["eligible_strategy_lanes"]) == list(decision_context.get("eligible_strategy_lanes") or [])
+        and isinstance(row.get("supporting_conditions"), list)
+        and all(_scenario_condition_item_valid(i, expected_polarity="SUPPORT") for i in row["supporting_conditions"])
+        and isinstance(row.get("opposing_conditions"), list)
+        and all(_scenario_condition_item_valid(i, expected_polarity="OPPOSE") for i in row["opposing_conditions"])
+        and isinstance(confirmation, list) and len(confirmation) == 1 and _scenario_gate_valid(confirmation[0])
+        and isinstance(invalidation, list) and len(invalidation) == 1 and _scenario_gate_valid(invalidation[0])
+        and isinstance(material_risks, list)
+        and all(_risk_register_item_valid(i, ticker=ticker, expected_status="ESTABLISHED") for i in material_risks)
+        and isinstance(limitations, list)
+        and all(_scenario_mixed_item_valid(i, ticker=ticker, condition_polarity="LIMITATION", risk_status="DATA_LIMITATION") for i in limitations)
+        and isinstance(unresolved, list)
+        and all(_scenario_mixed_item_valid(i, ticker=ticker, condition_polarity="UNRESOLVED", risk_status="UNRESOLVED_CONFLICT") for i in unresolved)
+        and isinstance(evidence_refs, list)
+        and len(evidence_refs) == len(_SCENARIO_CONTEXT_SOURCE_CONTEXT_NAMES)
+        and {ref.get("source") for ref in evidence_refs if isinstance(ref, Mapping)} == _SCENARIO_CONTEXT_SOURCE_CONTEXT_NAMES
+        and all(
+            isinstance(ref, Mapping) and isinstance(ref.get("identity"), str) and bool(ref["identity"])
+            for ref in evidence_refs
+        )
+        and row.get("allowed_uses") == ["CURRENT_RESEARCH_CONTEXT"]
+        and isinstance(row.get("prohibited_uses"), list)
+        and _SCENARIO_CONTEXT_FORBIDDEN_USES <= set(row["prohibited_uses"])
+        and row.get("base_is_not_most_likely") == (True if axis == "BASE" else None)
+        and row.get("evidence_standard_lowered") is False
+        and row.get("material_risk_rule") == expected_material_risk_rule
+        and row.get("does_not_modify_research_priority") is True
+        and row.get("does_not_modify_strategy_eligibility") is True
+        and row.get("does_not_modify_entry_action") is True
+    )
+
+
+def _current_research_scenario_context_valid(raw: Any, *, ticker: str) -> bool:
+    if not isinstance(raw, Mapping):
+        return False
+    source_contexts = raw.get("source_contexts")
+    scenario_context = raw.get("scenario_context")
+    blocked_outputs = raw.get("blocked_outputs")
+    authority_boundary = raw.get("authority_boundary")
+    if not (
+        raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and isinstance(raw.get("source_artifact_identity"), str)
+        and raw["source_artifact_identity"].startswith("current_research_scenario_context:")
+        and isinstance(source_contexts, Mapping)
+        and _SCENARIO_CONTEXT_SOURCE_CONTEXT_NAMES <= set(source_contexts)
+        and all(
+            isinstance(source_contexts[name], Mapping) and isinstance(source_contexts[name].get("available"), bool)
+            for name in _SCENARIO_CONTEXT_SOURCE_CONTEXT_NAMES
+        )
+        and isinstance(scenario_context, Mapping)
+        and isinstance(blocked_outputs, Mapping)
+        and all(blocked_outputs.get(use) == "NOT_EMITTED_OR_MODIFIED" for use in _SCENARIO_CONTEXT_FORBIDDEN_USES)
+        and isinstance(authority_boundary, Mapping)
+        and authority_boundary.get("is_actionable") is False
+        and authority_boundary.get("research_only") is True
+        and authority_boundary.get("no_probability") is True
+        and authority_boundary.get("no_expected_return") is True
+        and authority_boundary.get("no_target_price") is True
+        and authority_boundary.get("no_sizing") is True
+        and authority_boundary.get("no_recommendation") is True
+        and authority_boundary.get("does_not_modify_research_priority") is True
+        and authority_boundary.get("does_not_modify_strategy_eligibility") is True
+        and authority_boundary.get("does_not_modify_entry_action") is True
+        and authority_boundary.get("does_not_modify_daily_decision_queue") is True
+        and authority_boundary.get("does_not_replace_evidence_bound_bear_base_bull") is True
+        and authority_boundary.get("data_limitation_is_not_economic_risk") is True
+        and authority_boundary.get("raw_as_traded") == "NOT_PROMOTED"
+        and authority_boundary.get("pit") == "BLOCKED"
+        and authority_boundary.get("backtest") == "NOT_EMITTED"
+    ):
+        return False
+    decision_context = scenario_context.get("current_decision_context")
+    axes = scenario_context.get("axes")
+    record_source_as_of = scenario_context.get("source_as_of")
+    record_blocked_outputs = scenario_context.get("blocked_outputs")
+    if not (
+        scenario_context.get("ticker") == ticker
+        and isinstance(decision_context, Mapping)
+        and decision_context.get("quoted_not_modified") is True
+        and isinstance(decision_context.get("eligible_strategy_lanes"), list)
+        and isinstance(record_source_as_of, Mapping)
+        and _SCENARIO_CONTEXT_AS_OF_NAMES <= set(record_source_as_of)
+        and isinstance(record_blocked_outputs, Mapping)
+        and all(record_blocked_outputs.get(use) == "NOT_EMITTED_OR_MODIFIED" for use in _SCENARIO_CONTEXT_FORBIDDEN_USES)
+        and isinstance(axes, Mapping)
+        and set(axes) == set(_SCENARIO_CONTEXT_AXES)
+    ):
+        return False
+    return all(
+        _scenario_axis_record_valid(
+            axes[axis], ticker=ticker, axis=axis,
+            decision_context=decision_context, source_as_of=record_source_as_of,
+        )
+        for axis in _SCENARIO_CONTEXT_AXES
+    )
+
+
+def current_research_scenario_context_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail-closed pass-through for the opt-in current research scenario context.
+
+    Canonical location: tickers[ticker].current_research_scenario_context, attached by
+    stock-core-private's export_ai_bundle.py only with
+    --include-current-research-scenario-context. Three orthogonal research/decision-
+    condition axes (CONSERVATIVE/BASE/SPECULATIVE) over already-retained tactical/
+    opportunity/historical/leadership/financial/event/valuation/risk-register context --
+    never a Bear/Base/Bull price scenario, a probability, a strategy lane, or an entry
+    action. Consumer performs no recomputation of any axis status and never infers a
+    missing confirmation or invalidation condition.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_research_scenario_context") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not _current_research_scenario_context_valid(raw, ticker=ticker):
+        return {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_research_scenario_context_malformed"],
+        }
+    return copy.deepcopy(dict(raw))
+
+
+def apply_bundle_current_research_scenario_context_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_research_scenario_context_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_research_scenario_context"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "current_research_scenario_context",
+            "transformation": "Pass through the Producer's current CONSERVATIVE/BASE/SPECULATIVE research scenario context verbatim: each axis's scenario_status, status_rule, status_reasons, supporting/opposing conditions, confirmation/invalidation gates, material risks, authority limitations, unresolved questions, evidence references, and allowed/prohibited uses, plus the shared current_decision_context, per-source as-of identities, blocked outputs, and authority boundary. Consumer performs no recomputation of any axis status and never infers a missing confirmation or invalidation condition.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-current-research-scenario-context).",
+                "CONSERVATIVE, BASE, and SPECULATIVE are research/decision-condition axes, never bearish/neutral/bullish, low/medium/high return or probability buckets, or defensive/normal/aggressive position sizing.",
+                "No scenario axis carries a probability, target price, expected return, or sizing figure; BASE is never a most-likely claim and SPECULATIVE is never a higher-expected-return or bullish claim.",
+                "A scenario axis may explain an existing upstream entry_action/research_priority/strategy-eligibility state but can never modify it: if entry_action is WAIT, it stays WAIT regardless of any axis's status.",
+                "An UNAVAILABLE confirmation or invalidation gate stays unavailable; this section never invents a price level, financial threshold, event date, or target.",
+                "This sibling is additive to, and never replaces, the existing evidence-bound Bear/Base/Bull scenario overlay.",
+            ],
+        })
+    return context
+
+
 _MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES = {
     "AVAILABLE", "PARTIAL", "INSUFFICIENT_HISTORY", "MISSING", "NOT_APPLICABLE",
 }
@@ -4511,6 +4738,7 @@ def build_context_package(
     apply_bundle_current_financial_momentum_context_contract(context, bundle_payload)
     apply_bundle_current_corporate_event_context_contract(context, bundle_payload)
     apply_bundle_current_research_risk_register_contract(context, bundle_payload)
+    apply_bundle_current_research_scenario_context_contract(context, bundle_payload)
     apply_bundle_market_wide_historical_research_context_contract(context, bundle_payload)
     apply_bundle_market_wide_current_valuation_contract(context, bundle_payload)
     apply_bundle_current_market_flow_positioning_contract(context, bundle_payload)
