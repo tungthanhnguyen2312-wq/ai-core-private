@@ -2,6 +2,7 @@ import copy
 
 from builders.build_ticker_context import (
     apply_bundle_market_wide_historical_research_context_contract,
+    apply_bundle_market_wide_current_valuation_contract,
     market_wide_historical_research_context_contract,
 )
 
@@ -110,3 +111,26 @@ def test_absent_malformed_and_session_incoherent_optional_layer_fail_closed_with
         {"tickers": {"AAA": {"market_wide_historical_research_context": raw}}}, "AAA"
     )
     assert result["status"] == "malformed"
+
+
+def test_historical_and_valuation_can_coexist_without_an_actionable_joint_signal():
+    historical = _available()
+    valuation = {
+        "ticker": "AAA", "status": "current_valuation_snapshot", "is_actionable": False,
+        "entity_class": "corporate", "price_input": {"status": "PRICE_READY", "session": "2026-08-21"},
+        "share_basis_input": {"status": "PROVIDER_REPORTED_LAGGED"},
+        "financial_input": {"authority": "OFFICIAL_QUALIFIED"},
+        "metrics": {"P/E": {"status": "BLOCKED", "value": None, "price_session": "2026-08-21"}},
+    }
+    bundle = {"tickers": {"AAA": {
+        "market_wide_historical_research_context": historical,
+        "market_wide_current_valuation": valuation,
+    }}}
+    context = {"ticker": "AAA", "provenance": []}
+    apply_bundle_market_wide_historical_research_context_contract(context, bundle)
+    apply_bundle_market_wide_current_valuation_contract(context, bundle)
+    assert context["market_wide_historical_research_context"] == historical
+    assert context["market_wide_current_valuation"] == valuation
+    assert "joint_setup_quality" not in context
+    assert "entry_action" not in context
+    assert "research_priority" not in context

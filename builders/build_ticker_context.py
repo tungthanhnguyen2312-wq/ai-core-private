@@ -1995,6 +1995,14 @@ _MARKET_WIDE_HISTORICAL_FIELD_NAMES = (
     "trailing_range", "fifty_two_week_range", "drawdown", "volatility_regime", "momentum",
     "ma_alignment", "relative_volume", "technical_state_frequency", "structural_state",
 )
+_MARKET_WIDE_CURRENT_VALUATION_RESEARCH_LABELS = {
+    "CURRENT_RESEARCH_ONLY", "NOT_AUTHORITATIVE", "NOT_PIT", "NOT_FOR_TARGET_PRICE",
+    "NOT_FOR_SIZING", "NOT_FOR_EXECUTION", "NOT_FOR_VALUE_STRATEGY",
+}
+_MARKET_WIDE_CURRENT_VALUATION_RESEARCH_FORBIDDEN_USES = {
+    "AUTHORITATIVE_VALUATION", "VALUE_STRATEGY_ELIGIBILITY", "TARGET_PRICE", "INTRINSIC_VALUE",
+    "DCF", "SIZING", "EXECUTION", "RANKING", "RECOMMENDATION", "PIT",
+}
 
 
 def _market_wide_historical_research_context_valid(raw: Mapping[str, Any], ticker: str) -> bool:
@@ -2138,12 +2146,19 @@ def market_wide_current_valuation_contract(bundle: Mapping[str, Any] | None, tic
             and ((metric.get("status") in {"READY", "RESEARCH_USABLE"}
                   and isinstance(metric.get("value"), (int, float)) and not isinstance(metric.get("value"), bool))
                  or (metric.get("status") not in {"READY", "RESEARCH_USABLE"} and metric.get("value") is None))
-            and (not isinstance(price_session, str) or "price_session" not in metric or metric.get("price_session") == price_session)
+            and (metric.get("status") not in {"READY", "RESEARCH_USABLE"} or (
+                isinstance(price_session, str) and metric.get("price_session") == price_session
+            ))
             and (metric.get("status") != "RESEARCH_USABLE" or (
-                metric.get("is_actionable") is False
+                isinstance(metric.get("metric_id"), str)
+                and metric.get("is_actionable") is False
+                and metric.get("historical_pit_eligible") is False
+                and isinstance(metric.get("labels"), list)
+                and _MARKET_WIDE_CURRENT_VALUATION_RESEARCH_LABELS.issubset(set(metric["labels"]))
+                and metric.get("allowed_uses") == ["CURRENT_RESEARCH_ONLY"]
+                and isinstance(metric.get("forbidden_uses"), list)
+                and _MARKET_WIDE_CURRENT_VALUATION_RESEARCH_FORBIDDEN_USES.issubset(set(metric["forbidden_uses"]))
                 and "CURRENT_RESEARCH_ONLY" in set(metric.get("allowed_uses") or [])
-                and "VALUE_STRATEGY_ELIGIBILITY" in set(metric.get("forbidden_uses") or [])
-                and "TARGET_PRICE" in set(metric.get("forbidden_uses") or [])
             ))
             for metric in metrics.values()
         )
