@@ -123,15 +123,44 @@ Return a funnel: input, validation-eligible, each criterion and resulting count.
 
 Criteria manifest, validation funnel, pass/fail/unknown table, provenance and missing-data impact.
 
+## 4. Structured research synthesis template
+
+### Purpose
+
+Explain the investment case for one ticker using only the qualified context already present in its final context package: the current research thesis, its supporting evidence, the strongest counter-thesis, where the ticker sits relative to its own recent history, what valuation information is available and at what authority, catalysts, risks, invalidation conditions, and unresolved questions. This is AI RESEARCH NARRATIVE, not a new numerical authority, strategy, ranking, or probability engine.
+
+### Required input
+
+One final `{TICKER}_context.json` (built after all applicable per-lane contracts described above have been applied) and this prompt.
+
+### Prompt
+
+```text
+Using only the attached context package for {TICKER}, produce one structured research-synthesis object with exactly these fields: `ticker`, `analysis_session`, `synthesis_status`, `thesis`, `supporting_evidence`, `counter_thesis`, `counter_evidence`, `historical_context_summary`, `valuation_context_summary`, `catalyst_context`, `risk_context`, `invalidation_conditions`, `unresolved_questions`, `authority_limitations`, `upstream_decision_context`, `provenance_references`, `is_actionable`.
+
+You may EXPLAIN an upstream deterministic state; you may never MINT or UPGRADE one. `research_priority`, `entry_action`, `action`, `probability`, `confidence`, `expected_return`, `target_price`, `intrinsic_value`, `dcf`, `position_size`, `recommendation`, `rating`, and `score` must never appear as top-level fields of this object; where an upstream deterministic value exists (`watchlist_tactical_entry_classifier`, `current_opportunity_decision_context`), quote it exactly inside `upstream_decision_context` and nowhere else -- if it says `WAIT`, this object still says `WAIT`, never `BUY`.
+
+`thesis` must be a non-empty statement grounded in a non-empty `supporting_evidence`; `counter_thesis` is mandatory (a synthesis with no genuine strongest opposing interpretation is invalid, and a generic disclaimer is not a counter-thesis) and grounded in a non-empty `counter_evidence`. Every entry in `provenance_references` (at least one required) must name a context section or `market_wide_current_valuation.metrics.<method>` that is actually present and not itself malformed in the attached package; do not invent a source that is not supplied.
+
+Use `market_wide_historical_research_context` only under its own `RETROSPECTIVE_DESCRIPTIVE_WITHIN_TICKER` authority for `historical_context_summary` (own historical high/low, drawdown, volatility regime, trend persistence, `structural_state`); it never becomes an entry action or strategy eligibility. Use `market_wide_current_valuation` per method for `valuation_context_summary`, preserving `READY`/`RESEARCH_USABLE`/`BLOCKED`/`NOT_APPLICABLE` exactly per metric -- a ticker may have usable P/B and blocked EV/EBITDA at the same time; `RESEARCH_USABLE` stays research-only, never cheapness, VALUE eligibility, or a target price. Session identities are not interchangeable: report each of `historical_context_summary` and `valuation_context_summary` as of its own sibling's own `session`/`as_of_session`, never merged into one synthesized "current" date, and never combined into a joint setup-quality or cheapness conclusion.
+
+If a historical or valuation sibling is absent, missing, or malformed, omit the unsupported factual conclusion, surface the limitation explicitly under `authority_limitations`, and still produce the rest of the synthesis from whatever qualified evidence remains -- absence of one optional sibling must never blank out the whole object. Set `synthesis_status` to one of `EVIDENCE_COMPLETE`, `PARTIAL_EVIDENCE`, `MATERIAL_UNRESOLVED_DATA`, `CONFLICTING_EVIDENCE`, or `AUTHORITY_LIMITED` -- a deterministic, qualitative state, never a numeric confidence or probability. `catalyst_context` and `risk_context` may only restate catalysts/risks/events already present in the supplied context (e.g. `historical_decision_analysis`, corporate events under `corporate_intelligence`); do not fabricate management guidance, corporate actions, financial facts, catalysts, or historical outcomes. `invalidation_conditions` must come from supplied deterministic/context evidence (an upstream invalidation level, deterioration of an existing deterministic condition, a qualified catalyst's failure, or a binding authority/data limitation) -- never an invented price level. `unresolved_questions` records important open questions caused by missing or conflicting data; it is a limitation list, not a hedge for weak evidence elsewhere. Set `is_actionable` to `false` always.
+```
+
+### Expected output
+
+One structured research-synthesis JSON object as specified above, suitable for validation by `builders/structured_research_synthesis_boundary.py`.
+
 ## Provenance / Source Basis
 
-Templates implement Phase 2 AnalysisGuide/AIUsageRules, Phase 3 provenance/point-in-time standards, Phase 4 workflows and Phase 6 batch artifacts.
+Templates implement Phase 2 AnalysisGuide/AIUsageRules, Phase 3 provenance/point-in-time standards, Phase 4 workflows and Phase 6 batch artifacts. The structured research synthesis template (4) implements the AI_STRUCTURED_RESEARCH_SYNTHESIS_V1 contract.
 
 ## Known Limitations
 
 - Prompts cannot compensate for missing/stale context.
 - Current batch lacks safely mapped ticker news; TCB, VIC and VRE also lack shareholder summaries.
 - Model compliance/retrieval behavior is not fully confirmed across platforms.
+- Structured research synthesis output is validated by `builders/structured_research_synthesis_response.py` and `builders/structured_research_synthesis_boundary.py`; like multi-angle synthesis, it is a validation contract for AI-produced narrative, not a field embedded in generated context packages.
 
 ## How AI Should Use This
 
