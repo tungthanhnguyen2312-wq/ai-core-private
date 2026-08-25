@@ -89,6 +89,8 @@ _ALLOWED_CONTRACT_METADATA_KEYS = {
     "risk_register_source_sessions",
     "scenario_context_status",
     "expected_scenario_context_summary",
+    "current_research_decision_packet_status",
+    "current_research_decision_packet_component_conflicts",
 }
 
 _NEGATION_MARKERS = (

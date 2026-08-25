@@ -192,7 +192,7 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
     def test_absent_sibling_enumeration_includes_scenario_context(self):
         self.assertIn(
             "If a historical, valuation, market/sector, financial-momentum, corporate-event, risk-register, "
-            "or scenario-context sibling is absent, missing, or malformed",
+            "scenario-context, or decision-packet-component sibling is absent, missing, or malformed",
             PROMPT,
         )
 
@@ -251,6 +251,27 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
     def test_evidence_traceability_required(self):
         self.assertIn("do not invent a source that is not supplied", PROMPT)
         self.assertIn("market_wide_current_valuation.metrics.<method>", PROMPT)
+
+    def test_decision_packet_documented_in_single_ticker_template(self):
+        self.assertIn("If `current_research_decision_packet` is present", PROMPT)
+        self.assertIn("COHESION/TRANSPORT boundary", PROMPT)
+        self.assertIn("never two independent confirmations", PROMPT)
+        self.assertIn("current_evidence_bound_scenario", PROMPT)
+
+    def test_decision_packet_prohibited_claims_extend_master_list(self):
+        for forbidden in (
+            "treating `current_research_decision_packet` as a new fact, a second independent confirmation",
+            "silently preferring the packet's or a direct sibling's representation of the same component when the two materially conflict",
+            "treating `packet.current_decision_context` as itself evidence",
+            "describing `current_research_decision_packet`'s `scenario_context` component as the CONSERVATIVE/BASE/SPECULATIVE research axes",
+        ):
+            self.assertIn(forbidden, PROMPT)
+
+    def test_decision_packet_routing_in_synthesis_template(self):
+        self.assertIn("`current_research_decision_packet`, when present, supplies no new field of its own", PROMPT)
+        self.assertIn("cite the direct sibling's own reference -- never both", PROMPT)
+        self.assertIn("neither representation is citable for that component", PROMPT)
+        self.assertIn("decision-packet-component sibling is absent, missing, or malformed", PROMPT)
 
     def test_no_live_ticker_values_embedded_in_reusable_prompt(self):
         """The reusable prompt MUST NOT embed concrete live figures for any real ticker."""

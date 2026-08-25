@@ -3313,6 +3313,333 @@ def apply_bundle_watchlist_tactical_entry_classifier_contract(context: dict[str,
     return context
 
 
+_CURRENT_RESEARCH_DECISION_PACKET_COMPONENT_NAMES = (
+    "scenario", "risk_register", "market_sector", "financial_momentum",
+    "corporate_event", "valuation", "historical",
+)
+# Maps each manifest component name to the key it appears under inside packet.components.
+_CURRENT_RESEARCH_DECISION_PACKET_COMPONENT_KEY = {
+    "scenario": "scenario_context",
+    "risk_register": "risk_register",
+    "market_sector": "market_sector_context",
+    "financial_momentum": "financial_momentum_context",
+    "corporate_event": "corporate_event_context",
+    "valuation": "valuation_context",
+    "historical": "historical_research_context",
+}
+_CURRENT_RESEARCH_DECISION_PACKET_MANIFEST_STATUSES = {"PRESENT", "ABSENT", "MALFORMED"}
+_CURRENT_RESEARCH_DECISION_PACKET_STATUSES = {"COMPLETE_FOR_AVAILABLE_COMPONENTS", "PARTIAL"}
+_CURRENT_RESEARCH_DECISION_PACKET_DECISION_CONTEXT_FIELDS = (
+    "priority_tier", "entry_action", "eligible_strategies", "lane_priority", "tactical_state",
+    "scenario_status", "blocking_reasons", "invalidation_or_context_warnings", "source_input_identities",
+)
+_CURRENT_RESEARCH_DECISION_PACKET_ALLOWED_USES = ["AI_RESEARCH_NARRATIVE", "HUMAN_REVIEW", "AUDIT_REPLAY"]
+_CURRENT_RESEARCH_DECISION_PACKET_FORBIDDEN_USES = {
+    "recommendation", "probability", "expected_return", "target_price", "position_size", "sizing",
+}
+_CURRENT_RESEARCH_DECISION_PACKET_AUTHORITY_BOUNDARY = {
+    "is_actionable": False, "no_global_authority_score": True, "upstream_decisions_passthrough_only": True,
+    "source_sessions_preserved_independently": True,
+    "no_recommendation_probability_expected_return_target_or_sizing": True,
+    "raw_as_traded": "NOT_PROMOTED", "pit": "BLOCKED",
+}
+_PACKET_VALUATION_METRIC_STATUSES = {"READY", "RESEARCH_USABLE", "BLOCKED", "NOT_APPLICABLE"}
+
+
+def _current_research_decision_packet_manifest_entry_valid(name: str, entry: Any) -> bool:
+    """One component_manifest entry: PRESENT/ABSENT/MALFORMED fixes which fields apply.
+
+    This manifest is shared artifact-wide (identical across every ticker in the same
+    packet); it records whether a sibling artifact was supplied to the packet builder at
+    all, not whether this specific ticker's own row exists within it.
+    """
+    if not isinstance(entry, Mapping) or entry.get("component_name") != name:
+        return False
+    status = entry.get("status")
+    source_identity = entry.get("source_artifact_identity")
+    source_as_of = entry.get("source_as_of")
+    if status == "ABSENT":
+        return (
+            source_identity is None and source_as_of is None
+            and entry.get("authority_use_status") == "OPTIONAL_NOT_SUPPLIED"
+        )
+    if status == "MALFORMED":
+        return (
+            (source_identity is None or isinstance(source_identity, str))
+            and source_as_of is None
+            and entry.get("authority_use_status") == "FAIL_CLOSED_LOCALLY"
+        )
+    if status == "PRESENT":
+        return (
+            isinstance(source_identity, str) and bool(source_identity)
+            and (source_as_of is None or isinstance(source_as_of, str))
+            and isinstance(entry.get("source_content_hash"), str) and bool(entry["source_content_hash"])
+            and entry.get("authority_use_status") == "PASSTHROUGH_ONLY"
+        )
+    return False
+
+
+def _current_research_decision_packet_record_valid(record: Any, *, ticker: str, manifest: Mapping[str, Any]) -> bool:
+    """One ticker's packet record: components/unresolved_components partition the 7 names."""
+    if not isinstance(record, Mapping):
+        return False
+    decision = record.get("current_decision_context")
+    components = record.get("components")
+    unresolved = record.get("unresolved_components")
+    if not (
+        record.get("ticker") == ticker
+        and record.get("packet_status") in _CURRENT_RESEARCH_DECISION_PACKET_STATUSES
+        and isinstance(decision, Mapping)
+        and set(_CURRENT_RESEARCH_DECISION_PACKET_DECISION_CONTEXT_FIELDS) <= set(decision)
+        and isinstance(components, Mapping)
+        and set(components) <= set(_CURRENT_RESEARCH_DECISION_PACKET_COMPONENT_KEY.values())
+        and isinstance(unresolved, list)
+        and set(unresolved) <= set(_CURRENT_RESEARCH_DECISION_PACKET_COMPONENT_NAMES)
+        and record.get("authority_limitations") == [f"{name}_UNAVAILABLE_OR_MALFORMED" for name in sorted(unresolved)]
+        and isinstance(record.get("warnings"), list)
+        and record.get("allowed_uses") == _CURRENT_RESEARCH_DECISION_PACKET_ALLOWED_USES
+        and isinstance(record.get("prohibited_uses"), list)
+        and _CURRENT_RESEARCH_DECISION_PACKET_FORBIDDEN_USES <= set(record["prohibited_uses"])
+        and record.get("is_actionable") is False
+    ):
+        return False
+    # components/unresolved_components must exactly partition the 7 component names, and a
+    # components entry can only exist for a manifest-PRESENT component (a manifest ABSENT/
+    # MALFORMED component can never have a per-ticker payload) -- the converse does not
+    # hold: manifest PRESENT does not guarantee this specific ticker has a row, since that
+    # sibling's own per-ticker universe may not include this ticker at all.
+    for name, key in _CURRENT_RESEARCH_DECISION_PACKET_COMPONENT_KEY.items():
+        manifest_entry = manifest.get(name)
+        manifest_status = manifest_entry.get("status") if isinstance(manifest_entry, Mapping) else None
+        if key in components and manifest_status != "PRESENT":
+            return False
+        if key not in components and name not in unresolved:
+            return False
+        if key in components and name in unresolved:
+            return False
+    return True
+
+
+def _packet_risk_register_component_valid(payload: Any, *, ticker: str) -> bool:
+    """Reuses the existing risk-register item validator; Producer quotes this verbatim
+    from the same current_research_risk_register artifact the direct sibling reads."""
+    if not isinstance(payload, Mapping):
+        return False
+    material = payload.get("material_risks")
+    watch = payload.get("watch_risks")
+    limitations = payload.get("data_authority_limitations")
+    conflicts = payload.get("unresolved_conflicts")
+    if not (
+        payload.get("ticker") == ticker
+        and isinstance(material, list) and all(_risk_register_item_valid(i, ticker=ticker, expected_status="ESTABLISHED") for i in material)
+        and isinstance(watch, list) and all(_risk_register_item_valid(i, ticker=ticker, expected_status="WATCH") for i in watch)
+        and isinstance(limitations, list) and all(_risk_register_item_valid(i, ticker=ticker, expected_status="DATA_LIMITATION") for i in limitations)
+        and isinstance(conflicts, list) and all(_risk_register_item_valid(i, ticker=ticker, expected_status="UNRESOLVED_CONFLICT") for i in conflicts)
+        and payload.get("risk_register_status") in _RISK_REGISTER_STATUSES
+    ):
+        return False
+    return (
+        (bool(material) and payload["risk_register_status"] == "MATERIAL_RISKS_ESTABLISHED")
+        or (not material and payload["risk_register_status"] == "NO_MATERIAL_RISK_ESTABLISHED_FROM_AVAILABLE_EVIDENCE")
+    )
+
+
+def _packet_financial_momentum_component_valid(payload: Any) -> bool:
+    """Reuses the existing per-component validator; components is quoted verbatim."""
+    if not isinstance(payload, Mapping):
+        return False
+    period = payload.get("as_of_financial_period")
+    components = payload.get("components")
+    return (
+        (period is None or isinstance(period, str))
+        and payload.get("financial_momentum_state") in _FINANCIAL_MOMENTUM_STATES
+        and payload.get("coverage_status") in _FINANCIAL_MOMENTUM_COVERAGE_STATUSES
+        and payload.get("evidence_tier") in _FINANCIAL_MOMENTUM_EVIDENCE_TIERS
+        and isinstance(payload.get("blockers"), list) and isinstance(payload.get("warnings"), list)
+        and isinstance(components, Mapping)
+        and all(_financial_momentum_component_valid(c) for c in components.values())
+    )
+
+
+def _packet_market_sector_component_valid(payload: Any, *, ticker: str) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    market = payload.get("market")
+    ticker_context = payload.get("ticker_context")
+    if not (isinstance(market, Mapping) and isinstance(ticker_context, Mapping)):
+        return False
+    return (
+        market.get("current_breadth_state") in _CURRENT_MARKET_SECTOR_BREADTH_STATES
+        and ticker_context.get("ticker") == ticker
+        and ticker_context.get("status") in _CURRENT_MARKET_SECTOR_TICKER_STATUSES
+        and ticker_context.get("breadth_support_state") in _CURRENT_MARKET_SECTOR_BREADTH_SUPPORT_STATES
+    )
+
+
+def _packet_corporate_event_component_valid(payload: Any) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    events = payload.get("events")
+    if not isinstance(events, list):
+        return False
+    for event in events:
+        if not isinstance(event, Mapping):
+            return False
+        if event.get("event_status") not in _CORPORATE_EVENT_STATUSES:
+            return False
+        if event.get("temporal_completeness") not in _CORPORATE_EVENT_TEMPORAL_COMPLETENESS_STATES:
+            return False
+        for field in ("known_at", "published_at", "ex_date", "effective_date", "execution_date"):
+            value = event.get(field)
+            if value is not None and not isinstance(value, str):
+                return False
+    count_fields = (
+        "qualified_event_count", "planned_unresolved_count", "temporal_incomplete_count",
+        "data_limited_count", "conflicting_count",
+    )
+    return (
+        isinstance(payload.get("research_session"), str) and bool(payload["research_session"])
+        and all(isinstance(payload.get(f), int) and not isinstance(payload.get(f), bool) for f in count_fields)
+    )
+
+
+def _packet_valuation_component_valid(payload: Any) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, Mapping):
+        return False
+    valuation_session = payload.get("valuation_session")
+    return (
+        (valuation_session is None or isinstance(valuation_session, str))
+        and all(isinstance(m, Mapping) and m.get("status") in _PACKET_VALUATION_METRIC_STATUSES for m in metrics.values())
+    )
+
+
+def _packet_historical_component_valid(payload: Any) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    authority_boundary = payload.get("authority_boundary")
+    return (
+        payload.get("context_status") in _MARKET_WIDE_HISTORICAL_RESEARCH_CONTEXT_STATUSES
+        and isinstance(authority_boundary, Mapping)
+        and authority_boundary.get("PIT") == "BLOCKED"
+        and authority_boundary.get("RAW_AS_TRADED") == "NOT_PROMOTED"
+    )
+
+
+def _packet_scenario_component_valid(payload: Any) -> bool:
+    """Shallow check only: this component is Producer's current_evidence_bound_scenario
+    (Bear/Base/Bull), a sibling with its own already-tested but non-reusable (nested
+    closure) case validator -- duplicating its full depth here would re-derive, not reuse,
+    that logic, so this checks the same top-level identity fields the packet actually
+    preserves without re-implementing per-case structural validation."""
+    if not isinstance(payload, Mapping):
+        return False
+    cases = {name: payload.get(f"{name}_case") for name in ("bear", "base", "bull")}
+    return (
+        payload.get("scenario_disposition") in _CURRENT_EVIDENCE_SCENARIO_DISPOSITIONS
+        and isinstance(payload.get("authority_limitations"), list)
+        and all(
+            isinstance(case, Mapping) and case.get("probability_status") == "UNKNOWN_UNCALIBRATED"
+            for case in cases.values()
+        )
+    )
+
+
+_PACKET_COMPONENT_VALIDATORS = {
+    "risk_register": lambda payload, ticker: _packet_risk_register_component_valid(payload, ticker=ticker),
+    "financial_momentum": lambda payload, ticker: _packet_financial_momentum_component_valid(payload),
+    "market_sector": lambda payload, ticker: _packet_market_sector_component_valid(payload, ticker=ticker),
+    "corporate_event": lambda payload, ticker: _packet_corporate_event_component_valid(payload),
+    "valuation": lambda payload, ticker: _packet_valuation_component_valid(payload),
+    "historical": lambda payload, ticker: _packet_historical_component_valid(payload),
+    "scenario": lambda payload, ticker: _packet_scenario_component_valid(payload),
+}
+
+
+def _current_research_decision_packet_valid(raw: Any, *, ticker: str) -> bool:
+    if not isinstance(raw, Mapping):
+        return False
+    manifest = raw.get("component_manifest")
+    packet = raw.get("packet")
+    if not (
+        raw.get("ticker") == ticker
+        and raw.get("is_actionable") is False
+        and isinstance(raw.get("source_artifact_identity"), str)
+        and raw["source_artifact_identity"].startswith("current_research_decision_packet:")
+        and isinstance(manifest, Mapping)
+        and set(manifest) == set(_CURRENT_RESEARCH_DECISION_PACKET_COMPONENT_NAMES)
+        and all(_current_research_decision_packet_manifest_entry_valid(name, manifest[name]) for name in manifest)
+        and raw.get("authority_boundary") == _CURRENT_RESEARCH_DECISION_PACKET_AUTHORITY_BOUNDARY
+        and isinstance(packet, Mapping)
+    ):
+        return False
+    return _current_research_decision_packet_record_valid(packet, ticker=ticker, manifest=manifest)
+
+
+def current_research_decision_packet_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
+    """Fail-closed pass-through for the opt-in current research decision packet.
+
+    Canonical location: tickers[ticker].current_research_decision_packet, attached by
+    stock-core-private's export_ai_bundle.py only with
+    --include-current-research-decision-packet. A canonical current-session decision-
+    support packet that packages already-retained sibling context (scenario, risk
+    register, market/sector, financial momentum, corporate event, valuation, historical)
+    for COHESION only -- it creates no new authority and never recomputes a sibling's own
+    value. Fail-closed granularity is per-component: a component that fails Consumer's own
+    structural check (even though Producer's own component_manifest marks it PRESENT) is
+    locally neutralized to a malformed sentinel without invalidating the rest of the
+    packet or any other component.
+
+    The packet's own "scenario" component is Producer's current_evidence_bound_scenario
+    (Bear/Base/Bull), never the separate current_research_scenario_context (CONSERVATIVE/
+    BASE/SPECULATIVE) sibling this same module already passes through above -- confirmed
+    by reading stock-core-private's current_research_decision_packet.py at the pinned
+    schema commit, which imports content_identity only from current_evidence_bound_scenario.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    raw = entry.get("current_research_decision_packet") if isinstance(entry, Mapping) else None
+    if raw is None:
+        return None
+    if not _current_research_decision_packet_valid(raw, ticker=ticker):
+        return {
+            "status": "malformed", "is_actionable": False,
+            "reason_codes": ["current_research_decision_packet_malformed"],
+        }
+    contract = copy.deepcopy(dict(raw))
+    components = contract["packet"].get("components")
+    if isinstance(components, Mapping):
+        for name, key in _CURRENT_RESEARCH_DECISION_PACKET_COMPONENT_KEY.items():
+            if key not in components:
+                continue
+            if not _PACKET_COMPONENT_VALIDATORS[name](components[key], ticker):
+                components[key] = {
+                    "status": "malformed",
+                    "reason_codes": [f"current_research_decision_packet_component_{name}_malformed"],
+                }
+    return contract
+
+
+def apply_bundle_current_research_decision_packet_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = current_research_decision_packet_contract(bundle, str(context.get("ticker") or ""))
+    if contract is not None:
+        context["current_research_decision_packet"] = contract
+        context.setdefault("provenance", []).append({
+            "source_file": "analysis_bundle.json", "source_dataset": "current_research_decision_packet",
+            "transformation": "Pass through the Producer's canonical current-session decision-support packet verbatim: ticker, packet identity, packet status, component manifest, deterministic current decision context, supplied component payloads, unresolved components, authority limitations, warnings, and allowed/prohibited uses. Consumer performs no recomputation of any upstream sibling value; a component that fails Consumer's own structural check is locally replaced with an explicit malformed record without invalidating the rest of the packet.",
+            "limitations": [
+                "Opt-in field, absent from any bundle that did not request it (export_ai_bundle.py --include-current-research-decision-packet).",
+                "COHESION/TRANSPORT only: it creates no new authority and cannot strengthen, weaken, or recompute a Producer sibling's own value.",
+                "component_manifest and authority_boundary are shared across every ticker in the same packet artifact; only packet.components/unresolved_components/authority_limitations are ticker-specific.",
+                "The packet's scenario component is the existing evidence-bound Bear/Base/Bull overlay (current_evidence_bound_scenario), not the CONSERVATIVE/BASE/SPECULATIVE current_research_scenario_context sibling.",
+                "A packet-supplied fact that duplicates an already-present direct sibling is the same upstream fact through a second transport path, never independent confirmation; a materially conflicting duplicate must never be silently resolved by preferring either representation.",
+                "current_decision_context is quoted decision metadata, never evidence; it can never widen, override, or independently confirm research_priority, entry_action, strategy eligibility, or tactical state beyond what the existing deterministic siblings already establish.",
+            ],
+        })
+    return context
+
+
 def apply_bundle_ticker_capability_matrix_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Preserve the Producer's P1.5 capability projection without interpretation.
 
@@ -4747,6 +5074,7 @@ def build_context_package(
     apply_bundle_current_daily_decision_research_contract(context, bundle_payload)
     apply_bundle_current_opportunity_decision_context_contract(context, bundle_payload)
     apply_bundle_watchlist_tactical_entry_classifier_contract(context, bundle_payload)
+    apply_bundle_current_research_decision_packet_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:

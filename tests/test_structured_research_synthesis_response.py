@@ -752,6 +752,114 @@ class StructuredResearchSynthesisResponseTests(unittest.TestCase):
         self.assertEqual("rejected", result["status"])
         self.assertIn("prohibited_historical_win_rate_claim", result["reasons"])
 
+    # --- current_research_decision_packet regression coverage
+    # (AI_CURRENT_RESEARCH_DECISION_PACKET_INTEGRATION_V1): confirms the new packet
+    # metadata keys are recognized without weakening any pre-existing structural or
+    # textual safety guard -- this module has no packet-specific prose to validate on its
+    # own, since the packet supplies no new top-level field (context-aware citability and
+    # coexistence rules live in structured_research_synthesis_boundary.py instead). ---
+    def test_packet_metadata_keys_accepted(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "current_research_decision_packet_status": "available",
+            "current_research_decision_packet_component_conflicts": ["risk_register"],
+        })
+        self.assertEqual("accepted", result["status"])
+
+    def test_unrelated_unexpected_metadata_key_still_rejected(self):
+        """The new keys are an addition, not a relaxation of the allowlist itself."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "current_research_decision_packet_status": "available",
+            "some_unrecognized_new_field": "x",
+        })
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("unexpected_contract_metadata_fields:some_unrecognized_new_field", result["reasons"])
+
+    def test_packet_only_ref_citable_when_in_known_refs(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["provenance_references"] = resp["provenance_references"] + ["current_research_decision_packet.risk_register"]
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "known_evidence_refs": resp["provenance_references"],
+            "current_research_decision_packet_status": "available",
+            "current_research_decision_packet_component_conflicts": [],
+        })
+        self.assertEqual("accepted", result["status"])
+
+    def test_packet_only_ref_not_citable_when_absent_from_known_refs(self):
+        """A packet-shaped reference does not bypass the pre-existing unknown-reference
+        gate -- it must still be present in known_evidence_refs, exactly like every other
+        sibling's reference, to guard against citing a conflicted or malformed component."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["provenance_references"] = resp["provenance_references"] + ["current_research_decision_packet.risk_register"]
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "known_evidence_refs": [ref for ref in resp["provenance_references"] if ref != "current_research_decision_packet.risk_register"],
+        })
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("unknown_evidence_reference:current_research_decision_packet.risk_register", result["reasons"])
+
+    def test_research_priority_top_level_key_rejected_with_packet_metadata_present(self):
+        """21/22. Packet-shaped metadata does not open a new path for a top-level
+        research_priority/strategy_eligibility mint -- the existing structural guard
+        applies unconditionally."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["research_priority"] = "PRIORITY_NOW"
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "current_research_decision_packet_status": "available",
+        })
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_top_level_key:research_priority", result["reasons"])
+
+    def test_entry_action_top_level_key_rejected_with_packet_metadata_present(self):
+        """23. entry_action stays quoted-only inside upstream_decision_context."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["entry_action"] = "BUY_ON_CONFIRMATION"
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "current_research_decision_packet_status": "available",
+        })
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_top_level_key:entry_action", result["reasons"])
+
+    def test_probability_top_level_key_rejected_with_packet_metadata_present(self):
+        """24. no probability field, packet present or not."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["probability"] = 0.7
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "current_research_decision_packet_status": "available",
+        })
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_top_level_key:probability", result["reasons"])
+
+    def test_target_price_top_level_key_rejected_with_packet_metadata_present(self):
+        """25. no target price field, packet present or not."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["target_price"] = 50000
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "current_research_decision_packet_status": "available",
+        })
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_top_level_key:target_price", result["reasons"])
+
+    def test_expected_return_top_level_key_rejected_with_packet_metadata_present(self):
+        """26. no expected return field, packet present or not."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["expected_return"] = 0.15
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "current_research_decision_packet_status": "available",
+        })
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_top_level_key:expected_return", result["reasons"])
+
+    def test_position_size_top_level_key_rejected_with_packet_metadata_present(self):
+        """27. no sizing field, packet present or not."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["position_size"] = "10%"
+        result = validate_structured_research_synthesis_output(resp, contract_metadata={
+            "current_research_decision_packet_status": "available",
+        })
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_top_level_key:position_size", result["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

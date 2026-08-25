@@ -1860,5 +1860,261 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         self.assertIn("ticker_mismatch", result["reasons"])
 
 
+# --- current_research_decision_packet coexistence (AI_CURRENT_RESEARCH_DECISION_PACKET_INTEGRATION_V1) ---
+# TEST_FIXTURE_ONLY. Shapes match the packet's own per-ticker bundle projection: the new
+# current_research_decision_packet_contract in builders/build_ticker_context.py, mirroring
+# stock-core-private's export_ai_bundle.py attach_current_research_decision_packet (pinned
+# schema commit 457f39d, verified via `git show`, 2026-08-25). Since the boundary only
+# reads packet.components/current_decision_context and component_manifest[name].
+# source_artifact_identity (never the full pass-through contract shape, exactly like the
+# existing lean historical/valuation/market-sector/financial-momentum fixtures above that
+# omit fields the boundary itself never inspects), these packet fixtures stay intentionally
+# lean too.
+_PACKET_DECISION_CONTEXT = {
+    "priority_tier": "PRIORITY_NOW", "entry_action": "ACCUMULATE_IN_BASE", "eligible_strategies": ["TREND_MOMENTUM"],
+    "lane_priority": {"TREND_MOMENTUM": "PRIORITY_NOW"}, "tactical_state": "BASE_BUILDING",
+    "scenario_status": "SCENARIO_READY", "blocking_reasons": [], "invalidation_or_context_warnings": [],
+    "source_input_identities": {"official_universe": "x1"},
+}
+_PACKET_ONLY_RISK_ITEM = {"risk_id": "packet-only-risk", "risk_domain": "FINANCIAL", "risk_type": "X", "status": "ESTABLISHED"}
+_PACKET_ONLY_EVENT = {"event_id": "packet-only-event", "event_status": "CONFIRMED_UPCOMING"}
+_PACKET_FULL_COMPONENTS = {
+    "scenario_context": {"scenario_disposition": "SCENARIO_READY"},
+    "risk_register": {
+        "material_risks": [copy.deepcopy(_PACKET_ONLY_RISK_ITEM)],
+        "watch_risks": [], "data_authority_limitations": [], "unresolved_conflicts": [],
+    },
+    "market_sector_context": {"market": {"current_breadth_state": "MIXED_BREADTH"}},
+    "financial_momentum_context": {"components": {"revenue_growth": {"status": "AVAILABLE"}}},
+    "corporate_event_context": {"events": [copy.deepcopy(_PACKET_ONLY_EVENT)]},
+    "valuation_context": {"metrics": {"pb": {"status": "READY"}}},
+    "historical_research_context": {"context_status": "AVAILABLE"},
+}
+_PACKET_DEFAULT_IDENTITIES = {
+    "scenario": "current_evidence_bound_scenario:packet1",
+    "risk_register": "current_research_risk_register:abc123",  # matches _RISK_REGISTER_FIXTURE by default
+    "market_sector": "current_market_sector_leadership_context:packet1",
+    "financial_momentum": "current_financial_momentum_context:packet1",
+    "corporate_event": "current_corporate_event_context:packet1",
+    "valuation": "market_wide_current_valuation:packet1",
+    "historical": "market_wide_historical_research_context:packet1",
+}
+
+
+def _packet_manifest_entry(name: str, identity: str | None) -> dict:
+    return {
+        "component_name": name, "status": "PRESENT", "source_artifact_identity": identity,
+        "source_content_hash": identity.rsplit(":", 1)[-1] if identity else None,
+        "source_as_of": None, "authority_use_status": "PASSTHROUGH_ONLY",
+    }
+
+
+def _packet_context(*, decision_context=None, components=None, identities=None, ticker="TEST_TICKER"):
+    merged_identities = dict(_PACKET_DEFAULT_IDENTITIES)
+    merged_identities.update(identities or {})
+    return {
+        "ticker": ticker,
+        "source_artifact_identity": "current_research_decision_packet:packet1",
+        "component_manifest": {name: _packet_manifest_entry(name, identity) for name, identity in merged_identities.items()},
+        "authority_boundary": {"is_actionable": False},
+        "packet": {
+            "ticker": ticker,
+            "packet_status": "COMPLETE_FOR_AVAILABLE_COMPONENTS",
+            "current_decision_context": copy.deepcopy(decision_context if decision_context is not None else _PACKET_DECISION_CONTEXT),
+            "components": copy.deepcopy(components if components is not None else _PACKET_FULL_COMPONENTS),
+            "unresolved_components": [], "authority_limitations": [], "warnings": [],
+            "allowed_uses": ["AI_RESEARCH_NARRATIVE", "HUMAN_REVIEW", "AUDIT_REPLAY"],
+            "prohibited_uses": ["recommendation", "probability", "expected_return", "target_price", "position_size", "sizing"],
+            "is_actionable": False,
+        },
+        "is_actionable": False,
+    }
+
+
+def _known_refs(ctx):
+    return set(accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]["known_evidence_refs"])
+
+
+def _drop_sibling(ctx, key):
+    """Remove a direct sibling as if the bundle never requested it: both its own
+    ticker_context key and its provenance entry, mirroring how apply_bundle_*_contract
+    only ever appends provenance together with (never independent of) the sibling key
+    itself -- a real ticker_context never has a provenance entry for an absent key."""
+    del ctx[key]
+    ctx["provenance"] = [entry for entry in ctx["provenance"] if entry.get("source_dataset") != key]
+    return ctx
+
+
+class CurrentResearchDecisionPacketCoexistenceTests(unittest.TestCase):
+    # --- Absence / malformed whole packet ---
+    def test_packet_absent_no_status_key(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertNotIn("current_research_decision_packet_status", meta)
+        self.assertNotIn("current_research_decision_packet_component_conflicts", meta)
+
+    def test_packet_malformed_whole_envelope(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_decision_packet"] = {"status": "malformed", "is_actionable": False, "reason_codes": ["x"]}
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertEqual("malformed", meta["current_research_decision_packet_status"])
+        self.assertEqual([], meta["current_research_decision_packet_component_conflicts"])
+
+    def test_malformed_packet_bare_ref_not_citable(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["provenance"].append({"source_dataset": "current_research_decision_packet"})
+        ctx["current_research_decision_packet"] = {"status": "malformed", "is_actionable": False, "reason_codes": ["x"]}
+        self.assertNotIn("current_research_decision_packet", _known_refs(ctx))
+
+    # --- Backward compatibility: packet absent leaves everything else unchanged ---
+    def test_backward_compatible_without_packet(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        self.assertNotIn("current_research_decision_packet_status", result["derived_contract_metadata"])
+
+    # --- Packet-only citability (14/15/16): valid packet component, no usable direct sibling ---
+    def test_packet_only_risk_register_citable(self):
+        ctx = _drop_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), "current_research_risk_register")
+        ctx["current_research_decision_packet"] = _packet_context()
+        refs = _known_refs(ctx)
+        self.assertIn("current_research_decision_packet.risk_register", refs)
+        self.assertIn("current_research_decision_packet.risk_register.material_risks.packet-only-risk", refs)
+        self.assertFalse(any(r.startswith("current_research_risk_register") for r in refs))
+
+    def test_packet_only_financial_momentum_citable(self):
+        ctx = _drop_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), "current_financial_momentum_context")
+        ctx["current_research_decision_packet"] = _packet_context()
+        refs = _known_refs(ctx)
+        self.assertIn("current_research_decision_packet.financial_momentum.components.revenue_growth", refs)
+        self.assertFalse(any(r.startswith("current_financial_momentum_context") for r in refs))
+
+    def test_packet_only_corporate_event_citable(self):
+        ctx = _drop_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), "current_corporate_event_context")
+        ctx["current_research_decision_packet"] = _packet_context()
+        refs = _known_refs(ctx)
+        self.assertIn("current_research_decision_packet.corporate_event.events.packet-only-event", refs)
+        self.assertFalse(any(r.startswith("current_corporate_event_context") for r in refs))
+
+    def test_packet_only_valuation_citable(self):
+        ctx = _drop_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), "market_wide_current_valuation")
+        ctx["current_research_decision_packet"] = _packet_context()
+        refs = _known_refs(ctx)
+        self.assertIn("current_research_decision_packet.valuation.metrics.pb", refs)
+        self.assertFalse(any(r.startswith("market_wide_current_valuation") for r in refs))
+
+    def test_packet_only_market_sector_coarse_ref_only(self):
+        ctx = _drop_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), "current_market_sector_leadership_context")
+        ctx["current_research_decision_packet"] = _packet_context()
+        refs = _known_refs(ctx)
+        self.assertIn("current_research_decision_packet.market_sector", refs)
+        self.assertFalse(any(r.startswith("current_market_sector_leadership_context") for r in refs))
+        self.assertFalse(any(r.startswith("current_research_decision_packet.market_sector.") for r in refs))
+
+    def test_packet_only_historical_coarse_ref_only(self):
+        ctx = _drop_sibling(copy.deepcopy(_TICKER_CONTEXT_FIXTURE), "market_wide_historical_research_context")
+        ctx["current_research_decision_packet"] = _packet_context()
+        refs = _known_refs(ctx)
+        self.assertIn("current_research_decision_packet.historical", refs)
+        self.assertFalse(any(r.startswith("market_wide_historical_research_context") for r in refs))
+        self.assertFalse(any(r.startswith("current_research_decision_packet.historical.") for r in refs))
+
+    def test_packet_fills_gap_left_by_malformed_direct_sibling(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_risk_register"]["risk_register"] = "not_a_mapping"  # malformed sibling
+        ctx["current_research_decision_packet"] = _packet_context()
+        refs = _known_refs(ctx)
+        self.assertIn("current_research_decision_packet.risk_register", refs)
+        self.assertFalse(any(r.startswith("current_research_risk_register") for r in refs))
+
+    # --- Identical dual representation (17): agree -> single citation, no duplicate ---
+    def test_identical_dual_representation_not_duplicated(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        baseline_refs = _known_refs(ctx)
+        material_id = _TICKER_CONTEXT_FIXTURE["current_research_risk_register"]["risk_register"]["material_risks"][0]["risk_id"]
+        self.assertIn(f"current_research_risk_register.material_risks.{material_id}", baseline_refs)
+        ctx["current_research_decision_packet"] = _packet_context()  # default identity matches the sibling fixture
+        refs = _known_refs(ctx)
+        self.assertIn(f"current_research_risk_register.material_risks.{material_id}", refs)
+        self.assertFalse(any(r.startswith("current_research_decision_packet.risk_register") for r in refs))
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertEqual([], meta["current_research_decision_packet_component_conflicts"])
+
+    # --- Conflicting dual representation (18/19/20): fail closed both ways ---
+    def test_conflicting_dual_representation_fails_closed(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        material_id = _TICKER_CONTEXT_FIXTURE["current_research_risk_register"]["risk_register"]["material_risks"][0]["risk_id"]
+        baseline_refs = _known_refs(ctx)
+        self.assertIn(f"current_research_risk_register.material_risks.{material_id}", baseline_refs)  # present pre-conflict
+
+        ctx["current_research_decision_packet"] = _packet_context(identities={"risk_register": "current_research_risk_register:DIFFERENT_HASH"})
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertIn("risk_register", meta["current_research_decision_packet_component_conflicts"])
+        refs = set(meta["known_evidence_refs"])
+        # Conflict does not silently choose the direct sibling:
+        self.assertFalse(any(r.startswith("current_research_risk_register") for r in refs))
+        # Conflict does not silently choose the packet:
+        self.assertFalse(any(r.startswith("current_research_decision_packet.risk_register") for r in refs))
+
+    def test_conflict_is_per_component_not_whole_packet(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_decision_packet"] = _packet_context(identities={"risk_register": "current_research_risk_register:DIFFERENT_HASH"})
+        refs = _known_refs(ctx)
+        # financial_momentum's default identity has no matching sibling field to conflict
+        # with, and its own components agree/there's-nothing-to-conflict -- its pre-existing
+        # sibling refs must remain untouched by the unrelated risk_register conflict.
+        self.assertTrue(any(r.startswith("current_financial_momentum_context") for r in refs))
+
+    # --- Upstream decision immutability (21/22/23) ---
+    def test_packet_cannot_modify_entry_action(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_decision_packet"] = _packet_context(
+            decision_context={**_PACKET_DECISION_CONTEXT, "entry_action": "AVOID"},
+        )
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertEqual(_EXPECTED_UPSTREAM, meta["expected_upstream_decision_context"])
+        self.assertIn("current_decision_context", meta["current_research_decision_packet_component_conflicts"])
+
+    def test_packet_cannot_modify_tactical_state(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_decision_packet"] = _packet_context(
+            decision_context={**_PACKET_DECISION_CONTEXT, "tactical_state": "DOWNTREND"},
+        )
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertEqual(_EXPECTED_UPSTREAM, meta["expected_upstream_decision_context"])
+        self.assertIn("current_decision_context", meta["current_research_decision_packet_component_conflicts"])
+
+    def test_packet_cannot_modify_research_priority_or_strategy_eligibility(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        # priority_tier/eligible_strategies have no existing Consumer-wired direct-sibling
+        # counterpart to conflict with (current_opportunity_prioritization is a distinct,
+        # not-yet-integrated Producer artifact from daily_opportunity_decision_queue) -- the
+        # only guarantee that matters is that expected_upstream_decision_context, the sole
+        # value structured_research_synthesis_response.py checks the AI's output against,
+        # stays derived exclusively from the pre-existing tactical/opportunity siblings.
+        ctx["current_research_decision_packet"] = _packet_context(
+            decision_context={**_PACKET_DECISION_CONTEXT, "priority_tier": "EXCLUDED", "eligible_strategies": []},
+        )
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertEqual(_EXPECTED_UPSTREAM, meta["expected_upstream_decision_context"])
+
+    def test_current_decision_context_never_contributes_known_refs(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_decision_packet"] = _packet_context()
+        refs = _known_refs(ctx)
+        self.assertFalse(any("current_decision_context" in r for r in refs))
+
+    # --- Component sessions remain independent of the packet (12) ---
+    def test_component_sessions_remain_independent_of_packet(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["current_research_decision_packet"] = _packet_context(
+            identities={"historical": "market_wide_historical_research_context:UNRELATED"},
+        )
+        meta = accept_structured_research_synthesis(ctx, {})["derived_contract_metadata"]
+        self.assertEqual("2026-08-20", meta["historical_context_session"])
+        self.assertEqual("2026-08-24", meta["valuation_context_session"])
+
+
 if __name__ == "__main__":
     unittest.main()
