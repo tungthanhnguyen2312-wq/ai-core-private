@@ -246,6 +246,23 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         self.assertEqual("rejected", result["status"])
         self.assertIn("prohibited_valuation_overclaim", result["reasons"])
 
+    # --- VALIDATION #6: READY remains READY if supplied (not silently merged with RESEARCH_USABLE) ---
+    def test_ready_valuation_metric_remains_ready_and_citable(self):
+        """A READY metric must stay independently citable and honestly describable as
+        READY -- distinct from RESEARCH_USABLE, not silently downgraded or merged."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        self.assertEqual("READY", ctx["market_wide_current_valuation"]["metrics"]["pb"]["status"])
+        result = accept_structured_research_synthesis(ctx, copy.deepcopy(_AI_RESPONSE_FIXTURE))
+        self.assertEqual("accepted", result["status"])
+        self.assertIn("market_wide_current_valuation.metrics.pb", result["derived_contract_metadata"]["known_evidence_refs"])
+        # A READY metric overclaimed as a cheapness verdict is rejected exactly like a
+        # RESEARCH_USABLE one -- READY status does not grant extra authority either.
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["valuation_context_summary"] = "P/B is READY and the stock is undervalued relative to peers."
+        overclaim_result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", overclaim_result["status"])
+        self.assertIn("prohibited_valuation_overclaim", overclaim_result["reasons"])
+
     # --- VALIDATION #5 / #6: BLOCKED / NOT_APPLICABLE stay distinct and non-blocking ---
     def test_blocked_valuation_metric_not_citable_but_does_not_block_synthesis(self):
         ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
@@ -345,6 +362,18 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         self.assertEqual("2026-08-20", meta["historical_context_session"])
         self.assertEqual("2026-08-24", meta["valuation_context_session"])
         self.assertNotEqual(meta["historical_context_session"], meta["valuation_context_session"])
+
+    def test_capacity_or_participation_claim_rejected_through_boundary(self):
+        """This contract consumes no liquidity/traded-value lane -- confirms the
+        currently-restricted ADTV20_MATCHED_VALUE Producer fact (position sizing /
+        participation / capacity all blocked) cannot leak into the narrative even
+        though this milestone never integrates that lane at all."""
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["risk_context"].append("The stock has strong liquidity participation capacity.")
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_capacity_or_participation_claim", result["reasons"])
 
     # --- VALIDATION #13: backward compatibility with the existing context builder ---
     def test_build_ticker_context_has_no_coupling_to_new_synthesis_module(self):

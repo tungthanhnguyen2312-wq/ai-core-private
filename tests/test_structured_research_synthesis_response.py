@@ -289,6 +289,29 @@ class StructuredResearchSynthesisResponseTests(unittest.TestCase):
         self.assertEqual("rejected", result["status"])
         self.assertIn("prohibited_valuation_overclaim", result["reasons"])
 
+    def test_capacity_or_participation_claim_rejected(self):
+        """This contract consumes no liquidity/traded-value lane (e.g. the currently
+        restricted ADTV20_MATCHED_VALUE Producer lane); it must never imply how much
+        size a position could absorb."""
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["risk_context"].append("The stock has sufficient liquidity for a large position.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_capacity_or_participation_claim", result["reasons"])
+
+    def test_execution_capacity_claim_rejected(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["authority_limitations"].append("Current volume gives this ticker strong execution capacity.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("rejected", result["status"])
+        self.assertIn("prohibited_capacity_or_participation_claim", result["reasons"])
+
+    def test_negated_capacity_claim_accepted(self):
+        resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)
+        resp["authority_limitations"].append("This synthesis does not consume a liquidity lane and cannot state execution capacity.")
+        result = validate_structured_research_synthesis_output(resp)
+        self.assertEqual("accepted", result["status"])
+
     def test_historical_structural_state_action_claim_rejected(self):
         """VALIDATION case: historical structural_state cannot become an action claim."""
         resp = copy.deepcopy(_VALID_RESPONSE_FIXTURE)

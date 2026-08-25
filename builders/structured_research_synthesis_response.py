@@ -103,6 +103,17 @@ _AFFIRMATIVE_VALUATION_OVERCLAIM_RE = re.compile(
     r"|\bvalue\s+eligib(?:le|ility)\b",
     re.IGNORECASE,
 )
+# Liquidity/execution-capacity claims are out of scope for this contract entirely (no
+# liquidity or traded-value lane is consumed here); guard against the AI inferring one
+# anyway, e.g. from price/volume prose it was never given authority over.
+_AFFIRMATIVE_CAPACITY_OR_PARTICIPATION_RE = re.compile(
+    r"\b(?:sufficient|adequate|enough|strong|limited|weak)\s+(?:liquidity|participation)\s+(?:for|to)\b"
+    r"|\bposition(?:[- ]sizing)?\s+capacity\b"
+    r"|\bparticipation\s+capacity\b"
+    r"|\bcan\s+(?:absorb|support)\s+(?:a\s+)?(?:large\s+)?(?:order|position|size)\b"
+    r"|\bexecution\s+capacity\b",
+    re.IGNORECASE,
+)
 
 
 def _reject(*reasons: str) -> dict[str, Any]:
@@ -243,6 +254,12 @@ def validate_structured_research_synthesis_output(
         )):
             if _AFFIRMATIVE_VALUATION_OVERCLAIM_RE.search(item_lower) and not is_negated:
                 reasons.append("prohibited_valuation_overclaim")
+
+        if any(kw in item_lower for kw in (
+            "participation", "capacity", "absorb", "liquidity",
+        )):
+            if _AFFIRMATIVE_CAPACITY_OR_PARTICIPATION_RE.search(item_lower) and not is_negated:
+                reasons.append("prohibited_capacity_or_participation_claim")
 
     if reasons:
         return _reject(*reasons)

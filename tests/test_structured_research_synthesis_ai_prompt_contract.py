@@ -40,6 +40,10 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
             self.assertIn(forbidden, PROMPT)
         self.assertIn("must never appear as top-level fields of this object", PROMPT)
 
+    def test_liquidity_capacity_and_alpha_out_of_scope_explicit(self):
+        self.assertIn("This contract consumes no liquidity, traded-value, or matched-value lane", PROMPT)
+        self.assertIn("never state or imply alpha, a DCF assumption, or a liquidity/execution/participation capacity", PROMPT)
+
     def test_historical_authority_boundary_explicit(self):
         self.assertIn("RETROSPECTIVE_DESCRIPTIVE_WITHIN_TICKER", PROMPT)
         self.assertIn("it never becomes an entry action or strategy eligibility", PROMPT)
