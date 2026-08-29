@@ -15,6 +15,8 @@ import re
 from collections import Counter
 from typing import Any, Mapping
 
+from builders.correlation_concentration_consumer_context import parse_correlation_concentration_context
+
 
 CONSUMER_CONTRACT_VERSION = "shadow_recommendation_consumer_narrative/v1"
 PRODUCER_CONTRACT_VERSION = "shadow_security_recommendation/v1"
@@ -36,6 +38,7 @@ NARRATIVE_FIELDS = (
     "confirmation", "invalidation", "catalyst", "valuation", "risk", "watch_items",
     "counter_thesis", "authority", "lineage",
 )
+CORRELATION_CONCENTRATION_FIELD = "correlation_concentration_context"
 _PROHIBITED_KEYS = frozenset({
     "action", "buy", "sell", "hold", "target_price", "price_target", "probability",
     "position_size", "position_sizing", "portfolio_weight", "allocation", "risk_budget",
@@ -165,30 +168,61 @@ def _status_text(value: Mapping[str, Any] | None, default: str = "UNKNOWN") -> s
     return str((value or {}).get("status", default))
 
 
+def response_fields(narrative_input: Mapping[str, Any]) -> tuple[str, ...]:
+    """Keep the no-C2 response shape byte-compatible with V1."""
+    return NARRATIVE_FIELDS + ((CORRELATION_CONCENTRATION_FIELD,) if isinstance(narrative_input.get(CORRELATION_CONCENTRATION_FIELD), Mapping) else ())
+
+
+def attach_correlation_concentration_context(narrative_input: Mapping[str, Any], artifact: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Attach only validated serialized C2 context; never infer a correlation result."""
+    if not isinstance(narrative_input, Mapping):
+        return _result("CORRELATION_CONCENTRATION_NARRATIVE_INPUT_INVALID")
+    parsed = parse_correlation_concentration_context(
+        artifact, ticker=narrative_input.get("ticker"), recommendation_label=narrative_input.get("recommendation_label"),
+        recommendation_readiness=narrative_input.get("recommendation_readiness"),
+    )
+    if parsed["status"] != "CORRELATION_CONCENTRATION_READY":
+        return parsed
+    attached = copy.deepcopy(dict(narrative_input))
+    attached[CORRELATION_CONCENTRATION_FIELD] = parsed["context"]
+    return _result("CORRELATION_CONCENTRATION_READY", narrative_input=attached)
+
+
 def build_prompt_payload(narrative_input: Mapping[str, Any]) -> dict[str, Any]:
     """Build a deterministic, model-provider-neutral prompt payload; never call a model."""
     packet = narrative_input.get("recommendation_packet") if isinstance(narrative_input, Mapping) else None
     if not isinstance(packet, Mapping):
         raise ValueError("SHADOW_RECOMMENDATION_NARRATIVE_INPUT_INVALID")
-    return {
+    correlation = narrative_input.get(CORRELATION_CONCENTRATION_FIELD)
+    system_rules = [
+        "AI_NARRATIVE_CANNOT_OVERRIDE_PRODUCER_RECOMMENDATION.",
+        "Explain the immutable Producer label and readiness; do not re-decide.",
+        "Use only supplied packet facts and source locators; UNKNOWN remains UNKNOWN.",
+        "Do not create BUY, SELL, HOLD, targets, probabilities, portfolio allocation, sizing, or risk budgets.",
+        "Absent optional catalyst, valuation, or risk context stays absent or unavailable.",
+        "Counter-thesis must cite supplied evidence, warnings, or reason codes.",
+        "Preserve as_of_session and all authority boundaries exactly.",
+    ]
+    if isinstance(correlation, Mapping):
+        system_rules.extend([
+            "C2 correlation/concentration material is immutable Producer research context; explain it but do not recompute it.",
+            "The C2 threshold is a non-calibrated research heuristic; correlation is not causation.",
+            "Preserve partial pairwise and joint-matrix readiness exactly; do not infer diversification or allocation.",
+        ])
+    payload = {
         "contract_version": CONSUMER_CONTRACT_VERSION,
         "input_identity": narrative_input.get("producer_artifact_identity"),
-        "system_rules": [
-            "AI_NARRATIVE_CANNOT_OVERRIDE_PRODUCER_RECOMMENDATION.",
-            "Explain the immutable Producer label and readiness; do not re-decide.",
-            "Use only supplied packet facts and source locators; UNKNOWN remains UNKNOWN.",
-            "Do not create BUY, SELL, HOLD, targets, probabilities, portfolio allocation, sizing, or risk budgets.",
-            "Absent optional catalyst, valuation, or risk context stays absent or unavailable.",
-            "Counter-thesis must cite supplied evidence, warnings, or reason codes.",
-            "Preserve as_of_session and all authority boundaries exactly.",
-        ],
+        "system_rules": system_rules,
         "immutable_identity": {
             key: narrative_input.get(key)
             for key in ("ticker", "as_of_session", "producer_artifact_identity", "recommendation_label", "recommendation_readiness")
         },
         "packet": copy.deepcopy(dict(packet)),
-        "response_schema": list(NARRATIVE_FIELDS),
+        "response_schema": list(response_fields(narrative_input)),
     }
+    if isinstance(correlation, Mapping):
+        payload[CORRELATION_CONCENTRATION_FIELD] = copy.deepcopy(dict(correlation))
+    return payload
 
 
 def render_fallback_narrative(narrative_input: Mapping[str, Any]) -> dict[str, Any]:
@@ -209,7 +243,7 @@ def render_fallback_narrative(narrative_input: Mapping[str, Any]) -> dict[str, A
     evidence_text = "Producer thesis evidence is retained." if evidence_field == "thesis_evidence" else "Producer research-case eligibility bounds the stance."
     counter_field = "warnings" if warnings else "recommendation_reason_codes"
     counter_text = "Producer warnings form the counter-thesis." if warnings else "Producer reason codes bound the counter-thesis."
-    return {
+    result = {
         "ticker": narrative_input["ticker"],
         "as_of_session": narrative_input["as_of_session"],
         "producer_artifact_identity": identity,
@@ -231,6 +265,46 @@ def render_fallback_narrative(narrative_input: Mapping[str, Any]) -> dict[str, A
         "authority": copy.deepcopy(narrative_input["authority_boundary"]),
         "lineage": copy.deepcopy(packet.get("input_lineage") or {}),
     }
+    correlation = narrative_input.get(CORRELATION_CONCENTRATION_FIELD)
+    if isinstance(correlation, Mapping):
+        c2_identity = correlation["producer_artifact_identity"]
+        claims = [_c2_claim(
+            "C2 threshold metadata is a deterministic research heuristic and is not calibrated probability evidence.",
+            "metadata", "threshold_contract", c2_identity,
+        )]
+        pair = next((edge for group in correlation.get("concentration_groups_for_security", [])
+                     for edge in group.get("triggered_edges", []) if isinstance(edge, Mapping)), None)
+        if isinstance(pair, Mapping):
+            peer = pair["ticker_j"] if pair.get("ticker_i") == narrative_input["ticker"] else pair.get("ticker_i")
+            claims.append(_c2_claim(
+                f"C2 reports a material correlated peer {peer}: C1 Pearson correlation is {pair['correlation']} over {pair['lookback_sessions']} sessions; the Producer recommendation remains unchanged.",
+                "pairwise_correlation_context", "correlation", c2_identity,
+                [pair["correlation"], pair["lookback_sessions"]],
+            ))
+        elif correlation.get("guard_status") == "NO_MATERIAL_CORRELATION_CONCENTRATION":
+            claims.append(_c2_claim(
+                "No C2 material-concentration trigger was detected in the evaluated ready pairwise evidence; this does not establish diversification.",
+                "guard_context", "status", c2_identity,
+            ))
+        elif correlation.get("guard_status") in {"PARTIAL_PAIRWISE_VIEW", "INSUFFICIENT_PAIRWISE_EVIDENCE"}:
+            claims.append(_c2_claim(
+                f"C2 pairwise evidence is partial: {correlation['pairwise_ready_count']} ready relationships and {correlation['pairwise_insufficient_or_unavailable_count']} insufficient or unavailable relationships are retained.",
+                "validation", "pairwise_ready_count", c2_identity,
+                [correlation["pairwise_ready_count"], correlation["pairwise_insufficient_or_unavailable_count"]],
+            ))
+        if correlation.get("joint_matrix_status") != "JOINT_MATRIX_READY" and correlation.get("pairwise_ready_count", 0):
+            claims.append(_c2_claim(
+                "C2 pairwise correlation context is available while the C1 joint-matrix view is unavailable under its readiness guard.",
+                "guard_context", "joint_matrix_status", c2_identity,
+            ))
+        result[CORRELATION_CONCENTRATION_FIELD] = {"producer_context": copy.deepcopy(dict(correlation)), "narrative_claims": claims}
+    return result
+
+
+def _c2_claim(text: str, section: str, field: str, identity: str, numeric_facts: list[Any] | None = None) -> dict[str, Any]:
+    claim = _claim(text, section, field, identity)
+    claim["numeric_facts"] = [] if numeric_facts is None else [str(value) for value in numeric_facts]
+    return claim
 
 
 def _allowed_locator_pairs(packet: Mapping[str, Any]) -> set[tuple[str, str]]:
@@ -251,6 +325,12 @@ def _allowed_locator_pairs(packet: Mapping[str, Any]) -> set[tuple[str, str]]:
     return pairs
 
 
+def _allowed_c2_locator_pairs() -> set[tuple[str, str]]:
+    return {("metadata", "threshold_contract"), ("guard_context", "status"),
+            ("guard_context", "joint_matrix_status"), ("pairwise_correlation_context", "correlation"),
+            ("validation", "pairwise_ready_count")}
+
+
 def _numeric_strings(value: Any) -> set[str]:
     found: set[str] = set()
     if isinstance(value, Mapping):
@@ -260,6 +340,11 @@ def _numeric_strings(value: Any) -> set[str]:
     elif isinstance(value, (int, float)) and not isinstance(value, bool):
         found.add(str(value))
     return found
+
+
+def _contains_prohibited_narrative_text(text: str) -> bool:
+    """Allow the sole negative C2 calibration disclaimer, never a probability claim."""
+    return bool(_PROHIBITED_TEXT.search(text.replace("not calibrated probability evidence", "")))
 
 
 def validate_narrative_response(response: Mapping[str, Any] | str, narrative_input: Mapping[str, Any]) -> dict[str, Any]:
@@ -275,7 +360,7 @@ def validate_narrative_response(response: Mapping[str, Any] | str, narrative_inp
     immutable = ("ticker", "as_of_session", "producer_artifact_identity", "recommendation_label", "recommendation_readiness")
     if any(candidate.get(field) != narrative_input.get(field) for field in immutable):
         return _result("NARRATIVE_REJECTED_RECOMMENDATION_OVERRIDE", reasons=["AI_NARRATIVE_CANNOT_OVERRIDE_PRODUCER_RECOMMENDATION"])
-    if set(candidate) != set(NARRATIVE_FIELDS):
+    if set(candidate) != set(response_fields(narrative_input)):
         return _result("NARRATIVE_REJECTED_SCHEMA", reasons=["response_fields_invalid"])
     if candidate["recommendation_label"] not in LABELS or candidate["recommendation_readiness"] not in READINESS:
         return _result("NARRATIVE_REJECTED_RECOMMENDATION_OVERRIDE", reasons=["producer_vocabulary_not_preserved"])
@@ -299,7 +384,7 @@ def validate_narrative_response(response: Mapping[str, Any] | str, narrative_inp
             locator = claim["source_locator"]
             if locator.get("input_identity") != narrative_input.get("producer_artifact_identity") or (locator.get("source_section"), locator.get("source_field")) not in allowed:
                 return _result("NARRATIVE_REJECTED_UNSUPPORTED_FACT", reasons=["claim_source_locator_not_supplied"])
-            if _PROHIBITED_TEXT.search(claim["text"]):
+            if _contains_prohibited_narrative_text(claim["text"]):
                 return _result("NARRATIVE_REJECTED_AUTHORITY_VIOLATION", reasons=["prohibited_action_or_authority_text"])
             numeric_facts = claim.get("numeric_facts", [])
             if not isinstance(numeric_facts, list) or any(str(number) not in supported_numbers for number in numeric_facts):
@@ -307,6 +392,24 @@ def validate_narrative_response(response: Mapping[str, Any] | str, narrative_inp
             # Structured claims must declare numeric facts; un-declared numeric prose is rejected.
             if _NUMBER.search(claim["text"]) and not numeric_facts:
                 return _result("NARRATIVE_REJECTED_UNSUPPORTED_FACT", reasons=["unstructured_numerical_claim"])
+    correlation = narrative_input.get(CORRELATION_CONCENTRATION_FIELD)
+    if isinstance(correlation, Mapping):
+        section = candidate.get(CORRELATION_CONCENTRATION_FIELD)
+        if not isinstance(section, Mapping) or set(section) != {"producer_context", "narrative_claims"} or section.get("producer_context") != correlation:
+            return _result("NARRATIVE_REJECTED_AUTHORITY_VIOLATION", reasons=["correlation_concentration_context_changed"])
+        claims = section.get("narrative_claims")
+        if not isinstance(claims, list) or not claims:
+            return _result("NARRATIVE_REJECTED_SCHEMA", reasons=["correlation_concentration_claims_invalid"])
+        c2_numbers = _numeric_strings(correlation)
+        for claim in claims:
+            locator = claim.get("source_locator") if isinstance(claim, Mapping) else None
+            numeric_facts = claim.get("numeric_facts", []) if isinstance(claim, Mapping) else []
+            if not isinstance(claim, Mapping) or not isinstance(claim.get("text"), str) or not isinstance(locator, Mapping) or locator.get("input_identity") != correlation.get("producer_artifact_identity") or (locator.get("source_section"), locator.get("source_field")) not in _allowed_c2_locator_pairs():
+                return _result("NARRATIVE_REJECTED_UNSUPPORTED_FACT", reasons=["correlation_concentration_locator_not_supplied"])
+            if _contains_prohibited_narrative_text(claim["text"]):
+                return _result("NARRATIVE_REJECTED_AUTHORITY_VIOLATION", reasons=["prohibited_action_or_authority_text"])
+            if not isinstance(numeric_facts, list) or any(str(number) not in c2_numbers for number in numeric_facts) or (_NUMBER.search(claim["text"]) and not numeric_facts):
+                return _result("NARRATIVE_REJECTED_UNSUPPORTED_FACT", reasons=["correlation_concentration_numerical_fact_invalid"])
     return _result("NARRATIVE_VALID", accepted_output=copy.deepcopy(dict(candidate)))
 
 

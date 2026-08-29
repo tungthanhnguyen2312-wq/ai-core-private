@@ -1,0 +1,78 @@
+{
+  "artifact_identity": "correlation_concentration_consumer_context:cf71b004b9359fa410e7c88468a78e9ffed8f5a17ebb23cd55b2ebf3880996fa",
+  "artifact_sha256": "cf71b004b9359fa410e7c88468a78e9ffed8f5a17ebb23cd55b2ebf3880996fa",
+  "authority_boundary": {
+    "consumer_explanation_only": true,
+    "consumer_recomputes_correlation": false,
+    "historical_backtest": "BLOCKED",
+    "historical_pit": "BLOCKED",
+    "producer_correlation_numerical_authority": true,
+    "producer_recommendation_immutable": true,
+    "raw_as_traded": "NOT_PROMOTED"
+  },
+  "c2_guard_status": "CORRELATED_PAIR_CONTEXT",
+  "c2_validation": {
+    "concentrated_group_count": 0,
+    "forbidden_output_audit": {
+      "buy_sell_hold": 0,
+      "execution_signal": 0,
+      "order_size": 0,
+      "portfolio_weight": 0,
+      "position_size": 0,
+      "probability": 0,
+      "recommended_allocation": 0,
+      "risk_budget": 0,
+      "target_price": 0
+    },
+    "pair_count": 780,
+    "pairwise_insufficient_or_unavailable_count": 0,
+    "pairwise_ready_count": 780,
+    "pairwise_status_counts": {
+      "PAIRWISE_CORRELATION_READY": 780
+    },
+    "recommendation_mutation_count": 0,
+    "triggered_edge_count": 1,
+    "triggered_group_count": 1
+  },
+  "consumer_start_head": "605fc9b84fd211ee92ae97fa71a82bf481223679",
+  "contract_version": "correlation_concentration_consumer_integration/v1",
+  "denominator": 40,
+  "fallback_render_coverage": 40,
+  "forbidden_authority_output_counts": {
+    "BUY": 0,
+    "HOLD": 0,
+    "SELL": 0,
+    "allocation": 0,
+    "execution": 0,
+    "portfolio_weight": 0,
+    "position_size": 0,
+    "probability": 0,
+    "risk_budget": 0,
+    "target_price": 0
+  },
+  "grounding_coverage": 40,
+  "label_preservation_counts": {
+    "ACCUMULATE_RESEARCH_CANDIDATE": 27,
+    "INITIATE_RESEARCH_CANDIDATE": 13
+  },
+  "milestone": "C2_CORRELATION_CONTEXT_CONSUMER_INTEGRATION_V1",
+  "producer_c2_artifact_identity": "correlation_concentration_guard:69473621616441f2fcbb7bcdf65e22f4d8be5f5c703209233b7c18ba3514b681",
+  "producer_c2_contract_version": "correlation_concentration_guard/v1",
+  "producer_shadow_artifact_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+  "producer_source_head": "7e1fec09ef3ae32e2336bacb7ae282bea3e1bc18",
+  "readiness_preservation_counts": {
+    "RECOMMENDATION_READY": 40
+  },
+  "recommendation_mutation_count": 0,
+  "representative_bsr_gas": {
+    "correlation": 0.8235585903592545,
+    "guard_status": "CORRELATED_PAIR_CONTEXT",
+    "joint_matrix_status": "JOINT_MATRIX_BLOCKED_T_RELATIVE_TO_N",
+    "lookback_sessions": 20,
+    "peer": "GAS",
+    "recommendation_label": "ACCUMULATE_RESEARCH_CANDIDATE",
+    "recommendation_readiness": "RECOMMENDATION_READY",
+    "ticker": "BSR"
+  },
+  "residual": 0
+}
