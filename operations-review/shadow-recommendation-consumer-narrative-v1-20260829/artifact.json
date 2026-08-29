@@ -1,0 +1,269 @@
+{
+  "artifact_identity": "shadow_recommendation_consumer_narrative:c389b1bd5ee644e8843ec2d8548ab1669a7f6eb94dfcf8dab6405b0d556a9f07",
+  "artifact_sha256": "c389b1bd5ee644e8843ec2d8548ab1669a7f6eb94dfcf8dab6405b0d556a9f07",
+  "authority_boundary": {
+    "network_or_model_call_required": false,
+    "same_close_execution_eligibility": "NOT_ESTABLISHED",
+    "shadow_research_only": true
+  },
+  "consumer_start_head": "c69b50ce8291bee293ba7b40ea4affb15ec256ca",
+  "contract_version": "shadow_recommendation_consumer_narrative/v1",
+  "denominator": 523,
+  "fallback_render_coverage": 523,
+  "forbidden_authority_output_counts": {
+    "BUY": 0,
+    "HOLD": 0,
+    "SELL": 0,
+    "portfolio_weight": 0,
+    "position_size": 0,
+    "probability": 0,
+    "risk_budget": 0,
+    "target_price": 0
+  },
+  "grounding_coverage": 523,
+  "label_drift_count": 0,
+  "label_preservation_counts": {
+    "ACCUMULATE_RESEARCH_CANDIDATE": 30,
+    "AVOID_NEW_ENTRY": 70,
+    "HIGH_RISK_SPECULATION_ONLY": 17,
+    "INITIATE_RESEARCH_CANDIDATE": 13,
+    "INSUFFICIENT_EVIDENCE": 77,
+    "WAIT_FOR_CONFIRMATION": 316
+  },
+  "milestone": "SHADOW_RECOMMENDATION_CONSUMER_NARRATIVE_V1",
+  "producer_artifact_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+  "producer_contract_version": "shadow_security_recommendation/v1",
+  "producer_source_head": "f4f95c6dcc757e41136ef08f9badba39fb00aad2",
+  "readiness_drift_count": 0,
+  "readiness_preservation_counts": {
+    "RECOMMENDATION_CONDITIONAL": 406,
+    "RECOMMENDATION_NOT_READY": 77,
+    "RECOMMENDATION_READY": 40
+  },
+  "representatives": {
+    "RECOMMENDATION_CONDITIONAL:ACCUMULATE_RESEARCH_CANDIDATE": {
+      "authority": {
+        "historical_backtest_authority": false,
+        "historical_pit_authority": false,
+        "liquidity_sizing_authority": false,
+        "personalized_advice_authority": false,
+        "portfolio_allocation_authority": false,
+        "position_sizing_authority": false,
+        "probability_authority": false,
+        "raw_as_traded_authority": false,
+        "same_close_execution_eligibility": "NOT_ESTABLISHED",
+        "shadow_research_only": true,
+        "shadow_research_recommendation_only": true,
+        "target_price_authority": false,
+        "trade_execution_authority": false
+      },
+      "counter_thesis_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "warnings",
+        "source_section": "warnings"
+      },
+      "evidence_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "thesis_evidence",
+        "source_section": "thesis_context"
+      },
+      "fallback_stance": "The deterministic Producer research stance is preserved without change.",
+      "label": "ACCUMULATE_RESEARCH_CANDIDATE",
+      "readiness": "RECOMMENDATION_CONDITIONAL",
+      "ticker": "HAG"
+    },
+    "RECOMMENDATION_CONDITIONAL:AVOID_NEW_ENTRY": {
+      "authority": {
+        "historical_backtest_authority": false,
+        "historical_pit_authority": false,
+        "liquidity_sizing_authority": false,
+        "personalized_advice_authority": false,
+        "portfolio_allocation_authority": false,
+        "position_sizing_authority": false,
+        "probability_authority": false,
+        "raw_as_traded_authority": false,
+        "same_close_execution_eligibility": "NOT_ESTABLISHED",
+        "shadow_research_only": true,
+        "shadow_research_recommendation_only": true,
+        "target_price_authority": false,
+        "trade_execution_authority": false
+      },
+      "counter_thesis_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "warnings",
+        "source_section": "warnings"
+      },
+      "evidence_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "thesis_evidence",
+        "source_section": "thesis_context"
+      },
+      "fallback_stance": "The deterministic Producer research stance is preserved without change.",
+      "label": "AVOID_NEW_ENTRY",
+      "readiness": "RECOMMENDATION_CONDITIONAL",
+      "ticker": "AAH"
+    },
+    "RECOMMENDATION_CONDITIONAL:HIGH_RISK_SPECULATION_ONLY": {
+      "authority": {
+        "historical_backtest_authority": false,
+        "historical_pit_authority": false,
+        "liquidity_sizing_authority": false,
+        "personalized_advice_authority": false,
+        "portfolio_allocation_authority": false,
+        "position_sizing_authority": false,
+        "probability_authority": false,
+        "raw_as_traded_authority": false,
+        "same_close_execution_eligibility": "NOT_ESTABLISHED",
+        "shadow_research_only": true,
+        "shadow_research_recommendation_only": true,
+        "target_price_authority": false,
+        "trade_execution_authority": false
+      },
+      "counter_thesis_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "warnings",
+        "source_section": "warnings"
+      },
+      "evidence_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "thesis_evidence",
+        "source_section": "thesis_context"
+      },
+      "fallback_stance": "The deterministic Producer research stance is preserved without change.",
+      "label": "HIGH_RISK_SPECULATION_ONLY",
+      "readiness": "RECOMMENDATION_CONDITIONAL",
+      "ticker": "AAV"
+    },
+    "RECOMMENDATION_CONDITIONAL:WAIT_FOR_CONFIRMATION": {
+      "authority": {
+        "historical_backtest_authority": false,
+        "historical_pit_authority": false,
+        "liquidity_sizing_authority": false,
+        "personalized_advice_authority": false,
+        "portfolio_allocation_authority": false,
+        "position_sizing_authority": false,
+        "probability_authority": false,
+        "raw_as_traded_authority": false,
+        "same_close_execution_eligibility": "NOT_ESTABLISHED",
+        "shadow_research_only": true,
+        "shadow_research_recommendation_only": true,
+        "target_price_authority": false,
+        "trade_execution_authority": false
+      },
+      "counter_thesis_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "warnings",
+        "source_section": "warnings"
+      },
+      "evidence_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "thesis_evidence",
+        "source_section": "thesis_context"
+      },
+      "fallback_stance": "The deterministic Producer research stance is preserved without change.",
+      "label": "WAIT_FOR_CONFIRMATION",
+      "readiness": "RECOMMENDATION_CONDITIONAL",
+      "ticker": "AAA"
+    },
+    "RECOMMENDATION_NOT_READY:INSUFFICIENT_EVIDENCE": {
+      "authority": {
+        "historical_backtest_authority": false,
+        "historical_pit_authority": false,
+        "liquidity_sizing_authority": false,
+        "personalized_advice_authority": false,
+        "portfolio_allocation_authority": false,
+        "position_sizing_authority": false,
+        "probability_authority": false,
+        "raw_as_traded_authority": false,
+        "same_close_execution_eligibility": "NOT_ESTABLISHED",
+        "shadow_research_only": true,
+        "shadow_research_recommendation_only": true,
+        "target_price_authority": false,
+        "trade_execution_authority": false
+      },
+      "counter_thesis_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "warnings",
+        "source_section": "warnings"
+      },
+      "evidence_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "thesis_evidence",
+        "source_section": "thesis_context"
+      },
+      "fallback_stance": "The deterministic Producer research stance is preserved without change.",
+      "label": "INSUFFICIENT_EVIDENCE",
+      "readiness": "RECOMMENDATION_NOT_READY",
+      "ticker": "AAS"
+    },
+    "RECOMMENDATION_READY:ACCUMULATE_RESEARCH_CANDIDATE": {
+      "authority": {
+        "historical_backtest_authority": false,
+        "historical_pit_authority": false,
+        "liquidity_sizing_authority": false,
+        "personalized_advice_authority": false,
+        "portfolio_allocation_authority": false,
+        "position_sizing_authority": false,
+        "probability_authority": false,
+        "raw_as_traded_authority": false,
+        "same_close_execution_eligibility": "NOT_ESTABLISHED",
+        "shadow_research_only": true,
+        "shadow_research_recommendation_only": true,
+        "target_price_authority": false,
+        "trade_execution_authority": false
+      },
+      "counter_thesis_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "warnings",
+        "source_section": "warnings"
+      },
+      "evidence_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "thesis_evidence",
+        "source_section": "thesis_context"
+      },
+      "fallback_stance": "The deterministic Producer research stance is preserved without change.",
+      "label": "ACCUMULATE_RESEARCH_CANDIDATE",
+      "readiness": "RECOMMENDATION_READY",
+      "ticker": "AIG"
+    },
+    "RECOMMENDATION_READY:INITIATE_RESEARCH_CANDIDATE": {
+      "authority": {
+        "historical_backtest_authority": false,
+        "historical_pit_authority": false,
+        "liquidity_sizing_authority": false,
+        "personalized_advice_authority": false,
+        "portfolio_allocation_authority": false,
+        "position_sizing_authority": false,
+        "probability_authority": false,
+        "raw_as_traded_authority": false,
+        "same_close_execution_eligibility": "NOT_ESTABLISHED",
+        "shadow_research_only": true,
+        "shadow_research_recommendation_only": true,
+        "target_price_authority": false,
+        "trade_execution_authority": false
+      },
+      "counter_thesis_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "warnings",
+        "source_section": "warnings"
+      },
+      "evidence_locator": {
+        "input_identity": "shadow_security_recommendation:fe46b284213f93549680a28f5b6110c22d5b4071447f13f5741e84eb13794e8e",
+        "source_field": "thesis_evidence",
+        "source_section": "thesis_context"
+      },
+      "fallback_stance": "The deterministic Producer research stance is preserved without change.",
+      "label": "INITIATE_RESEARCH_CANDIDATE",
+      "readiness": "RECOMMENDATION_READY",
+      "ticker": "BFC"
+    }
+  },
+  "residual": 0,
+  "validator_rejection_audit": {
+    "authority": "NARRATIVE_REJECTED_AUTHORITY_VIOLATION",
+    "malformed": "NARRATIVE_REJECTED_SCHEMA",
+    "recommendation_override": "NARRATIVE_REJECTED_RECOMMENDATION_OVERRIDE",
+    "unsupported_fact": "NARRATIVE_REJECTED_UNSUPPORTED_FACT"
+  }
+}

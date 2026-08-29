@@ -20,6 +20,7 @@
 - Xem output AI/Quant là ground truth.
 - Sửa code/DB/dữ liệu hoặc chạy crawler nếu không được cấp quyền rõ ràng.
 - Với `next_session_decision_brief/v1` (context Consumer `ai_next_session_decision_context/v1`), giữ nguyên nhãn `PARTIAL`/`MISSING_PREVIOUS_CONTEXT`, không suy ra `UNCHANGED`/`NEUTRAL`/`WAIT`/`SELL`; giữ tách biệt `lifecycle_transition` (nhóm so sánh trong Session Bundle) và `tactical_transition` (toàn thị trường `watchlist_tactical_entry_classifier`), không gộp thành một tín hiệu kỹ thuật chung; không tạo forecast, probability, target price hay sizing từ `next_session_watch_conditions`.
+- Ghi đè nhãn hoặc readiness do deterministic Producer cung cấp. Với `shadow_security_recommendation`, `AI_NARRATIVE_CANNOT_OVERRIDE_PRODUCER_RECOMMENDATION`: AI chỉ giải thích, nêu phản biện có grounding, và giữ UNKNOWN/authority boundary nguyên trạng; không tạo BUY/SELL/HOLD, target, probability, allocation, sizing hoặc risk budget.
 
 ## Quy tắc đọc dữ liệu
 
