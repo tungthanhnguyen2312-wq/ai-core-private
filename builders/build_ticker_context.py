@@ -23,6 +23,7 @@ from typing import Any, Iterable, Mapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vn_time import vn_now_iso  # noqa: E402
+from shadow_recommendation_consumer_narrative import parse_shadow_recommendation_attachment  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -3685,6 +3686,30 @@ def apply_bundle_ticker_capability_matrix_contract(context: dict[str, Any], bund
         })
     return context
 
+
+def shadow_recommendation_narrative_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any]:
+    """Adapt the optional serialized Producer shadow recommendation for AI narrative use.
+
+    Absence is deliberately returned as an explicit state to direct callers, but the
+    context builder below omits its key on absence so old bundle/context outputs remain
+    compatible.  No Consumer-side recommendation or readiness calculation occurs.
+    """
+    entry = ((bundle or {}).get("tickers") or {}).get(ticker) if isinstance(bundle, Mapping) else None
+    return parse_shadow_recommendation_attachment(entry, expected_ticker=ticker)
+
+
+def apply_bundle_shadow_recommendation_narrative_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    contract = shadow_recommendation_narrative_contract(bundle, str(context.get("ticker") or ""))
+    if contract["status"] == "SHADOW_RECOMMENDATION_NOT_ATTACHED":
+        return context
+    context["shadow_recommendation_narrative"] = copy.deepcopy(contract)
+    context.setdefault("provenance", []).append({
+        "source_file": "analysis_bundle.json", "source_dataset": "shadow_security_recommendation",
+        "transformation": "Read-only serialized Producer packet adapter; the Consumer never recalculates or overrides recommendation/readiness.",
+        "limitations": ["SHADOW_OPT_IN only; no personalized advice, execution, allocation, sizing, targets, probabilities, PIT, or backtest authority."],
+    })
+    return context
+
 def apply_bundle_qualified_research_delta_contract(context: dict[str, Any], bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     """Pass through the Producer-owned snapshot delta; never re-diff the brief here."""
     entry=((bundle or {}).get("tickers") or {}).get(str(context.get("ticker") or "")) if isinstance(bundle,Mapping) else None;raw=entry.get("qualified_research_delta") if isinstance(entry,Mapping) else None
@@ -5075,6 +5100,7 @@ def build_context_package(
     apply_bundle_current_opportunity_decision_context_contract(context, bundle_payload)
     apply_bundle_watchlist_tactical_entry_classifier_contract(context, bundle_payload)
     apply_bundle_current_research_decision_packet_contract(context, bundle_payload)
+    apply_bundle_shadow_recommendation_narrative_contract(context, bundle_payload)
     apply_bundle_ticker_capability_matrix_contract(context, bundle_payload)
     attach_sector_aware_downstream_facts(context, sector_aware_downstream_facts)
     if cited_document_query is not None or cited_document_result is not None:

@@ -19,6 +19,7 @@
 - Đưa lời khuyên mua/bán hoặc lợi nhuận chắc chắn.
 - Xem output AI/Quant là ground truth.
 - Sửa code/DB/dữ liệu hoặc chạy crawler nếu không được cấp quyền rõ ràng.
+- Ghi đè nhãn hoặc readiness do deterministic Producer cung cấp. Với `shadow_security_recommendation`, `AI_NARRATIVE_CANNOT_OVERRIDE_PRODUCER_RECOMMENDATION`: AI chỉ giải thích, nêu phản biện có grounding, và giữ UNKNOWN/authority boundary nguyên trạng; không tạo BUY/SELL/HOLD, target, probability, allocation, sizing hoặc risk budget.
 
 ## Quy tắc đọc dữ liệu
 

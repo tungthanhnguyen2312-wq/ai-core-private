@@ -1,0 +1,9 @@
+# Shadow Recommendation Consumer Narrative Contract V1
+
+`shadow_recommendation_consumer_narrative/v1` is an optional, read-only Consumer adapter for the Producer's serialized `shadow_security_recommendation` bundle attachment. It does not import Producer Python, recompute a stance, or make a model/network request.
+
+The immutable Producer inputs are ticker, as-of session, source artifact identity, recommendation label, recommendation readiness, packet evidence, lineage, and authority boundary. The only labels are `INITIATE_RESEARCH_CANDIDATE`, `ACCUMULATE_RESEARCH_CANDIDATE`, `WAIT_FOR_CONFIRMATION`, `HIGH_RISK_SPECULATION_ONLY`, `AVOID_NEW_ENTRY`, and `INSUFFICIENT_EVIDENCE`; readiness remains an independent `RECOMMENDATION_READY`, `RECOMMENDATION_CONDITIONAL`, or `RECOMMENDATION_NOT_READY` state.
+
+The current Producer wire envelope has no explicit version scalar. Its exact verified `SHADOW_OPT_IN`, non-actionable attachment shape and `shadow_security_recommendation:` identity are supported as serialized V1 compatibility. An explicit version must equal `shadow_security_recommendation/v1`; unknown versions fail closed as `UNSUPPORTED_SHADOW_RECOMMENDATION_CONTRACT`.
+
+The Consumer builds deterministic prompt data, validates a structured narrative response, and can render a deterministic fallback. A response must preserve all immutable fields and authority/lineage exactly, with source locators for every evidence, uncertainty, and counter-thesis claim. It rejects response schema errors, recommendation overrides, authority expansion, unsupported locators, and unsupported structured numeric facts. No BUY/SELL/HOLD, targets, probabilities, allocation, position sizing, risk budget, execution, PIT, or backtest authority is created. Missing optional attachment leaves existing context-builder output unchanged; direct parsing returns `SHADOW_RECOMMENDATION_NOT_ATTACHED`.
