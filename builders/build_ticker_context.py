@@ -23,7 +23,10 @@ from typing import Any, Iterable, Mapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vn_time import vn_now_iso  # noqa: E402
-from shadow_recommendation_consumer_narrative import parse_shadow_recommendation_attachment  # noqa: E402
+from shadow_recommendation_consumer_narrative import (  # noqa: E402
+    attach_correlation_concentration_context,
+    parse_shadow_recommendation_attachment,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -3702,11 +3705,17 @@ def apply_bundle_shadow_recommendation_narrative_contract(context: dict[str, Any
     contract = shadow_recommendation_narrative_contract(bundle, str(context.get("ticker") or ""))
     if contract["status"] == "SHADOW_RECOMMENDATION_NOT_ATTACHED":
         return context
+    c2_artifact = bundle.get("correlation_concentration_guard") if isinstance(bundle, Mapping) else None
+    if contract["status"] == "SHADOW_RECOMMENDATION_READY" and c2_artifact is not None:
+        c2_result = attach_correlation_concentration_context(contract["narrative_input"], c2_artifact)
+        contract["correlation_concentration_status"] = c2_result["status"]
+        if c2_result["status"] == "CORRELATION_CONCENTRATION_READY":
+            contract["narrative_input"] = c2_result["narrative_input"]
     context["shadow_recommendation_narrative"] = copy.deepcopy(contract)
     context.setdefault("provenance", []).append({
         "source_file": "analysis_bundle.json", "source_dataset": "shadow_security_recommendation",
         "transformation": "Read-only serialized Producer packet adapter; the Consumer never recalculates or overrides recommendation/readiness.",
-        "limitations": ["SHADOW_OPT_IN only; no personalized advice, execution, allocation, sizing, targets, probabilities, PIT, or backtest authority."],
+        "limitations": ["SHADOW_OPT_IN only; no personalized advice, execution, allocation, sizing, targets, probabilities, PIT, or backtest authority.", "Optional correlation_concentration_guard is serialized Producer research context only; Consumer does not recompute correlation, alter recommendation/readiness, or infer diversification."],
     })
     return context
 
