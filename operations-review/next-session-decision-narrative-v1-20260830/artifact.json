@@ -1,0 +1,115 @@
+{
+  "authority_effect": "NONE",
+  "consumer_artifact_identity": "ai_next_session_decision_context:b8744ed1215d0106e99002996037f3447b6f3e111cd6aa3bb3062b7a5179d051",
+  "consumer_contract_version": "ai_next_session_decision_context/v1",
+  "contract_version": "next_session_decision_context_replay/v1",
+  "current_session": "2026-08-28",
+  "invalidation_transition": {
+    "availability": "PARTIAL",
+    "comparable_count": 58,
+    "reason_codes": [
+      "SOME_COMPARABLE_RECORDS_MISSING_PREVIOUS_OR_CURRENT_CONTEXT"
+    ]
+  },
+  "is_actionable": false,
+  "lifecycle_transition": {
+    "comparable_count": 58,
+    "denominator": 123,
+    "scope": "SESSION_BUNDLE_COMPARABLE_TICKER_COHORT"
+  },
+  "market_transition": {
+    "advance_ratio_direction": "WEAKENING",
+    "technical_covered_count_current": 942,
+    "technical_covered_count_previous": 838
+  },
+  "milestone": "AI_NEXT_SESSION_DECISION_NARRATIVE_V1",
+  "missingness": {
+    "invalidation_transition": {
+      "availability": "PARTIAL",
+      "reason_codes": [
+        "SOME_COMPARABLE_RECORDS_MISSING_PREVIOUS_OR_CURRENT_CONTEXT"
+      ]
+    },
+    "lifecycle_transition": {
+      "availability": "AVAILABLE",
+      "reason_codes": []
+    },
+    "market_transition": {
+      "availability": "AVAILABLE",
+      "reason_codes": []
+    },
+    "next_session_watch_conditions": {
+      "availability": "AVAILABLE",
+      "reason_codes": []
+    },
+    "opportunity_transition": {
+      "availability": "AVAILABLE",
+      "reason_codes": []
+    },
+    "recommendation_transition": {
+      "availability": "PARTIAL",
+      "reason_codes": [
+        "SOME_COMPARABLE_RECORDS_MISSING_PREVIOUS_OR_CURRENT_CONTEXT"
+      ]
+    },
+    "risk_context": {
+      "availability": "NOT_APPLICABLE",
+      "reason_codes": [
+        "NO_QUALIFIED_PAIR_BOUND_C2_ARTIFACT",
+        "ENGINE_REQUIRES_EXPLICIT_SECURITY_SET_AND_LOOKBACK"
+      ]
+    },
+    "sector_transition": {
+      "availability": "AVAILABLE",
+      "reason_codes": []
+    },
+    "tactical_transition": {
+      "availability": "AVAILABLE",
+      "reason_codes": []
+    }
+  },
+  "opportunity_transition_counts": {
+    "lost_entry_relevant": 48,
+    "lost_high_priority": 20,
+    "new_entry_relevant": 65,
+    "new_high_priority": 33,
+    "persisting_entry_relevant": 48,
+    "persisting_high_priority": 131
+  },
+  "previous_qualified_session": "2026-08-27",
+  "producer_brief_artifact_identity": "next_session_decision_brief:982aa79d5630715a0db043609b2afde9d57a99bde43e557fda67160067d9933c",
+  "producer_brief_contract_version": "next_session_decision_brief/v1",
+  "producer_checkpoint": "a71d0a143157a114a5deb2ddd1ff1a3f38fe49ad",
+  "recommendation_transition": {
+    "availability": "PARTIAL",
+    "comparable_count": 58,
+    "reason_codes": [
+      "SOME_COMPARABLE_RECORDS_MISSING_PREVIOUS_OR_CURRENT_CONTEXT"
+    ]
+  },
+  "risk_context": {
+    "availability": "NOT_APPLICABLE",
+    "reason_codes": [
+      "NO_QUALIFIED_PAIR_BOUND_C2_ARTIFACT",
+      "ENGINE_REQUIRES_EXPLICIT_SECURITY_SET_AND_LOOKBACK"
+    ]
+  },
+  "tactical_transition": {
+    "current_record_count": 1683,
+    "gained_confirmation_count": 12,
+    "lost_confirmation_count": 20,
+    "retained_confirmation_count": 5,
+    "scope": "FULL_MARKET_WATCHLIST_TACTICAL_ENTRY_CLASSIFIER"
+  },
+  "transition_sections_present": [
+    "market_transition",
+    "sector_transition",
+    "opportunity_transition",
+    "lifecycle_transition",
+    "recommendation_transition",
+    "invalidation_transition",
+    "tactical_transition",
+    "risk_context",
+    "next_session_watch_conditions"
+  ]
+}
