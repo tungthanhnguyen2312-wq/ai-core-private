@@ -175,9 +175,55 @@ If a historical, valuation, market/sector, financial-momentum, corporate-event, 
 
 One structured research-synthesis JSON object as specified above, suitable for validation by `builders/structured_research_synthesis_boundary.py`.
 
+## 5. Next-session market decision narrative template
+
+### Purpose
+
+Turn one governed `ai_next_session_decision_context/v1` package (built by `builders/next_session_decision_context.py` from the Producer's `next_session_decision_brief/v1` handoff) into a next-session Vietnamese-market narrative: what changed between the last two qualified sessions, and a practical IF/THEN playbook -- never a new regime model, ranking, or recommendation engine.
+
+### Required input
+
+One `ai_next_session_decision_context.json` (or equivalent in-context package), `knowledge/AIUsageRules.md`, and this prompt. This template does not accept a per-ticker `{TICKER}_context.json` in its place -- the two packages cover different scopes and are not interchangeable.
+
+### Prompt
+
+```text
+Phân tích thị trường Việt Nam cho phiên kế tiếp, sử dụng DUY NHẤT dữ liệu trong context package `ai_next_session_decision_context` đính kèm. Không dùng kiến thức thị trường bên ngoài, không dùng tin tức vĩ mô chưa có trong context, và không suy đoán.
+
+Trước tiên nêu `identity.current_session`, `identity.previous_qualified_session`, `source_lineage.producer_checkpoint`, và trạng thái `missingness` của cả chín section (`market_transition`, `sector_transition`, `opportunity_transition`, `lifecycle_transition`, `recommendation_transition`, `invalidation_transition`, `tactical_transition`, `risk_context`, `next_session_watch_conditions`). Một section có availability là `UNAVAILABLE`, `PARTIAL`, hoặc `NOT_APPLICABLE` vẫn phải được nêu rõ ràng như một giới hạn -- không được bỏ qua hay coi là trung tính/bằng không.
+
+Sau đó tạo đúng chín phần theo `ai_narrative_contract.required_narrative_sections`:
+
+A. Market state transition -- dùng `market_transition.transition` (`advance_ratio_direction`, `advance_ratio_delta_percentage_points`, `technical_covered_count_previous/current/delta`, `observed_session_cohort_previous/current/delta`) đúng như đã cho; không suy ra một "chế độ thị trường" (regime) mới.
+
+B. Breadth and participation -- diễn giải advance/decline/unchanged và advance_ratio hai phiên; nêu rõ đây là breadth trong `observed_session_cohort`, không phải toàn bộ thị trường.
+
+C. Sector rotation -- chỉ nêu ngành nào chuyển trạng thái (`IMPROVING`/`WEAKENING`/`UNCHANGED`/`INSUFFICIENT_EVIDENCE`/`INITIAL_OBSERVATION`) dựa trên `sector_transition.sectors`; một ngành `NOT_PRESENT` hoặc khác `AVAILABLE` là giới hạn dữ liệu, không phải tín hiệu suy yếu.
+
+D. Opportunity-set changes -- báo cáo đúng số lượng `new_entry_relevant`/`persisting_entry_relevant`/`lost_entry_relevant` và `new_high_priority`/`persisting_high_priority`/`lost_high_priority` từ `opportunity_transition`; đây là số lượng nghiên cứu, không phải tín hiệu mua/bán.
+
+E. Key tickers to monitor -- chọn ví dụ cụ thể CHỈ từ các danh sách ticker đã cho trong `opportunity_transition`, `tactical_transition`, hoặc `next_session_watch_conditions`; không thêm ticker nào không có trong context.
+
+F. Thesis/recommendation/invalidation changes -- trích dẫn nguyên văn từng nhãn và `reason_codes` trong `recommendation_transition` và `invalidation_transition`. `PARTIAL` cùng `MISSING_PREVIOUS_CONTEXT` PHẢI giữ nguyên, không được diễn giải thành UNCHANGED, NEUTRAL, WAIT, hay SELL. `WAIT_FOR_CONFIRMATION` không phải là SELL; `AVOID_NEW_ENTRY` không phải là buộc thoát vị thế; `HIGH_RISK_SPECULATION_ONLY` là một nhóm riêng biệt.
+
+G. Risk/concentration limitations -- báo cáo `risk_context.availability` và `reason_codes` đúng như cho; khi là `NOT_APPLICABLE`, nói rõ ràng và không suy ra correlation, concentration, hay diversification từ danh sách ticker ở phần khác.
+
+H. Next-session IF/THEN playbook -- với mỗi mục trong `next_session_watch_conditions.conditions`, trích `ticker`, `condition_type` (TRIGGER/INVALIDATION), `source_text`, và `if_satisfied` (REEVALUATE_CLASSIFICATION/FLAG_INVALIDATION) nguyên văn; không biến một điều kiện thành mức giá mục tiêu hay xác suất cụ thể.
+
+I. Missing evidence / uncertainty -- tổng hợp lại toàn bộ `missingness` cùng mọi `reason_codes`, và nêu rõ giới hạn của `lifecycle_transition` (scope `SESSION_BUNDLE_COMPARABLE_TICKER_COHORT`) so với `tactical_transition` (scope `FULL_MARKET_WATCHLIST_TACTICAL_ENTRY_CLASSIFIER`) -- hai phạm vi này KHÔNG được gộp thành một "tín hiệu kỹ thuật" chung; luôn nêu rõ scope và cỡ nhóm (cohort size) của từng phần khi trích dẫn.
+
+Trong toàn bộ câu trả lời, tách rõ **Fact** (giá trị lấy trực tiếp từ context, kèm trích dẫn section/field), **Derived** (phép tính tái lập được từ Fact, kèm công thức), **Inference** (kết luận có độ bất định, kèm bằng chứng và phản chứng), và **Opinion/scenario** (đánh giá có điều kiện, không phải dữ kiện) -- theo đúng quy tắc hiện có trong `knowledge/AIUsageRules.md`.
+
+Nghiêm cấm: xác suất, giá mục tiêu, lợi nhuận kỳ vọng, quy mô vị thế (position sizing), tỷ trọng phân bổ (allocation weights), khuyến nghị mua/bán/giữ không có căn cứ, giải thích nhân quả không có căn cứ, và mọi tuyên bố tin tức/vĩ mô bên ngoài không có trong context này. Nếu có nghiên cứu bên ngoài được cung cấp riêng, phải gắn nhãn EXTERNAL rõ ràng và không được ghi đè lên bằng chứng hay nhãn của Producer. Không lặp lại disclaimer chung chung nhiều lần -- nêu giới hạn đúng một lần, đúng chỗ, gắn với section cụ thể.
+```
+
+### Expected output
+
+Nine labeled sections (A-I) covering current/prior session identity, what changed, sectors gaining/losing momentum, opportunity-set changes, tickers to monitor, thesis/recommendation/invalidation changes with labels preserved exactly, risk/concentration limitations, a concrete IF/THEN playbook, and an explicit missingness/uncertainty summary -- with Fact/Derived/Inference/Opinion-scenario separated throughout and no fabricated recommendation, probability, target price, or sizing.
+
 ## Provenance / Source Basis
 
-Templates implement Phase 2 AnalysisGuide/AIUsageRules, Phase 3 provenance/point-in-time standards, Phase 4 workflows and Phase 6 batch artifacts. The structured research synthesis template (4) implements the AI_STRUCTURED_RESEARCH_SYNTHESIS_V1 contract.
+Templates implement Phase 2 AnalysisGuide/AIUsageRules, Phase 3 provenance/point-in-time standards, Phase 4 workflows and Phase 6 batch artifacts. The structured research synthesis template (4) implements the AI_STRUCTURED_RESEARCH_SYNTHESIS_V1 contract. The next-session market decision narrative template (5) implements the AI_NEXT_SESSION_DECISION_NARRATIVE_V1 contract (`builders/next_session_decision_context.py`, `docs/next_session_decision_context_contract.md`).
 
 ## Known Limitations
 
@@ -185,6 +231,7 @@ Templates implement Phase 2 AnalysisGuide/AIUsageRules, Phase 3 provenance/point
 - Current batch lacks safely mapped ticker news; TCB, VIC and VRE also lack shareholder summaries.
 - Model compliance/retrieval behavior is not fully confirmed across platforms.
 - Structured research synthesis output is validated by `builders/structured_research_synthesis_response.py` and `builders/structured_research_synthesis_boundary.py`; like multi-angle synthesis, it is a validation contract for AI-produced narrative, not a field embedded in generated context packages.
+- The next-session market decision narrative template (5) is market-wide and session-scoped, not per-ticker; it does not replace templates 1-4 and cannot be mixed with a `{TICKER}_context.json` in the same request. `correlation_concentration_context`/`risk_context` is `NOT_APPLICABLE` as of the 2026-08-28 governed session -- no C2 material exists yet for this contract to narrate.
 
 ## How AI Should Use This
 
