@@ -385,6 +385,18 @@ class SyntheticFailClosedTests(unittest.TestCase):
             load_next_session_decision_package(build_dir, expected_session="2026-09-01")
         self.assertIn("BRIEF_IDENTITY_SELF_INCONSISTENT", str(ctx.exception))
 
+    def test_brief_semantic_tamper_with_unchanged_declared_identity_fails_closed(self):
+        build_dir = _minimal_package(self.tmp, current_session="2026-09-01", previous_session=None)
+        brief_path = build_dir / "next_session_decision_brief.json"
+        brief = json.loads(brief_path.read_text(encoding="utf-8"))
+        brief["market_transition"]["availability"] = "PARTIAL"
+        # Deliberately leave artifact_sha256 and artifact_identity unchanged: direct loading
+        # must independently validate the actual Brief content even without LATEST lineage.
+        _write_json(brief_path, brief)
+        with self.assertRaises(NextSessionDecisionContextError) as ctx:
+            load_next_session_decision_package(build_dir, expected_session="2026-09-01")
+        self.assertEqual("BRIEF_CONTENT_IDENTITY_MISMATCH", str(ctx.exception))
+
     def test_unknown_section_availability_fails_closed(self):
         build_dir = _minimal_package(self.tmp, current_session="2026-09-01", previous_session=None)
         brief_path = build_dir / "next_session_decision_brief.json"

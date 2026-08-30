@@ -93,6 +93,17 @@ def content_identity(value: Mapping[str, Any]) -> dict[str, str]:
     return {"artifact_sha256": digest, "artifact_identity": f"ai_next_session_decision_context:{digest}"}
 
 
+def _producer_brief_content_identity(brief: Mapping[str, Any]) -> dict[str, str]:
+    """Reproduce the Producer Brief's canonical ``content_identity`` contract locally.
+
+    The Consumer intentionally does not import Producer code.  It does, however, verify the
+    Producer's published deterministic identity over the exact JSON object it loaded.
+    """
+    payload = {key: item for key, item in brief.items() if key not in {"artifact_sha256", "artifact_identity"}}
+    digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+    return {"artifact_sha256": digest, "artifact_identity": f"next_session_decision_brief:{digest}"}
+
+
 def _collect_unsafe_paths(value: Any, path: str = "$") -> list[str]:
     """Mirror ``ai_handoff_publication._unsafe`` so an absolute local path never leaks out."""
     found: list[str] = []
@@ -156,6 +167,13 @@ def load_next_session_decision_package(
         isinstance(artifact_sha256, str) and bool(artifact_sha256)
         and artifact_identity == f"next_session_decision_brief:{artifact_sha256}",
         "BRIEF_IDENTITY_SELF_INCONSISTENT",
+    )
+    _require(
+        _producer_brief_content_identity(brief) == {
+            "artifact_sha256": artifact_sha256,
+            "artifact_identity": artifact_identity,
+        },
+        "BRIEF_CONTENT_IDENTITY_MISMATCH",
     )
     binding = brief.get("binding")
     _require(isinstance(binding, Mapping), "BRIEF_BINDING_MISSING")
