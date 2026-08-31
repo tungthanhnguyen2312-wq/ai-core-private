@@ -1,0 +1,9 @@
+# Official Financial Candidate Evidence Consumer Contract
+
+`official_financial_candidate_evidence_consumer/v1` is an opt-in, read-only Consumer projection of the Producer's exact `deterministic_official_financial_candidate_qualification_prep/v1` review artifact. The packet is supplied at the root of an AI bundle as `official_financial_candidate_evidence`; an absent packet adds no context field.
+
+The Consumer accepts only schema `1.0.0`, artifact type `DETERMINISTIC_FINANCIAL_CANDIDATE_QUALIFICATION_REVIEW_V1`, a verified deterministic artifact identity, `authority_effect = NONE`, false mutation flags, and zero-silent-drop accounting. It then requires every record's candidate identity, issuer/ticker/taxonomy/period/scope, reported and normalized value/unit, source-document/raw-SHA/route/acquisition lineage, page-label-period-column citation locator, qualification state, blocker codes, existing-authority comparison, owner-review disposition, and processing identity.
+
+Unknown schema, version, artifact identity, or authority boundary returns `UNSUPPORTED_FINANCIAL_REVIEW_PACKET`. Missing record lineage returns `FINANCIAL_REVIEW_LINEAGE_INCOMPLETE`. Neither condition falls back, aliases a field, fills a value, or touches `canonical_financial_facts`.
+
+The resulting per-ticker research section preserves the Producer records and distinguishes the separate authoritative namespace, qualification-ready candidates, blocked candidates, conflicts, and evidence pending owner promotion. It is always `is_actionable = false`: `QUALIFICATION_READY`, `OWNER_PROMOTION_CANDIDATE`, `NOT_AUTHORITY_PROMOTED`, conflict, and blocker states remain exactly non-authoritative Consumer evidence. It cannot affect recommendation, ranking, valuation, strategy eligibility, entry action, sizing, or runtime state.
