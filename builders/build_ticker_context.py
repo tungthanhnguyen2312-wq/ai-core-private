@@ -30,6 +30,9 @@ from shadow_recommendation_consumer_narrative import (  # noqa: E402
 from official_financial_candidate_evidence import (  # noqa: E402
     apply_bundle_official_financial_candidate_evidence_contract,
 )
+from financial_analysis_consumer_context import (  # noqa: E402
+    apply_bundle_financial_analysis_v2_contract,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -5100,6 +5103,7 @@ def build_context_package(
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
     apply_bundle_current_market_sector_leadership_context_contract(context, bundle_payload)
     apply_bundle_current_financial_momentum_context_contract(context, bundle_payload)
+    apply_bundle_financial_analysis_v2_contract(context, bundle_payload)
     apply_bundle_official_financial_candidate_evidence_contract(context, bundle_payload)
     apply_bundle_current_corporate_event_context_contract(context, bundle_payload)
     apply_bundle_current_research_risk_register_contract(context, bundle_payload)

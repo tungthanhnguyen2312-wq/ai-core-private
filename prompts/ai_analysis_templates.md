@@ -179,7 +179,7 @@ One structured research-synthesis JSON object as specified above, suitable for v
 
 ### Purpose
 
-Turn one governed `ai_next_session_decision_context/v1` package (built by `builders/next_session_decision_context.py` from the Producer's `next_session_decision_brief/v1` handoff) into a next-session Vietnamese-market narrative: what changed between the last two qualified sessions, and a practical IF/THEN playbook -- never a new regime model, ranking, or recommendation engine.
+Turn one governed `ai_next_session_decision_context/v1` package (built by `builders/next_session_decision_context.py` from the Producer's `next_session_decision_brief/v1` handoff) into a next-session Vietnamese-market narrative: what changed between the last two qualified sessions, and a practical IF/THEN playbook -- never a new regime model, ranking, or recommendation engine. If `financial_analysis_session_summary` is supplied, report its availability and source identity as bounded explanatory context only; preserve `RESEARCH_PROXY`, `ABSENT`, `BLOCKED`, `UNAVAILABLE`, and `NOT_APPLICABLE` exactly, and do not turn it into a ratio calculation, valuation conclusion, or action signal.
 
 ### Required input
 

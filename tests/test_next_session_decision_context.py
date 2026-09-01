@@ -72,12 +72,17 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True), encoding="utf-8")
 
 
-def _minimal_package(tmp: Path, *, current_session: str, previous_session: str | None) -> Path:
+def _minimal_package(
+    tmp: Path, *, current_session: str, previous_session: str | None, bundle_payload: Any | None = None,
+) -> Path:
     """Write a minimal, internally-consistent synthetic package to ``tmp`` and return its dir."""
     build_dir = tmp / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
 
-    bundle_bytes = b'{"note": "synthetic current bundle placeholder"}'
+    bundle_bytes = json.dumps(
+        bundle_payload if bundle_payload is not None else {"note": "synthetic current bundle placeholder"},
+        ensure_ascii=False, sort_keys=True,
+    ).encode("utf-8")
     (build_dir / "ai_research_session_bundle.json").write_bytes(bundle_bytes)
     bundle_sha256 = _sha256_bytes(bundle_bytes)
 
@@ -241,11 +246,15 @@ class RealHandoffReplayTests(unittest.TestCase):
 
     def test_missingness_covers_every_transition_section(self):
         missingness = self.context["missingness"]
-        self.assertEqual(set(TRANSITION_SECTIONS), set(missingness))
+        self.assertEqual(set(TRANSITION_SECTIONS) | {"financial_analysis_session_summary"}, set(missingness))
         for name in TRANSITION_SECTIONS:
             self.assertEqual(self.context[name]["availability"], missingness[name]["availability"])
         self.assertEqual("NOT_APPLICABLE", missingness["risk_context"]["availability"])
         self.assertEqual("PARTIAL", missingness["recommendation_transition"]["availability"])
+        self.assertIn(
+            self.context["financial_analysis_session_summary"]["availability"],
+            {"AVAILABLE", "UNAVAILABLE"},
+        )
 
     def test_deterministic_output(self):
         rebuilt = build_context(self.package)
@@ -456,6 +465,23 @@ class SyntheticFailClosedTests(unittest.TestCase):
         self.assertEqual("2026-09-02", context["identity"]["current_session"])
         self.assertEqual("SESSION_BUNDLE_COMPARABLE_TICKER_COHORT", context["lifecycle_transition"]["scope"])
         self.assertEqual("FULL_MARKET_WATCHLIST_TACTICAL_ENTRY_CLASSIFIER", context["tactical_transition"]["scope"])
+
+    def test_financial_analysis_session_summary_is_optional_and_read_only(self):
+        build_dir = _minimal_package(
+            self.tmp, current_session="2026-09-02", previous_session=None,
+            bundle_payload={"financial_analysis": {
+                "source_context_identity": "financial_analysis_context/v2:synthetic",
+                "market_summary": {"contract_version": "financial_analysis_market_summary/v1", "availability": "AVAILABLE"},
+                "ticker_index": {"AAA": {"status": "AVAILABLE"}},
+            }},
+        )
+        package = load_next_session_decision_package(build_dir, expected_session="2026-09-02")
+        context = build_context(package)
+        summary = context["financial_analysis_session_summary"]
+        self.assertEqual("AVAILABLE", summary["availability"])
+        self.assertFalse(summary["is_actionable"])
+        self.assertEqual("financial_analysis_context/v2:synthetic", context["source_lineage"]["financial_analysis_source_context_identity"])
+        self.assertEqual("UNAVAILABLE", context["market_transition"]["availability"])
 
 
 if __name__ == "__main__":

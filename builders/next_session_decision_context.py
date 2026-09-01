@@ -191,11 +191,14 @@ def load_next_session_decision_package(
         "OPERATION_IDENTITY_MISMATCH",
     )
 
-    # --- Current session bundle: file-hash cross-check only, no JSON parse of the bundle ---
+    # --- Current session bundle: hash cross-check, then read the optional compact Financial V2
+    # projection.  The financial block is advisory-only and cannot change any of the nine
+    # Producer transition sections below.
     current_bundle_binding = binding.get("current_session_bundle")
     _require(isinstance(current_bundle_binding, Mapping), "BRIEF_CURRENT_BUNDLE_BINDING_MISSING")
     _require(_sha256_file(bundle_path) == current_bundle_binding.get("sha256"), "BUNDLE_HASH_MISMATCH")
     _require(current_bundle_binding.get("identity") == manifest.get("operation_identity"), "BUNDLE_IDENTITY_MISMATCH")
+    bundle = _read_json(bundle_path)
 
     # --- Previous session bundle: required exactly when a previous session is expected -----
     if expected_previous_session is not None:
@@ -242,7 +245,7 @@ def load_next_session_decision_package(
         )
         _require(expected_lineage.get("previous_session") == expected_previous_session, "LINEAGE_PREVIOUS_SESSION_MISMATCH")
 
-    return {"brief": brief, "manifest": manifest, "build_dir": build_dir}
+    return {"brief": brief, "manifest": manifest, "bundle": bundle, "build_dir": build_dir}
 
 
 def load_from_handoff_latest(
@@ -278,6 +281,36 @@ def _section_availability(section: Any, name: str) -> tuple[str, list[Any]]:
     availability = section.get("availability")
     _require(availability in _KNOWN_AVAILABILITY, name.upper() + "_AVAILABILITY_UNKNOWN:" + str(availability))
     return availability, copy.deepcopy(list(section.get("reason_codes") or []))
+
+
+def _financial_analysis_session_summary(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """Expose only the Producer's root Financial V2 session metadata, never ticker values.
+
+    Financial V2 is optional for historic handoff packages.  An absent block stays visibly
+    unavailable; a supplied malformed block fails closed rather than being silently ignored.
+    """
+    raw = bundle.get("financial_analysis")
+    if raw is None:
+        return {
+            "availability": UNAVAILABLE,
+            "reason_codes": ["FINANCIAL_ANALYSIS_V2_NOT_SUPPLIED_IN_SESSION_BUNDLE"],
+            "is_actionable": False,
+        }
+    _require(isinstance(raw, Mapping), "FINANCIAL_ANALYSIS_V2_SESSION_SUMMARY_MALFORMED")
+    summary = {
+        "availability": AVAILABLE,
+        "market_summary": copy.deepcopy(raw.get("market_summary")),
+        "ticker_index": copy.deepcopy(raw.get("ticker_index")),
+        "source_context_identity": raw.get("source_context_identity"),
+        "financial_content_identity": raw.get("financial_content_identity"),
+        "pit_authority": raw.get("pit_authority"),
+        "is_actionable": False,
+        "authority_notes": [
+            "Financial Analysis V2 states are Producer-owned qualitative context; Consumer performs no ratio calculation, score, ranking, forecast, valuation, or recommendation derivation.",
+            "A RESEARCH_PROXY is directional only; ABSENT, BLOCKED, UNAVAILABLE, and NOT_APPLICABLE are explicit coverage/applicability states, never positive or negative evidence by themselves.",
+        ],
+    }
+    return summary
 
 
 def _ai_narrative_contract() -> dict[str, Any]:
@@ -398,6 +431,7 @@ def build_context(package: Mapping[str, Any]) -> dict[str, Any]:
         "tactical_transition": tactical,
         "risk_context": copy.deepcopy(brief["correlation_concentration_context"]),
         "next_session_watch_conditions": copy.deepcopy(brief["next_session_watch_conditions"]),
+        "financial_analysis_session_summary": _financial_analysis_session_summary(package.get("bundle") or {}),
     }
 
     missingness: dict[str, Any] = {}
@@ -405,6 +439,13 @@ def build_context(package: Mapping[str, Any]) -> dict[str, Any]:
         availability, reason_codes = _section_availability(context.get(name), name)
         missingness[name] = {"availability": availability, "reason_codes": reason_codes}
     context["missingness"] = missingness
+    context["missingness"]["financial_analysis_session_summary"] = {
+        "availability": context["financial_analysis_session_summary"]["availability"],
+        "reason_codes": copy.deepcopy(context["financial_analysis_session_summary"].get("reason_codes") or []),
+    }
+    context["source_lineage"]["financial_analysis_source_context_identity"] = (
+        context["financial_analysis_session_summary"].get("source_context_identity")
+    )
     context["ai_narrative_contract"] = _ai_narrative_contract()
 
     unsafe_paths = _collect_unsafe_paths(context)

@@ -15,6 +15,7 @@ AI ANALYZE không chạy crawler, không tự cập nhật thị trường và k
 - Vận hành mỗi ngày: dùng [docs/v1_0_DailyWorkflow.md](docs/v1_0_DailyWorkflow.md).
 - Gặp lỗi: tra [docs/v1_0_Troubleshooting.md](docs/v1_0_Troubleshooting.md).
 - Các giới hạn đã biết: đọc [docs/v1_0_KnownLimitations.md](docs/v1_0_KnownLimitations.md).
+- Financial Analysis V2 Consumer boundary: đọc [docs/financial_analysis_consumer_context_contract.md](docs/financial_analysis_consumer_context_contract.md).
 
 ## Quy trình ngắn
 
@@ -60,4 +61,3 @@ Screening chỉ lọc trong tập package được cung cấp, không phải qu�
 
 - `release/v1.0`: snapshot dữ liệu, metadata, builder, validation và operating pack đã freeze.
 - `v1.0.1 Documentation Patch`: bổ sung hướng dẫn người dùng cuối bên ngoài snapshot; không thay đổi `release/v1.0`, code hay dữ liệu VNSTOCK.
-
