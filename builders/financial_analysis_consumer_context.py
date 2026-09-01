@@ -136,6 +136,7 @@ def build_financial_analysis_consumer_context(compact: Mapping[str, Any]) -> dic
             annotation.get("future_financial_invalidation_watch")
             or annotation.get("future_financial_invalidation_condition")
         ),
+        "turnaround_context": annotation.get("turnaround_state"),
     })
     # ``null`` is meaningful here: preserve the Producer's missing/unsupported growth
     # basis rather than fabricating a generic period or an implied growth claim.
@@ -170,6 +171,7 @@ def compact_from_named_ticker(payload: Mapping[str, Any], ticker: str) -> Mappin
                         candidate.get("future_financial_invalidation_watch")
                         or candidate.get("future_financial_invalidation_condition")
                     ),
+                    "turnaround_state": candidate.get("turnaround_state"),
                 }
                 return compact
             return candidate

@@ -93,8 +93,10 @@ def test_security_decision_wrapper_preserves_producer_weakness_and_watch_labels(
         "compact": compact,
         "current_financial_weakness": ["OBSERVED_EQUITY_ASSETS_DETERIORATING"],
         "future_financial_invalidation_watch": ["EQUITY_ASSETS_DETERIORATION_WATCH"],
+        "turnaround_state": "FA_V2_TURNAROUND_CONTEXT",
         "is_actionable": False,
     }}}}
     projected = build_financial_analysis_consumer_context(compact_from_named_ticker(bundle, "AAA"))
     assert projected["current_financial_weakness"] == ["OBSERVED_EQUITY_ASSETS_DETERIORATING"]
     assert projected["future_financial_invalidation_watch"] == ["EQUITY_ASSETS_DETERIORATION_WATCH"]
+    assert projected["turnaround_context"] == "FA_V2_TURNAROUND_CONTEXT"
