@@ -52,6 +52,21 @@ def test_absent_is_explicit_coverage_not_financial_weakness():
     assert any("must never be narrated as weak" in note for note in context["authority_notes"])
 
 
+def test_growth_basis_and_not_applicable_state_are_preserved_without_interpretation():
+    context = build_financial_analysis_consumer_context(_compact(
+        issuer_type="bank", analysis_family="OTHER_FINANCIAL_LIMITED_ANALYSIS",
+        growth_state="UNAVAILABLE", growth_basis="GROWTH_BASE_NON_POSITIVE",
+        capital_efficiency_state="NOT_APPLICABLE", resilience_state="UNAVAILABLE",
+    ))
+    assert context["growth"] == {"state": "UNAVAILABLE", "basis": "GROWTH_BASE_NON_POSITIVE", "reason_codes": []}
+    assert context["capital_efficiency"]["state"] == "NOT_APPLICABLE"
+    assert context["resilience"]["state"] == "UNAVAILABLE"
+    assert "not negative evidence" in context["authority_notes"][1]
+
+    unavailable_basis = build_financial_analysis_consumer_context(_compact(growth_basis=None))
+    assert unavailable_basis["growth"]["basis"] is None
+
+
 def test_malformed_or_raw_financial_input_fails_closed():
     with pytest.raises(FinancialAnalysisConsumerContextError, match="VERSION_UNSUPPORTED"):
         build_financial_analysis_consumer_context(_compact(contract_version="financial_analysis_compact/v99"))
@@ -68,6 +83,8 @@ def test_named_bundle_and_ndjson_extractors_preserve_only_requested_ticker():
     apply_bundle_financial_analysis_v2_contract(context, copy.deepcopy(bundle))
     assert context["financial_analysis_consumer_context"]["ticker"] == "AAA"
     assert context["financial_analysis_consumer_context"]["profitability"]["state"] == "PROFITABLE"
+    primary_session = {"ticker_research_contexts": {"AAA": {"financial_analysis": aaa}}}
+    assert compact_from_named_ticker(primary_session, "AAA") == aaa
 
 
 def test_security_decision_wrapper_preserves_producer_weakness_and_watch_labels():

@@ -1,5 +1,7 @@
 # Financial Analysis V2 Consumer context contract
 
+Status: `AI_CONSUMER_FINANCIAL_ANALYSIS_V2_RECONCILIATION_V1` — COMPLETE.
+
 `builders/financial_analysis_consumer_context.py` accepts only the Producer's qualitative `financial_analysis_compact/v1` record and projects it into `financial_analysis_consumer_context/v1`. It can extract a named ticker from the ordinary `analysis_bundle.json` (`tickers[ticker].financial_analysis`), the primary session bundle (`ticker_research_contexts[ticker].financial_analysis`), a direct compact record, or existing NDJSON-style ticker records. It never imports Producer Python.
 
 The projection preserves `AVAILABLE` and `ABSENT`, issuer/analysis family, financial period, readiness, each qualitative financial state, feature fitness, deterministic supporting/counter evidence, conflicts, missing dimensions, warnings, valuation hints, Producer source/content/lineage identities, and `is_actionable=false`. It accepts the Producer's compact state-field spelling (for example `profitability_state`, `cash_conversion_state`) as well as a state/basis object if the contract evolves without changing meaning. Where a security-decision card wraps the compact object as `financial_analysis.compact`, it additionally preserves only that card's already-authored `current_financial_weakness` and `future_financial_invalidation_watch` labels; it does not invent either list.

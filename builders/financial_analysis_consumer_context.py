@@ -26,7 +26,7 @@ def _require(condition: bool, reason: str) -> None:
 
 
 def _copy_list(value: Any) -> list[Any]:
-    return copy.deepcopy(list(value)) if isinstance(value, (list, tuple)) else []
+    return copy.deepcopy(list(value)) if isinstance(value, (list, tuple)) else ([copy.deepcopy(value)] if isinstance(value, str) else [])
 
 
 def _contains_raw_values(value: Any) -> bool:
@@ -37,13 +37,17 @@ def _contains_raw_values(value: Any) -> bool:
     return False
 
 
-def _state(value: Any) -> dict[str, Any]:
+def _state(value: Any, *, fallback_basis: Any = None) -> dict[str, Any]:
     """Preserve a Producer state/basis pair without inferring an economic direction."""
     if not isinstance(value, Mapping):
-        return {"state": value if isinstance(value, str) else "UNAVAILABLE", "basis": "NOT_SUPPLIED", "reason_codes": []}
+        return {
+            "state": value if isinstance(value, str) else "UNAVAILABLE",
+            "basis": fallback_basis if isinstance(fallback_basis, str) else "NOT_SUPPLIED",
+            "reason_codes": [],
+        }
     return {
         "state": value.get("state", "UNAVAILABLE"),
-        "basis": value.get("basis", "NOT_SUPPLIED"),
+        "basis": value.get("basis", fallback_basis if isinstance(fallback_basis, str) else "NOT_SUPPLIED"),
         "reason_codes": _copy_list(value.get("reason_codes")),
     }
 
@@ -113,7 +117,7 @@ def build_financial_analysis_consumer_context(compact: Mapping[str, Any]) -> dic
         "financial_readiness": "READY" if compact.get("current_research_ready") is True else "NOT_READY",
         "profitability": _state(compact.get("profitability") or compact.get("profitability_state")),
         "margin": _state(compact.get("margin") or compact.get("margin_state")),
-        "growth": _state(compact.get("growth") or compact.get("growth_state")),
+        "growth": _state(compact.get("growth") or compact.get("growth_state"), fallback_basis=compact.get("growth_basis")),
         "cash_quality": _state(compact.get("cash_quality") or compact.get("cash_conversion_state")),
         "balance_sheet": _state(compact.get("balance_sheet") or compact.get("balance_sheet_state")),
         "capital_efficiency": _state(compact.get("capital_efficiency") or compact.get("capital_efficiency_state")),
@@ -133,6 +137,10 @@ def build_financial_analysis_consumer_context(compact: Mapping[str, Any]) -> dic
             or annotation.get("future_financial_invalidation_condition")
         ),
     })
+    # ``null`` is meaningful here: preserve the Producer's missing/unsupported growth
+    # basis rather than fabricating a generic period or an implied growth claim.
+    if "growth_basis" in compact:
+        base["growth"]["basis"] = copy.deepcopy(compact.get("growth_basis"))
     if proxy_features:
         base["authority_notes"].append(
             "RESEARCH_PROXY features are directional research context only; they are not authoritative financial facts, especially when cross-provider scale is unresolved."
@@ -158,7 +166,10 @@ def compact_from_named_ticker(payload: Mapping[str, Any], ticker: str) -> Mappin
                 compact = copy.deepcopy(dict(candidate["compact"]))
                 compact["decision_financial_annotation"] = {
                     "current_financial_weakness": _copy_list(candidate.get("current_financial_weakness")),
-                    "future_financial_invalidation_watch": _copy_list(candidate.get("future_financial_invalidation_watch")),
+                    "future_financial_invalidation_watch": _copy_list(
+                        candidate.get("future_financial_invalidation_watch")
+                        or candidate.get("future_financial_invalidation_condition")
+                    ),
                 }
                 return compact
             return candidate
