@@ -119,6 +119,7 @@ def build_financial_analysis_consumer_context(compact: Mapping[str, Any]) -> dic
         "margin": _state(compact.get("margin") or compact.get("margin_state")),
         "growth": _state(compact.get("growth") or compact.get("growth_state"), fallback_basis=compact.get("growth_basis")),
         "cash_quality": _state(compact.get("cash_quality") or compact.get("cash_conversion_state")),
+        "earnings_turnaround": _state(compact.get("earnings_turnaround") or compact.get("earnings_turnaround_state")),
         "balance_sheet": _state(compact.get("balance_sheet") or compact.get("balance_sheet_state")),
         "capital_efficiency": _state(compact.get("capital_efficiency") or compact.get("capital_efficiency_state")),
         "leverage": _state(compact.get("leverage") or compact.get("leverage_state")),

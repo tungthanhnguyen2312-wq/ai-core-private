@@ -100,3 +100,75 @@ def test_security_decision_wrapper_preserves_producer_weakness_and_watch_labels(
     assert projected["current_financial_weakness"] == ["OBSERVED_EQUITY_ASSETS_DETERIORATING"]
     assert projected["future_financial_invalidation_watch"] == ["EQUITY_ASSETS_DETERIORATION_WATCH"]
     assert projected["turnaround_context"] == "FA_V2_TURNAROUND_CONTEXT"
+
+
+_TTM_FITNESS = {
+    "revenue_ttm": {"fitness": "READY", "reason_codes": []},
+    "profit_before_tax_ttm": {"fitness": "READY", "reason_codes": []},
+    "net_income_ttm": {"fitness": "BLOCKED_BY_EVIDENCE", "reason_codes": ["MISSING_CONSECUTIVE_STANDALONE_QUARTER_INPUTS"]},
+    "operating_cash_flow_ttm": {"fitness": "READY", "reason_codes": []},
+    "ttm_net_margin": {"fitness": "READY", "reason_codes": []},
+    "ttm_pbt_margin": {"fitness": "BLOCKED_BY_EVIDENCE", "reason_codes": ["MISSING_CONSECUTIVE_STANDALONE_QUARTER_INPUTS"]},
+    "cfo_to_net_income_ttm": {"fitness": "READY", "reason_codes": []},
+    "revenue_qoq": {"fitness": "READY", "reason_codes": []},
+    "profit_before_tax_qoq": {"fitness": "READY", "reason_codes": []},
+    "net_income_qoq": {"fitness": "READY", "reason_codes": []},
+    "operating_cash_flow_qoq": {"fitness": "BLOCKED_BY_EVIDENCE", "reason_codes": ["MISSING_COMPATIBLE_SERIES"]},
+}
+
+
+def test_ready_and_blocked_ttm_fitness_and_turnaround_state_are_retained():
+    context = build_financial_analysis_consumer_context(_compact(
+        profitability_state="LOSS_MAKING",
+        margin_state="MARGIN_EXPANDING",
+        growth_state="UNAVAILABLE",
+        growth_basis="TTM",
+        cash_conversion_state="HEALTHY",
+        earnings_turnaround_state="LOSS_TO_PROFIT",
+        feature_fitness=_TTM_FITNESS,
+        valuation_hints=["EARNINGS_NOT_MEANINGFUL_FOR_PE"],
+    ))
+    assert context["profitability"]["state"] == "LOSS_MAKING"
+    assert context["margin"]["state"] == "MARGIN_EXPANDING"
+    assert context["growth"]["basis"] == "TTM"
+    assert context["cash_quality"]["state"] == "HEALTHY"
+    assert context["earnings_turnaround"]["state"] == "LOSS_TO_PROFIT"
+    assert context["feature_fitness"]["revenue_ttm"] == {"fitness": "READY", "reason_codes": []}
+    assert context["feature_fitness"]["net_income_ttm"]["fitness"] == "BLOCKED_BY_EVIDENCE"
+    assert context["feature_fitness"]["operating_cash_flow_qoq"]["reason_codes"] == ["MISSING_COMPATIBLE_SERIES"]
+    assert context["valuation_interpretation"] == ["EARNINGS_NOT_MEANINGFUL_FOR_PE"]
+    assert "reported_value" not in str(context)
+    assert "ttm_value" not in context
+    assert context.get("pe") is None and context.get("ps") is None
+
+
+def test_unknown_additive_compact_fields_do_not_crash_or_invent_numeric_ttm():
+    context = build_financial_analysis_consumer_context(_compact(
+        earnings_turnaround_state="UNAVAILABLE",
+        working_capital_state="POSITIVE",
+        future_additive_state="WHATEVER",
+        qualified_ttm_lineage={"ttm_input_source": "NEW_QUALIFIED_TTM_SELECTED", "ttm_fitness": "READY"},
+    ))
+    assert context["availability"] == "AVAILABLE"
+    assert context["earnings_turnaround"]["state"] == "UNAVAILABLE"
+    assert "working_capital_state" not in context
+    assert "future_additive_state" not in context
+    serialized = str(context)
+    assert "P/E" not in serialized
+    assert all(token not in serialized for token in ("reported_value", "numerator", "denominator"))
+
+
+def test_consumer_does_not_mutate_producer_research_stance():
+    context = {"ticker": "AAA", "research_stance": "AVOID_NEW_ENTRY", "provenance": []}
+    apply_bundle_financial_analysis_v2_contract(context, {
+        "tickers": {"AAA": {"financial_analysis": _compact(
+            earnings_turnaround_state="LOSS_TO_PROFIT",
+            profitability_state="TURNAROUND_CONTEXT",
+            feature_fitness=_TTM_FITNESS,
+        )}},
+    })
+    assert context["research_stance"] == "AVOID_NEW_ENTRY"
+    projected = context["financial_analysis_consumer_context"]
+    assert "research_stance" not in projected
+    assert projected["earnings_turnaround"]["state"] == "LOSS_TO_PROFIT"
+    assert projected["is_actionable"] is False

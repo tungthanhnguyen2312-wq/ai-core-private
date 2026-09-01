@@ -224,6 +224,15 @@ class StructuredResearchSynthesisPromptContractTests(unittest.TestCase):
     def test_valuation_authority_boundary_explicit(self):
         self.assertIn("a ticker may have usable P/B and blocked EV/EBITDA at the same time", PROMPT)
         self.assertIn("`RESEARCH_USABLE` stays research-only, never cheapness, VALUE eligibility, or a target price", PROMPT)
+        self.assertIn("`INPUT_BLOCKED` stays unavailable for that method", PROMPT)
+        self.assertIn("`PE_NOT_MEANINGFUL` is never cheap or expensive P/E", PROMPT)
+        self.assertIn("`TTM_MARKET_CAP_MONETARY_BASIS_INCOMPATIBLE` remains an explicit basis blocker", PROMPT)
+
+    def test_financial_v2_consumer_section_distinguishes_states_without_recomputation(self):
+        self.assertIn("distinguishes profitability, growth", PROMPT)
+        self.assertIn("earnings turnaround", PROMPT)
+        self.assertIn("Never calculate TTM, P/E, P/S, growth, margin, or CFO/NI from component values", PROMPT)
+        self.assertIn("never retune, override, upgrade, or downgrade Producer research stance", PROMPT)
 
     def test_session_discipline_explicit(self):
         self.assertIn("Session identities are not interchangeable", PROMPT)
