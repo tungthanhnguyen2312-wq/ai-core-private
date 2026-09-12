@@ -22,7 +22,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 CONSUMER_CONTRACT_VERSION = "ai_next_session_decision_context/v1"
-PRODUCER_BRIEF_CONTRACT_VERSION = "next_session_decision_brief/v1"
+PRODUCER_BRIEF_CONTRACT_VERSIONS = frozenset({
+    "next_session_decision_brief/v1",
+    "next_session_decision_brief/v2",
+})
 PRODUCER_BRIEF_SCHEMA_VERSION = "1.0.0"
 MANIFEST_CONTRACT_VERSION = "ai_research_bundle_manifest/v1"
 LATEST_CONTRACT_VERSION = "stocklookup_ai_handoff_latest/v2"
@@ -152,7 +155,7 @@ def load_next_session_decision_package(
 
     # --- Brief self-consistency --------------------------------------------------------
     _require(brief.get("schema_version") == PRODUCER_BRIEF_SCHEMA_VERSION, "BRIEF_SCHEMA_VERSION_UNSUPPORTED")
-    _require(brief.get("contract_version") == PRODUCER_BRIEF_CONTRACT_VERSION, "BRIEF_CONTRACT_VERSION_UNSUPPORTED")
+    _require(brief.get("contract_version") in PRODUCER_BRIEF_CONTRACT_VERSIONS, "BRIEF_CONTRACT_VERSION_UNSUPPORTED")
     _require(brief.get("current_session") == expected_session, "BRIEF_SESSION_MISMATCH")
     previous_qualified_session = brief.get("previous_qualified_session")
     if expected_previous_session is not None:
@@ -365,6 +368,28 @@ def _ai_narrative_contract() -> dict[str, Any]:
     }
 
 
+def _comparison_metadata(brief: Mapping[str, Any]) -> dict[str, Any]:
+    """Preserve the Producer-selected comparator, never selecting one locally."""
+    metadata = brief.get("comparison_metadata")
+    if metadata is None:
+        return {
+            "availability": "MISSING",
+            "reason_codes": ["PRODUCER_COMPARISON_METADATA_MISSING"],
+        }
+    _require(isinstance(metadata, Mapping), "COMPARISON_METADATA_INVALID")
+    _require(metadata.get("contract_version") == "session_comparison_semantics/v1", "COMPARISON_METADATA_CONTRACT_UNSUPPORTED")
+    _require(
+        all(key in metadata for key in (
+            "comparison_session", "comparison_session_role", "session_gap_trading_sessions",
+            "comparison_fitness", "comparison_reason_codes", "skipped_known_sessions",
+        )),
+        "COMPARISON_METADATA_FIELDS_MISSING",
+    )
+    _require(isinstance(metadata.get("comparison_reason_codes"), list), "COMPARISON_METADATA_REASON_CODES_INVALID")
+    _require(isinstance(metadata.get("skipped_known_sessions"), list), "COMPARISON_METADATA_SKIPPED_SESSIONS_INVALID")
+    return {"availability": "AVAILABLE", "value": copy.deepcopy(dict(metadata))}
+
+
 def build_context(package: Mapping[str, Any]) -> dict[str, Any]:
     """Build one ``ai_next_session_decision_context/v1`` from an already-validated package
     (the return value of :func:`load_next_session_decision_package`). Pure transform: no I/O,
@@ -422,6 +447,9 @@ def build_context(package: Mapping[str, Any]) -> dict[str, Any]:
             "package_warnings": copy.deepcopy(manifest.get("warnings") or []),
         },
         "authority_boundary": copy.deepcopy(brief["authority_boundary"]),
+        # This is the Producer's registry-governed choice.  The Consumer must not
+        # collapse a distant comparator into an unqualified "previous session".
+        "comparison_metadata": _comparison_metadata(brief),
         "market_transition": copy.deepcopy(brief["market_transition"]),
         "sector_transition": copy.deepcopy(brief["sector_transition"]),
         "opportunity_transition": copy.deepcopy(brief["opportunity_transition"]),

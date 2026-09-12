@@ -1,0 +1,26 @@
+name: Consumer contract checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install offline test runner
+        run: python -m pip install pytest
+      - name: Validate current Producer contract pass-through
+        run: >-
+          python -m pytest -q
+          tests/test_canonical_daily_producer_session_ingestion.py
+          tests/test_next_session_decision_context.py
+          tests/test_dnse_foreign_flow_contract_pass_through.py
+          tests/test_current_market_flow_positioning_contract_pass_through.py
+          tests/test_shadow_recommendation_consumer_narrative.py

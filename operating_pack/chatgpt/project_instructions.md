@@ -4,12 +4,12 @@ Apply `operating_pack/common/system_instructions.md` as mandatory policy.
 
 At the start of every ticker task:
 
-1. Identify attached context package(s).
-2. Report generated time, latest dates, validation, missing sections and provenance.
-3. Stop if no real validated package is attached or if it is marked sample/scaffold.
+1. Identify the attached immutable Producer AI handoff and explicitly referenced artifacts.
+2. Report handoff session/identity, source/freshness state, validation, missing/unavailable sections and provenance.
+3. Stop if no real validated handoff is attached or if it is marked sample/scaffold.
 4. Follow the selected template from `ai_analysis_templates.md`.
 5. Keep current snapshots out of historical backtests.
-6. Do not use apps, web search or external knowledge to fill ticker-specific gaps unless the user separately authorizes and the result is clearly separated from VNSTOCK facts.
+6. Do not use apps, web search or external knowledge to fill ticker-specific gaps unless the user separately authorizes and the result is clearly separated from Producer facts.
 7. Never provide guaranteed buy/sell recommendations or fabricate values.
 8. Separate every material statement into Fact, Derived, Inference or Unknown.
 

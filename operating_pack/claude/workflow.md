@@ -2,7 +2,7 @@
 
 1. Create a Project manually and add only manifest-listed Project Knowledge.
 2. Add project instructions in the available configuration area.
-3. Attach one/two/up-to-ten context packages according to task type.
+3. Attach the immutable Producer AI handoff and explicitly referenced deterministic artifacts. Context-package upload is manual fallback only, not the normal Daily path.
 4. Require the validation preamble and chosen template.
 5. Review provenance, unknowns and no-recommendation compliance.
 

@@ -22,6 +22,10 @@ CONSUMER_COMPATIBLE_CONTRACT = "current_daily_decision_research_contract/v1"
 RUN_MANIFEST_FILENAME = "run_manifest.json"
 AI_MANIFEST_FILENAME = "ai_research_bundle_manifest.json"
 AI_BUNDLE_FILENAME = "ai_research_session_bundle.json"
+SOURCE_FRESHNESS_MATRIX_CONTRACT = "ai_handoff_source_freshness_matrix/v1"
+MACRO_PRESENTATION_CONTEXT_CONTRACT = "macro_presentation_context/v1"
+CURRENT_MACRO_REGIME_CONTRACT = "current_macro_regime/v1"
+INTEGRATED_DELIVERY_CONTRACT = "integrated_decision_delivery_overlay/v1"
 
 
 class CanonicalDailyProducerSessionError(ValueError):
@@ -67,6 +71,7 @@ def _daily_card_context(
     ticker: str,
     card: Mapping[str, Any],
     bundle: Mapping[str, Any],
+    handoff_surfaces: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Adapt an already-produced card to the established Consumer card contract."""
     context = {
@@ -79,6 +84,11 @@ def _daily_card_context(
             "authority_boundary": copy.deepcopy(bundle["authority_boundary"]),
             "is_actionable": False,
         },
+        # These are bundle-scoped Producer facts rather than ticker-card fields.  Keep
+        # the full supplied object behind an explicit availability envelope so a
+        # Consumer product can retain it without recomputing freshness, creating a
+        # macro regime, or collapsing distinct flow/authority states.
+        "producer_handoff_surfaces": copy.deepcopy(dict(handoff_surfaces)),
     }
     accepted = current_daily_decision_research_contract(
         {"tickers": {ticker: {"current_daily_decision_research": context["current_daily_decision_research"]}}}, ticker,
@@ -87,6 +97,75 @@ def _daily_card_context(
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_TICKER_CONTEXT_INVALID:" + ticker)
     context["current_daily_decision_research"] = copy.deepcopy(dict(accepted))
     return context
+
+
+def _present(value: Mapping[str, Any]) -> dict[str, Any]:
+    return {"availability": "AVAILABLE", "value": copy.deepcopy(dict(value))}
+
+
+def _missing(reason_code: str) -> dict[str, Any]:
+    return {"availability": "MISSING", "reason_codes": [reason_code]}
+
+
+def _optional_contract(
+    value: Any,
+    *,
+    expected_contract: str,
+    missing_reason: str,
+    malformed_reason: str,
+) -> dict[str, Any]:
+    """Preserve an optional Producer contract, refusing masquerading versions."""
+    if value is None:
+        return _missing(missing_reason)
+    if not isinstance(value, Mapping) or value.get("contract_version") != expected_contract:
+        raise CanonicalDailyProducerSessionError(malformed_reason)
+    return _present(value)
+
+
+def _handoff_surfaces(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """Return additive, bundle-scoped current Producer surfaces without interpretation.
+
+    The availability envelope belongs to the Consumer.  A supplied Producer value is
+    retained verbatim under ``value``; absent fields are explicitly MISSING rather
+    than reconstructed from other handoff content.
+    """
+    market = bundle.get("market")
+    if not isinstance(market, Mapping):
+        raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_MARKET_SURFACE_INVALID")
+    source_matrix = _optional_contract(
+        bundle.get("source_freshness_matrix"),
+        expected_contract=SOURCE_FRESHNESS_MATRIX_CONTRACT,
+        missing_reason="PRODUCER_SOURCE_FRESHNESS_MATRIX_MISSING",
+        malformed_reason="DAILY_PRODUCER_SOURCE_FRESHNESS_MATRIX_INVALID",
+    )
+    macro_presentation = _optional_contract(
+        market.get("macro_presentation_context"),
+        expected_contract=MACRO_PRESENTATION_CONTEXT_CONTRACT,
+        missing_reason="PRODUCER_MACRO_PRESENTATION_CONTEXT_MISSING",
+        malformed_reason="DAILY_PRODUCER_MACRO_PRESENTATION_CONTEXT_INVALID",
+    )
+    macro_regime = _optional_contract(
+        market.get("macro"),
+        expected_contract=CURRENT_MACRO_REGIME_CONTRACT,
+        missing_reason="PRODUCER_CURRENT_MACRO_REGIME_MISSING",
+        malformed_reason="DAILY_PRODUCER_CURRENT_MACRO_REGIME_INVALID",
+    )
+    overlay = bundle.get("integrated_decision_overlay_v1")
+    if overlay is not None and (
+        not isinstance(overlay, Mapping) or overlay.get("contract_version") != INTEGRATED_DELIVERY_CONTRACT
+    ):
+        raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_INTEGRATED_DECISION_OVERLAY_INVALID")
+    flow_coverage = market.get("flow_coverage")
+    if flow_coverage is not None and not isinstance(flow_coverage, Mapping):
+        raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_FLOW_COVERAGE_INVALID")
+    return {
+        "source_freshness_matrix": source_matrix,
+        "macro_presentation_context": macro_presentation,
+        "current_macro_regime": macro_regime,
+        "market_flow_coverage": _present(flow_coverage) if isinstance(flow_coverage, Mapping) else _missing("PRODUCER_MARKET_FLOW_COVERAGE_MISSING"),
+        "integrated_decision_overlay": _present(overlay) if isinstance(overlay, Mapping) else _missing("PRODUCER_INTEGRATED_DECISION_OVERLAY_MISSING"),
+        "authority_boundary": _present(bundle["authority_boundary"]),
+    }
 
 
 def load_canonical_daily_producer_session(
@@ -174,12 +253,13 @@ def load_canonical_daily_producer_session(
     if not isinstance(cards, Mapping) or not cards:
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_TICKER_CONTEXTS_MISSING")
 
+    handoff_surfaces = _handoff_surfaces(bundle)
     contexts: dict[str, dict[str, Any]] = {}
     for ticker in sorted(cards):
         card = cards[ticker]
         if not isinstance(ticker, str) or not isinstance(card, Mapping):
             raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_TICKER_CONTEXTS_INVALID")
-        contexts[ticker] = _daily_card_context(ticker, card, bundle)
+        contexts[ticker] = _daily_card_context(ticker, card, bundle, handoff_surfaces)
     provenance = {
         "producer_session_manifest": str(run_path),
         "run_identity": run_identity,

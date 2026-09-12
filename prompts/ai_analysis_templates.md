@@ -1,18 +1,40 @@
-# AI Analysis Templates Based on Context Packages
+# AI Analysis Templates for Producer handoff and retained Consumer contracts
 
 ## Global guardrails
 
-Use only attached context packages and approved Project Knowledge. Before answering, inspect `data_quality.validation_status`, `missing_sections`, `warnings`, `not_fully_confirmed` and `provenance`. Never invent missing values, suppress conflicts, treat current snapshots as historical data, or provide guaranteed buy/sell recommendations.
+Use only the immutable Producer AI handoff and explicitly referenced deterministic
+artifacts. Context packages remain `MANUAL_FALLBACK / NOT_NORMAL_DAILY_PATH`.
+Before answering, inspect handoff lineage/session, `source_freshness_matrix`,
+`macro_presentation_context`, `current_macro_regime`, comparison metadata,
+unavailable/missing states, warnings, and provenance. Never invent missing values,
+suppress conflicts, treat current snapshots as historical data, or provide
+guaranteed buy/sell recommendations.
+
+Every material statement must be labelled as exactly one of: **Producer Fact**,
+**Deterministic Derived**, **Online Evidence** (only when separately supplied and
+never authority-upgrading), **Inference**, or **Unknown**. Producer's
+`PARTIAL_INTERNAL`, `STALE_INTERNAL`, and `UNAVAILABLE_INTERNAL` values stay as
+supplied. Never create a target, probability, sizing, or recommendation.
+
+When present, retain `macro_presentation_context/v1` as descriptive,
+cadence-aware presentation evidence; it is distinct from `current_macro_regime/v1`
+and cannot create a regime. Keep DNSE foreign/value flow, broad market-flow
+positioning, and proprietary flow separate. Treat tactical shadow evidence as
+`SHADOW_ONLY`, not production policy.
 
 ## 1. Single-ticker analysis template
 
 ### Purpose
 
-Produce a structured, evidence-based description of one ticker using a validated context package.
+Produce a structured, evidence-based description of one ticker using a validated
+Producer handoff card (or an explicitly labelled legacy context package).
 
 ### Required input
 
-One `{TICKER}_context.json`, AnalysisGuide, AIUsageRules, and a user-specified purpose/cutoff. `corporate_intelligence` is optional for backward-compatible older context packages.
+One Producer `ai_research_session_bundle.json` with explicit lineage, the selected
+ticker card, AnalysisGuide, AIUsageRules, and a user-specified purpose/cutoff.
+`corporate_intelligence` is optional. A `{TICKER}_context.json` is retained legacy
+fallback only.
 
 ### Prompt
 
@@ -181,7 +203,7 @@ One structured research-synthesis JSON object as specified above, suitable for v
 
 ### Purpose
 
-Turn one governed `ai_next_session_decision_context/v1` package (built by `builders/next_session_decision_context.py` from the Producer's `next_session_decision_brief/v1` handoff) into a next-session Vietnamese-market narrative: what changed between the last two qualified sessions, and a practical IF/THEN playbook -- never a new regime model, ranking, or recommendation engine. If `financial_analysis_session_summary` is supplied, report its availability and source identity as bounded explanatory context only; preserve `RESEARCH_PROXY`, `ABSENT`, `BLOCKED`, `UNAVAILABLE`, and `NOT_APPLICABLE` exactly, and do not turn it into a ratio calculation, valuation conclusion, or action signal.
+Turn one governed `ai_next_session_decision_context/v1` package (built by `builders/next_session_decision_context.py` from the Producer's `next_session_decision_brief/v1` or current `/v2` handoff) into a next-session Vietnamese-market narrative: what changed between governed comparable sessions, and a practical IF/THEN playbook -- never a new regime model, ranking, or recommendation engine. If `financial_analysis_session_summary` is supplied, report its availability and source identity as bounded explanatory context only; preserve `RESEARCH_PROXY`, `ABSENT`, `BLOCKED`, `UNAVAILABLE`, and `NOT_APPLICABLE` exactly, and do not turn it into a ratio calculation, valuation conclusion, or action signal.
 
 ### Required input
 
@@ -192,7 +214,7 @@ One `ai_next_session_decision_context.json` (or equivalent in-context package), 
 ```text
 Phân tích thị trường Việt Nam cho phiên kế tiếp, sử dụng DUY NHẤT dữ liệu trong context package `ai_next_session_decision_context` đính kèm. Không dùng kiến thức thị trường bên ngoài, không dùng tin tức vĩ mô chưa có trong context, và không suy đoán.
 
-Trước tiên nêu `identity.current_session`, `identity.previous_qualified_session`, `source_lineage.producer_checkpoint`, và trạng thái `missingness` của cả chín section (`market_transition`, `sector_transition`, `opportunity_transition`, `lifecycle_transition`, `recommendation_transition`, `invalidation_transition`, `tactical_transition`, `risk_context`, `next_session_watch_conditions`). Một section có availability là `UNAVAILABLE`, `PARTIAL`, hoặc `NOT_APPLICABLE` vẫn phải được nêu rõ ràng như một giới hạn -- không được bỏ qua hay coi là trung tính/bằng không.
+Trước tiên nêu `identity.current_session`, `identity.previous_qualified_session`, `source_lineage.producer_checkpoint`, `comparison_metadata` (bao gồm `comparison_session`, `comparison_session_role`, `session_gap_trading_sessions`, `comparison_fitness`, `comparison_reason_codes`, `skipped_known_sessions`) và trạng thái `missingness` của cả chín section (`market_transition`, `sector_transition`, `opportunity_transition`, `lifecycle_transition`, `recommendation_transition`, `invalidation_transition`, `tactical_transition`, `risk_context`, `next_session_watch_conditions`). Không được gọi comparator là "phiên trước" nếu `comparison_metadata` không xác nhận adjacent; gap nhiều phiên và reason code phải được giữ nguyên. Một section có availability là `UNAVAILABLE`, `PARTIAL`, hoặc `NOT_APPLICABLE` vẫn phải được nêu rõ ràng như một giới hạn -- không được bỏ qua hay coi là trung tính/bằng không.
 
 Sau đó tạo đúng chín phần theo `ai_narrative_contract.required_narrative_sections`:
 

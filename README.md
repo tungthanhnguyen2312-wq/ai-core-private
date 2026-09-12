@@ -1,63 +1,55 @@
-# AI ANALYZE v1.0
+# AI ANALYZE — Consumer contract layer
 
-Codex is the active executor. Consumer is the fail-closed context, AI-contract, and validation layer; it must not infer missing source semantics. Canonical governance is maintained by Producer at `../stock-core-private/docs/`.
+AI ANALYZE is the fail-closed Consumer for Stock Lookup. Its normal input is the
+immutable Producer handoff (`ai_research_session_bundle/v1`) and any explicitly
+referenced deterministic artifact. It validates and preserves qualified contracts
+for human research interaction in ChatGPT, Codex, or another approved AI surface.
 
-AI ANALYZE chuẩn bị các **context package có kiểm soát** từ nguồn VNSTOCK để người dùng làm việc với ChatGPT, Claude hoặc Codex. Hệ thống giúp AI biết dữ liệu nào đang có, dữ liệu nào thiếu, nguồn ở đâu và giới hạn nào phải giữ.
+`stock-core-private` is the Producer and factual/numerical authority. DNSE is its
+primary current market-data direction. This repository does not crawl markets,
+create source authority, upgrade freshness, or turn AI prose into a recommendation.
 
-> **[DEPRECATED 2026-07-17]** Gemini đã bị loại khỏi luồng khuyến nghị sau 2 lần kiểm toán độc lập phát hiện lỗi tự bịa/bỏ sót dữ liệu lặp lại dù input đúng chuẩn (`STOCK_ANALYSIS_MASTER_PLAN.md`, `FINAL_STOCK_ANALYSIS_20260717.md`, được lưu ngoài repository trong hồ sơ vận hành nội bộ). `operating_pack/gemini/` vẫn giữ nguyên trên đĩa làm lịch sử/audit trail, không dùng cho tác vụ mới — xem `docs/v1_0_DailyWorkflow.md` mục D.
+## Start here
 
-AI ANALYZE không chạy crawler, không tự cập nhật thị trường và không tạo khuyến nghị mua/bán. Dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT` luôn là nguồn chỉ đọc.
+- Read [the current Consumer authority map](docs/current_consumer_authority_map.md).
+- For a current Daily handoff, use
+  `builders/canonical_daily_producer_session_ingestion.py` with one explicit,
+  retained `run_manifest.json`; it resolves only its co-located immutable delivery
+  files and never selects a “latest” run.
+- Use [the prompt library](prompts/ai_analysis_templates.md) and
+  [the operating pack](operating_pack/README.md) after the handoff is available.
+- Read [historical planning and operating documents](docs/HISTORICAL_DOCUMENTS.md)
+  only for reproduction or audit context. They do not supersede Producer state.
 
-## Bắt đầu ở đây
+## Authority boundary
 
-- Muốn thử nhanh: đọc [docs/v1_0_QuickStart.md](docs/v1_0_QuickStart.md).
-- Muốn hiểu toàn bộ quy trình: đọc [docs/v1_0_UserGuide.md](docs/v1_0_UserGuide.md).
-- Vận hành mỗi ngày: dùng [docs/v1_0_DailyWorkflow.md](docs/v1_0_DailyWorkflow.md).
-- Gặp lỗi: tra [docs/v1_0_Troubleshooting.md](docs/v1_0_Troubleshooting.md).
-- Các giới hạn đã biết: đọc [docs/v1_0_KnownLimitations.md](docs/v1_0_KnownLimitations.md).
-- Financial Analysis V2 Consumer boundary: đọc [docs/financial_analysis_consumer_context_contract.md](docs/financial_analysis_consumer_context_contract.md).
+Producer → qualified deterministic research → immutable AI handoff → Consumer
+validation/pass-through → human AI research interaction.
 
-## Quy trình ngắn
+- A Producer fact, source identity, freshness state, authority tier, reason code,
+  or unavailable state is preserved as supplied.
+- `macro_presentation_context/v1` is descriptive presentation context and remains
+  distinct from `current_macro_regime/v1`.
+- DNSE foreign/value flow, broader market-flow positioning, and proprietary-flow
+  availability are separate concepts; Consumer does not merge them.
+- Tactical/shadow evidence is non-authoritative. It cannot become a production
+  recommendation, probability, target, or sizing instruction.
+- Missing intrinsic valuation or sizing authority remains blocked/unavailable.
+- AI narrative is non-authoritative: it cannot create a buy/sell decision,
+  target, probability, expected return, allocation, or share count.
 
-1. Mở PowerShell tại thư mục `AI ANALYZE`.
-2. Chọn context package đã có hoặc chạy builder ở chế độ `--dry-run`.
-3. Nếu cần file mới, dùng `--no-dry-run` với tên output mới trong `exports/context_packages/`.
-4. Kiểm tra `generated_at`, ngày dữ liệu mới nhất, `missing_sections`, `warnings`, `not_fully_confirmed` và `provenance`.
-5. Use the approved Project Knowledge and context package through Codex; do not treat any assistant workflow as a source of truth.
-6. Chọn template phân tích một mã, so sánh hoặc screening trong `prompts/ai_analysis_templates.md`.
-7. Chỉ chấp nhận câu trả lời khi AI nêu cutoff, nguồn, dữ liệu thiếu và tách rõ Fact/Derived/Inference/Unknown.
+## Legacy and historical material
 
-## Ba loại tác vụ
+Context packages, VNStock-named schemas, old platform upload instructions, and
+the Gemini pack remain for reproducibility where retained. They are
+`HISTORICAL` or `OPTIONAL_FALLBACK`, not the normal Daily path. Gemini material is
+deprecated historical/audit material and is not a recommended executor.
 
-| Nhu cầu | File dữ liệu cần gắn | Template |
-|---|---|---|
-| Phân tích một mã | Một file `*_context.json` | Single-ticker |
-| So sánh | Hai context package có kỳ, ngày và đơn vị tương thích | Two-ticker comparison |
-| Screening | Batch manifest, batch validation và tối đa 10 context package | Context-package screening |
+## Repository guardrails
 
-Screening chỉ lọc trong tập package được cung cấp, không phải quét toàn thị trường và không phải xếp hạng cơ hội đầu tư.
-
-## Các thư mục quan trọng
-
-- `exports/context_packages/`: context package và báo cáo batch hiện có.
-- `operating_pack/`: hướng dẫn và upload manifest cho từng nền tảng AI.
-- `prompts/`: template yêu cầu phân tích.
-- `validation/`: quy tắc validation, provenance và point-in-time.
-- `knowledge/` và `metadata/`: định nghĩa dữ liệu và quy tắc sử dụng.
-- `release/v1.0/`: snapshot v1.0 đã đóng băng; không sửa tại chỗ.
-- `docs/`: hướng dẫn người dùng và tài liệu vận hành.
-
-## Quy tắc an toàn bắt buộc
-
-- Không sửa, di chuyển, đổi tên hoặc xóa file trong dashboard runtime được chọn bởi `STOCK_LOOKUP_RUNTIME_ROOT`.
-- Không upload database, raw OHLCV, kho BCTC raw hoặc dữ liệu cá nhân lên nền tảng AI.
-- Không coi `-1`, `NULL`, chuỗi rỗng hoặc section thiếu là số 0.
-- Không suy đoán tin tức theo ticker khi mapping chưa được xác nhận.
-- Không dùng metadata/cổ đông hiện tại như dữ liệu lịch sử.
-- Không so sánh số tiền BCTC khi đơn vị hoặc scale chưa tương thích.
-- Không yêu cầu hoặc chấp nhận khuyến nghị mua/bán, giá mục tiêu hay cam kết lợi nhuận.
-
-## Phiên bản
-
-- `release/v1.0`: snapshot dữ liệu, metadata, builder, validation và operating pack đã freeze.
-- `v1.0.1 Documentation Patch`: bổ sung hướng dẫn người dùng cuối bên ngoài snapshot; không thay đổi `release/v1.0`, code hay dữ liệu VNSTOCK.
+- Do not modify the runtime selected by `STOCK_LOOKUP_RUNTIME_ROOT`.
+- Do not treat missing, null, sentinel, stale, partial, or blocked inputs as a
+  usable current value.
+- Keep point-in-time, source, unit, scale, and authority boundaries explicit.
+- Producer state and roadmap remain authoritative; this repository does not own a
+  competing Stock Lookup roadmap.

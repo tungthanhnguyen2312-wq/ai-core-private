@@ -466,6 +466,49 @@ class SyntheticFailClosedTests(unittest.TestCase):
         self.assertEqual("SESSION_BUNDLE_COMPARABLE_TICKER_COHORT", context["lifecycle_transition"]["scope"])
         self.assertEqual("FULL_MARKET_WATCHLIST_TACTICAL_ENTRY_CLASSIFIER", context["tactical_transition"]["scope"])
 
+    def test_adjacent_comparison_metadata_passes_through(self):
+        build_dir = _minimal_package(self.tmp, current_session="2026-09-02", previous_session="2026-09-01")
+        brief_path = build_dir / "next_session_decision_brief.json"
+        brief = json.loads(brief_path.read_text(encoding="utf-8"))
+        brief["comparison_metadata"] = {
+            "schema_version": "1.0.0", "contract_version": "session_comparison_semantics/v1",
+            "comparison_session": "2026-09-01", "comparison_session_role": "IMMEDIATE_PREVIOUS_GOVERNED_SESSION",
+            "session_gap_trading_sessions": 0, "comparison_fitness": "FRESH_COMPARISON",
+            "comparison_reason_codes": [], "skipped_known_sessions": [], "notice": None,
+        }
+        payload = {key: value for key, value in brief.items() if key not in {"artifact_sha256", "artifact_identity"}}
+        digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        brief["artifact_sha256"], brief["artifact_identity"] = digest, f"next_session_decision_brief:{digest}"
+        _write_json(brief_path, brief)
+        context = build_context(load_next_session_decision_package(build_dir, expected_session="2026-09-02", expected_previous_session="2026-09-01"))
+        self.assertEqual("AVAILABLE", context["comparison_metadata"]["availability"])
+        self.assertEqual(brief["comparison_metadata"], context["comparison_metadata"]["value"])
+
+    def test_distant_or_missing_comparator_stays_governed_or_explicitly_missing(self):
+        build_dir = _minimal_package(self.tmp, current_session="2026-09-05", previous_session="2026-09-02")
+        brief_path = build_dir / "next_session_decision_brief.json"
+        brief = json.loads(brief_path.read_text(encoding="utf-8"))
+        brief["comparison_metadata"] = {
+            "schema_version": "1.0.0", "contract_version": "session_comparison_semantics/v1",
+            "comparison_session": "2026-09-02", "comparison_session_role": "DISTANT_PREVIOUS_GOVERNED_SESSION",
+            "session_gap_trading_sessions": 2, "comparison_fitness": "DEGRADED_COMPARISON",
+            "comparison_reason_codes": ["GOVERNED_COMPLETION_GAP"], "skipped_known_sessions": ["2026-09-03", "2026-09-04"],
+            "notice": "Producer governed gap",
+        }
+        payload = {key: value for key, value in brief.items() if key not in {"artifact_sha256", "artifact_identity"}}
+        digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        brief["artifact_sha256"], brief["artifact_identity"] = digest, f"next_session_decision_brief:{digest}"
+        _write_json(brief_path, brief)
+        context = build_context(load_next_session_decision_package(build_dir, expected_session="2026-09-05", expected_previous_session="2026-09-02"))
+        value = context["comparison_metadata"]["value"]
+        self.assertEqual("DISTANT_PREVIOUS_GOVERNED_SESSION", value["comparison_session_role"])
+        self.assertEqual(2, value["session_gap_trading_sessions"])
+        self.assertEqual(["GOVERNED_COMPLETION_GAP"], value["comparison_reason_codes"])
+
+        missing_dir = _minimal_package(self.tmp / "missing", current_session="2026-09-06", previous_session=None)
+        missing = build_context(load_next_session_decision_package(missing_dir, expected_session="2026-09-06"))
+        self.assertEqual("MISSING", missing["comparison_metadata"]["availability"])
+
     def test_financial_analysis_session_summary_is_optional_and_read_only(self):
         build_dir = _minimal_package(
             self.tmp, current_session="2026-09-02", previous_session=None,
