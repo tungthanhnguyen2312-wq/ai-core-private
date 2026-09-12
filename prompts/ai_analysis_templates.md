@@ -33,8 +33,7 @@ Producer handoff card (or an explicitly labelled legacy context package).
 
 One Producer `ai_research_session_bundle.json` with explicit lineage, the selected
 ticker card, AnalysisGuide, AIUsageRules, and a user-specified purpose/cutoff.
-`corporate_intelligence` is optional for backward-compatible older context
-packages. A `{TICKER}_context.json` is retained legacy fallback only.
+`corporate_intelligence` is optional for backward-compatible older context packages. A `{TICKER}_context.json` is retained legacy fallback only.
 
 ### Prompt
 
