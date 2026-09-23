@@ -30,6 +30,9 @@ from shadow_recommendation_consumer_narrative import (  # noqa: E402
 from official_financial_candidate_evidence import (  # noqa: E402
     apply_bundle_official_financial_candidate_evidence_contract,
 )
+from financial_analysis_consumer_context import (  # noqa: E402
+    apply_bundle_financial_analysis_v2_contract,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -2868,6 +2871,11 @@ def apply_bundle_market_wide_historical_research_context_contract(context: dict[
     return context
 
 
+_CURRENT_VALUATION_METRIC_STATUSES = {
+    "READY", "RESEARCH_USABLE", "BLOCKED", "NOT_APPLICABLE", "INPUT_BLOCKED", "PE_NOT_MEANINGFUL",
+}
+
+
 def market_wide_current_valuation_contract(bundle: Mapping[str, Any] | None, ticker: str) -> dict[str, Any] | None:
     """Validate and pass through the Producer's current-only valuation snapshot.
 
@@ -2906,7 +2914,7 @@ def market_wide_current_valuation_contract(bundle: Mapping[str, Any] | None, tic
         and isinstance(raw.get("financial_input"), Mapping) and isinstance(raw.get("metrics"), Mapping)
         and not (forbidden_top_level_fields & set(raw))
         and all(
-            isinstance(metric, Mapping) and metric.get("status") in {"READY", "RESEARCH_USABLE", "BLOCKED", "NOT_APPLICABLE"}
+            isinstance(metric, Mapping) and metric.get("status") in _CURRENT_VALUATION_METRIC_STATUSES
             and ((metric.get("status") in {"READY", "RESEARCH_USABLE"}
                   and isinstance(metric.get("value"), (int, float)) and not isinstance(metric.get("value"), bool))
                  or (metric.get("status") not in {"READY", "RESEARCH_USABLE"} and metric.get("value") is None))
@@ -2944,7 +2952,7 @@ def apply_bundle_market_wide_current_valuation_contract(context: dict[str, Any],
         context.setdefault("provenance", []).append({
             "source_file": "analysis_bundle.json", "source_dataset": "market_wide_current_valuation",
             "transformation": "Pass through Producer current valuation inputs, per-method applicability/status, share-authority tiers, financial period/basis, lineage, and blockers verbatim.",
-            "limitations": ["CURRENT_RESEARCH only; never historical PIT or RAW_AS_TRADED.", "RESEARCH_USABLE is research-only and never becomes READY, authoritative valuation, or VALUE eligibility.", "NOT_APPLICABLE is preserved per method and does not globally block the ticker.", "No target price, intrinsic value, DCF, ranking, recommendation, sizing, or portfolio instruction.", "Consumer does not upgrade share or financial authority, or combine valuation methods across differing price sessions."],
+            "limitations": ["CURRENT_RESEARCH only; never historical PIT or RAW_AS_TRADED.", "RESEARCH_USABLE is research-only and never becomes READY, authoritative valuation, or VALUE eligibility.", "INPUT_BLOCKED is unavailable/blocked for that method and is not a numeric estimate.", "PE_NOT_MEANINGFUL is not cheap or expensive P/E.", "TTM_MARKET_CAP_MONETARY_BASIS_INCOMPATIBLE is an explicit monetary-basis blocker, not a ratio.", "NOT_APPLICABLE is preserved per method and does not globally block the ticker.", "No target price, intrinsic value, DCF, ranking, recommendation, sizing, or portfolio instruction.", "Consumer does not upgrade share or financial authority, or combine valuation methods across differing price sessions."],
         })
     return context
 
@@ -3350,7 +3358,7 @@ _CURRENT_RESEARCH_DECISION_PACKET_AUTHORITY_BOUNDARY = {
     "no_recommendation_probability_expected_return_target_or_sizing": True,
     "raw_as_traded": "NOT_PROMOTED", "pit": "BLOCKED",
 }
-_PACKET_VALUATION_METRIC_STATUSES = {"READY", "RESEARCH_USABLE", "BLOCKED", "NOT_APPLICABLE"}
+_PACKET_VALUATION_METRIC_STATUSES = _CURRENT_VALUATION_METRIC_STATUSES
 
 
 def _current_research_decision_packet_manifest_entry_valid(name: str, entry: Any) -> bool:
@@ -5100,6 +5108,7 @@ def build_context_package(
     apply_bundle_market_wide_current_fundamental_research_contract(context, bundle_payload)
     apply_bundle_current_market_sector_leadership_context_contract(context, bundle_payload)
     apply_bundle_current_financial_momentum_context_contract(context, bundle_payload)
+    apply_bundle_financial_analysis_v2_contract(context, bundle_payload)
     apply_bundle_official_financial_candidate_evidence_contract(context, bundle_payload)
     apply_bundle_current_corporate_event_context_contract(context, bundle_payload)
     apply_bundle_current_research_risk_register_contract(context, bundle_payload)

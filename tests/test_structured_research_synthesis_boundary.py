@@ -1730,6 +1730,32 @@ class StructuredResearchSynthesisBoundaryTests(unittest.TestCase):
         known_refs = result["derived_contract_metadata"]["known_evidence_refs"]
         self.assertNotIn("market_wide_current_valuation.metrics.ev_sales", known_refs)
 
+    def test_pe_not_meaningful_and_input_blocked_are_not_usable_numeric_estimates(self):
+        ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)
+        ctx["market_wide_current_valuation"]["metrics"]["pe_ttm"] = {
+            "status": "PE_NOT_MEANINGFUL", "value": None,
+            "blocker_reason_codes": ["NEGATIVE_EARNINGS", "PE_NOT_MEANINGFUL"],
+        }
+        ctx["market_wide_current_valuation"]["metrics"]["ps_ttm"] = {
+            "status": "INPUT_BLOCKED", "value": None,
+            "blocker_reason_codes": ["TTM_MARKET_CAP_MONETARY_BASIS_INCOMPATIBLE"],
+        }
+        resp = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        resp["valuation_context_summary"] = (
+            "P/E TTM is PE_NOT_MEANINGFUL; P/S TTM is INPUT_BLOCKED because of "
+            "TTM_MARKET_CAP_MONETARY_BASIS_INCOMPATIBLE. Neither is a numeric estimate."
+        )
+        result = accept_structured_research_synthesis(ctx, resp)
+        self.assertEqual("accepted", result["status"])
+        known_refs = result["derived_contract_metadata"]["known_evidence_refs"]
+        self.assertNotIn("market_wide_current_valuation.metrics.pe_ttm", known_refs)
+        self.assertNotIn("market_wide_current_valuation.metrics.ps_ttm", known_refs)
+        cheap = copy.deepcopy(_AI_RESPONSE_FIXTURE)
+        cheap["valuation_context_summary"] = "P/E TTM is PE_NOT_MEANINGFUL, so the stock is cheap."
+        overclaim = accept_structured_research_synthesis(ctx, cheap)
+        self.assertEqual("rejected", overclaim["status"])
+        self.assertIn("prohibited_valuation_overclaim", overclaim["reasons"])
+
     # --- VALIDATION #7: absent historical context still allows a partial synthesis ---
     def test_absent_historical_context_allows_partial_synthesis(self):
         ctx = copy.deepcopy(_TICKER_CONTEXT_FIXTURE)

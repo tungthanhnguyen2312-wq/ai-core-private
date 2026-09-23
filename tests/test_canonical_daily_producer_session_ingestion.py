@@ -53,7 +53,24 @@ class Fixture:
             "operation_identity": OPERATION, "product_identity": PRODUCT, "producer_head": HEAD,
             "consumer_compatible_contract_version": "current_daily_decision_research_contract/v1",
             "authority_boundary": {"probability": "UNKNOWN_UNCALIBRATED"},
-            "market": {"summary": {"source_market_session": SESSION}},
+            "market": {
+                "summary": {"source_market_session": SESSION},
+                "macro": {"contract_version": "current_macro_regime/v1", "status": "UNAVAILABLE", "is_actionable": False},
+                "macro_presentation_context": {"contract_version": "macro_presentation_context/v1", "status": "UNAVAILABLE", "is_actionable": False},
+                "flow_coverage": {"status": "UNAVAILABLE", "reason_codes": ["NO_COMPATIBLE_CURRENT_MARKET_FLOW_ARTIFACT"]},
+            },
+            "source_freshness_matrix": {
+                "contract_version": "ai_handoff_source_freshness_matrix/v1",
+                "domains": {
+                    "fundamentals": {"fitness": "PARTIAL_INTERNAL", "reason_codes": ["NO_EMBEDDED_REPORTING_PERIOD_TIMESTAMP_REUSE_BY_DESIGN"]},
+                    "market_flow_positioning": {"fitness": "UNAVAILABLE_INTERNAL", "reason_codes": ["NO_COMPATIBLE_CURRENT_MARKET_FLOW_ARTIFACT"]},
+                },
+                "is_actionable": False,
+            },
+            "integrated_decision_overlay_v1": {
+                "contract_version": "integrated_decision_delivery_overlay/v1", "session": SESSION,
+                "authority_boundary": {"is_actionable": False},
+            },
             "ticker_research_contexts": {"ABB": _card()},
             "lineage": {"input_artifacts": {"triage": {"artifact_identity": "triage:fixture"}}},
         }
@@ -96,6 +113,35 @@ class CanonicalDailyProducerSessionIngestionTests(unittest.TestCase):
         self.assertEqual(["ABB"], sorted(loaded["ticker_contexts"]))
         self.assertEqual(PRODUCT, loaded["ticker_contexts"]["ABB"]["current_daily_decision_research"]["source_artifact_identity"])
         self.assertEqual(HEAD, loaded["provenance"]["producer_head"])
+
+    def test_current_producer_contract_surfaces_are_passed_through_without_upgrade(self):
+        surfaces = load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)["ticker_contexts"]["ABB"]["producer_handoff_surfaces"]
+        matrix = surfaces["source_freshness_matrix"]
+        self.assertEqual("AVAILABLE", matrix["availability"])
+        self.assertEqual("PARTIAL_INTERNAL", matrix["value"]["domains"]["fundamentals"]["fitness"])
+        self.assertEqual("UNAVAILABLE_INTERNAL", matrix["value"]["domains"]["market_flow_positioning"]["fitness"])
+        self.assertEqual("macro_presentation_context/v1", surfaces["macro_presentation_context"]["value"]["contract_version"])
+        self.assertEqual("current_macro_regime/v1", surfaces["current_macro_regime"]["value"]["contract_version"])
+        self.assertEqual("UNAVAILABLE", surfaces["market_flow_coverage"]["value"]["status"])
+        self.assertEqual("integrated_decision_delivery_overlay/v1", surfaces["integrated_decision_overlay"]["value"]["contract_version"])
+
+    def test_missing_optional_current_surfaces_are_explicit_not_synthesized(self):
+        del self.fixture.bundle["source_freshness_matrix"]
+        del self.fixture.bundle["market"]["macro"]
+        del self.fixture.bundle["market"]["macro_presentation_context"]
+        del self.fixture.bundle["integrated_decision_overlay_v1"]
+        self.fixture._write_all()
+        surfaces = load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)["ticker_contexts"]["ABB"]["producer_handoff_surfaces"]
+        self.assertEqual("MISSING", surfaces["source_freshness_matrix"]["availability"])
+        self.assertEqual("MISSING", surfaces["current_macro_regime"]["availability"])
+        self.assertEqual("MISSING", surfaces["macro_presentation_context"]["availability"])
+        self.assertEqual("MISSING", surfaces["integrated_decision_overlay"]["availability"])
+
+    def test_wrong_current_contract_version_fails_closed(self):
+        self.fixture.bundle["market"]["macro_presentation_context"]["contract_version"] = "current_macro_regime/v1"
+        self.fixture._write_all()
+        with self.assertRaisesRegex(CanonicalDailyProducerSessionError, "MACRO_PRESENTATION_CONTEXT_INVALID"):
+            load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)
 
     def test_wrong_identity_is_rejected(self):
         self.fixture.bundle["operation_identity"] = "daily_research_session_operation:other"

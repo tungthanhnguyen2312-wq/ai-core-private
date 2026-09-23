@@ -6,12 +6,12 @@
 - [ ] Do not upload the dashboard runtime selected by `STOCK_LOOKUP_RUNTIME_ROOT`, SQLite, raw OHLCV or `data_bctc/`.
 - [ ] Confirm files contain no sensitive personal notes or portfolio data.
 - [ ] Confirm final QA release gate is PASS.
-- [ ] Confirm context package JSON parses and provenance is present.
+- [ ] Confirm the immutable Producer handoff JSON parses, its manifest lineage is present, and provenance is present. A context package is manual fallback only.
 
 ## Before each task
 
 - [ ] Select single-ticker, comparison or screening workflow.
-- [ ] Attach only required context packages.
+- [ ] Attach only the required Producer handoff and explicitly referenced deterministic artifacts.
 - [ ] Check current manifest/validation/staleness/rebuild decision.
 - [ ] Verify `missing_sections`, strict/non-strict status and latest dates.
 - [ ] State current, retrospective or backtest mode.

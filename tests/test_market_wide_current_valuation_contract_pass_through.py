@@ -68,6 +68,38 @@ def test_shadow_proxy_requires_lower_authority_labels_and_preserves_stale_share_
     assert market_wide_current_valuation_contract({"tickers": {"AAA": {"market_wide_current_valuation": raw}}}, "AAA")["status"] == "malformed"
 
 
+def test_pe_not_meaningful_and_monetary_basis_blocker_are_preserved_without_numeric_estimate():
+    raw = _raw()
+    raw["metrics"] = {
+        "P/E_TTM": {
+            "method_id": "P/E_TTM", "status": "PE_NOT_MEANINGFUL", "value": None,
+            "applicability": "APPLICABLE",
+            "blocker_reason_codes": ["NEGATIVE_EARNINGS", "PE_NOT_MEANINGFUL"],
+            "ttm_input_source": "NEW_QUALIFIED_TTM_SELECTED", "is_actionable": False,
+        },
+        "P/S_TTM": {
+            "method_id": "P/S_TTM", "status": "INPUT_BLOCKED", "value": None,
+            "applicability": "APPLICABLE",
+            "blocker_reason_codes": ["TTM_MARKET_CAP_MONETARY_BASIS_INCOMPATIBLE"],
+            "ttm_input_source": "NEW_QUALIFIED_TTM_SELECTED",
+            "ttm_currency": None, "ttm_scale": None, "is_actionable": False,
+        },
+        "P/B": {"status": "BLOCKED", "value": None},
+    }
+    result = market_wide_current_valuation_contract({"tickers": {"AAA": {"market_wide_current_valuation": raw}}}, "AAA")
+    assert result["metrics"]["P/E_TTM"]["status"] == "PE_NOT_MEANINGFUL"
+    assert result["metrics"]["P/E_TTM"]["value"] is None
+    assert result["metrics"]["P/S_TTM"]["status"] == "INPUT_BLOCKED"
+    assert result["metrics"]["P/S_TTM"]["blocker_reason_codes"] == ["TTM_MARKET_CAP_MONETARY_BASIS_INCOMPATIBLE"]
+    assert result["metrics"]["P/S_TTM"]["value"] is None
+    context = {"ticker": "AAA", "research_stance": "WATCH", "provenance": []}
+    apply_bundle_market_wide_current_valuation_contract(context, {"tickers": {"AAA": {"market_wide_current_valuation": raw}}})
+    assert context["research_stance"] == "WATCH"
+    assert context["market_wide_current_valuation"]["metrics"]["P/E_TTM"]["status"] == "PE_NOT_MEANINGFUL"
+    assert any("PE_NOT_MEANINGFUL" in note for note in context["provenance"][-1]["limitations"])
+    assert any("TTM_MARKET_CAP_MONETARY_BASIS_INCOMPATIBLE" in note for note in context["provenance"][-1]["limitations"])
+
+
 def test_research_usable_ready_blocked_and_not_applicable_stay_per_method():
     raw = _raw()
     raw["entity_class"] = "bank"

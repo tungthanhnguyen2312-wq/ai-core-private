@@ -3,7 +3,7 @@
 1. Create a Project and add the reference files from `upload_manifest.json` within current account limits.
 2. Add `project_instructions.md` as project instructions.
 3. Start one chat per task type/cutoff to avoid mixing stale contexts.
-4. Attach the required context package(s) and current batch validation when applicable.
+4. Attach the immutable Producer AI handoff and explicitly referenced deterministic artifacts. A context package is a labelled manual fallback, not the normal Daily input.
 5. Ask ChatGPT to run the validation preamble before analysis.
 6. Review the operator checklist and reject answers that hide unknowns or lack provenance.
 
