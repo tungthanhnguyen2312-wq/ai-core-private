@@ -125,6 +125,31 @@ class CanonicalDailyProducerSessionIngestionTests(unittest.TestCase):
         self.assertEqual("UNAVAILABLE", surfaces["market_flow_coverage"]["value"]["status"])
         self.assertEqual("integrated_decision_delivery_overlay/v1", surfaces["integrated_decision_overlay"]["value"]["contract_version"])
 
+    def test_synthesis_request_keeps_available_macro_and_missing_surfaces_verbatim(self):
+        available = {
+            "status": "AVAILABLE", "macro_artifact_identity": "current_macro_regime:retained",
+            "cutoff": "2026-08-25T08:00:00+00:00", "macro_regime": {"state": "MIXED"},
+            "state_axes": {}, "observations": {}, "excluded_observations": {},
+            "is_actionable": False,
+        }
+        self.fixture.bundle["market"]["macro"] = available
+        del self.fixture.bundle["market"]["macro_presentation_context"]
+        self.fixture._write_all()
+        context = load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)["ticker_contexts"]["ABB"]
+        original = copy.deepcopy(context)
+        request = prepare_synthesis_session([{"context": context}], session_label=SESSION)["manifest"]["requests"][0]
+        assert request["producer_handoff_surfaces"] == context["producer_handoff_surfaces"]
+        assert request["producer_handoff_surfaces"]["current_macro_regime"]["value"] == available
+        assert request["producer_handoff_surfaces"]["macro_presentation_context"]["availability"] == "MISSING"
+        assert request["permitted_evidence_refs"] == []
+        assert context == original
+
+    def test_synthesis_request_refuses_malformed_handoff_envelope(self):
+        context = load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)["ticker_contexts"]["ABB"]
+        context["producer_handoff_surfaces"]["current_macro_regime"] = {"availability": "AVAILABLE", "value": 2}
+        with self.assertRaisesRegex(ValueError, "PRODUCER_HANDOFF_SURFACES_MALFORMED"):
+            prepare_synthesis_session([{"context": context}], session_label=SESSION)
+
     def test_missing_optional_current_surfaces_are_explicit_not_synthesized(self):
         del self.fixture.bundle["source_freshness_matrix"]
         del self.fixture.bundle["market"]["macro"]
