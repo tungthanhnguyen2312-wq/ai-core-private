@@ -3,38 +3,17 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vn_time import vn_now_iso  # noqa: E402
+from vn_time import vn_now_iso   # noqa: E402
+from canonical_identity import load_json_object as load_json, sha256_file  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPORT_ROOT = (ROOT / "exports" / "context_packages").resolve()
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            value = json.load(handle)
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(f"JSON not found: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"Expected JSON object: {path}")
-    return value
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def artifact_entry(path: Path, artifact_type: str, version: Any = None) -> dict[str, Any]:

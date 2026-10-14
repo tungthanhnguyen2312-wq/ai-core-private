@@ -7,12 +7,11 @@ later inputs, thereby preserving the attribution boundary as the temporal author
 from __future__ import annotations
 
 import copy
-import hashlib
-import json
 from collections import Counter
 from typing import Any, Mapping, Sequence
 
 from builders.prospective_research_attribution import ATTRIBUTION_STATUSES
+from builders.canonical_identity import content_identity as _identity, is_identity_string as _identity_string
 
 
 SCHEMA_VERSION = "1.0.0"
@@ -31,18 +30,6 @@ _AUTHORITY_BOUNDARY = [
     "NOT_RECOMMENDATION_ENTRY_ACTION_SIZING_OR_STRATEGY_OPTIMIZATION",
     "NOT_HISTORICAL_PIT_OR_RAW_AS_TRADED_AUTHORITY",
 ]
-
-
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
-def _identity(prefix: str, value: Any) -> str:
-    return prefix + hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
-
-
-def _identity_string(value: Any) -> bool:
-    return isinstance(value, str) and bool(value.strip()) and ":" in value
 
 
 def _reference_values(value: Any) -> list[str]:

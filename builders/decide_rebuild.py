@@ -9,23 +9,11 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vn_time import vn_now_iso  # noqa: E402
+from vn_time import vn_now_iso   # noqa: E402
+from canonical_identity import load_json_object as load_json  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_ROOT = (ROOT / "exports" / "context_packages").resolve()
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            value = json.load(handle)
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(f"JSON not found: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"Expected JSON object: {path}")
-    return value
 
 
 def decide(staleness: dict[str, Any], validation: dict[str, Any]) -> dict[str, Any]:

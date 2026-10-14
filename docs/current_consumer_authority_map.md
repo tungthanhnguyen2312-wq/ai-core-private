@@ -61,5 +61,7 @@ distinct rather than deleted or relabelled as current Daily ingestion.
 ## Rebaseline record
 
 `AI_CORE_CONSUMER_REBASELINE_AND_CURRENT_PRODUCER_CONTRACT_CONVERGENCE_V1`
-records Consumer convergence only. Producer `STATE.md` and `ROADMAP_STATE.json`
-remain the authoritative Stock Lookup control plane.
+records Consumer convergence only. Producer `ROADMAP_STATE.json` (milestone state)
+and the controlling Producer contracts remain the authoritative Stock Lookup control
+plane, navigated through Producer `docs/ACTIVE_STATE.md`; Producer `STATE.md` is
+preserved history.

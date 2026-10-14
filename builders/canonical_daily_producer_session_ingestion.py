@@ -32,25 +32,19 @@ class CanonicalDailyProducerSessionError(ValueError):
     """A concise, deterministic refusal to consume operational evidence."""
 
 
-def _load_json(path: Path, reason: str) -> Mapping[str, Any]:
+def _load_json(path: Path, reason: str) -> tuple[Mapping[str, Any], str]:
+    """Read once; the returned digest is of exactly the bytes that were parsed."""
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        text = raw.decode("utf-8")
+        del raw  # keep peak memory at one copy of the document plus the parse
+        value = json.loads(text)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise CanonicalDailyProducerSessionError(reason) from exc
     if not isinstance(value, Mapping):
         raise CanonicalDailyProducerSessionError(reason)
-    return value
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-    except OSError as exc:
-        raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_ARTIFACT_UNREADABLE") from exc
-    return digest.hexdigest()
+    return value, digest
 
 
 def _require_string(value: Any, reason: str, *, prefix: str | None = None) -> str:
@@ -59,11 +53,11 @@ def _require_string(value: Any, reason: str, *, prefix: str | None = None) -> st
     return value
 
 
-def _verify_hash(manifest: Mapping[str, Any], filename: str, path: Path) -> None:
+def _verify_hash(manifest: Mapping[str, Any], filename: str, sha256: str) -> None:
     record = (manifest.get("files") or {}).get(filename)
     if not isinstance(record, Mapping) or not isinstance(record.get("sha256"), str):
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_DELIVERY_HASH_MISSING:" + filename)
-    if _sha256(path) != record["sha256"]:
+    if sha256 != record["sha256"]:
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_DELIVERY_HASH_MISMATCH:" + filename)
 
 
@@ -73,30 +67,33 @@ def _daily_card_context(
     bundle: Mapping[str, Any],
     handoff_surfaces: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Adapt an already-produced card to the established Consumer card contract."""
-    context = {
+    """Adapt an already-produced card to the established Consumer card contract.
+
+    The candidate deliberately references the parsed bundle: the contract returns
+    an independent deep copy of an accepted card, so copying first is redundant.
+    """
+    candidate = {
+        **card,
+        "source_artifact_identity": bundle["product_identity"],
+        "source_session": bundle["session"],
+        "market_brief": (bundle.get("market") or {}).get("summary"),
+        "authority_boundary": bundle["authority_boundary"],
+        "is_actionable": False,
+    }
+    accepted = current_daily_decision_research_contract(
+        {"tickers": {ticker: {"current_daily_decision_research": candidate}}}, ticker,
+    )
+    if not isinstance(accepted, Mapping) or accepted.get("status") == "malformed":
+        raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_TICKER_CONTEXT_INVALID:" + ticker)
+    return {
         "ticker": ticker,
-        "current_daily_decision_research": {
-            **copy.deepcopy(dict(card)),
-            "source_artifact_identity": bundle["product_identity"],
-            "source_session": bundle["session"],
-            "market_brief": copy.deepcopy((bundle.get("market") or {}).get("summary")),
-            "authority_boundary": copy.deepcopy(bundle["authority_boundary"]),
-            "is_actionable": False,
-        },
+        "current_daily_decision_research": accepted,
         # These are bundle-scoped Producer facts rather than ticker-card fields.  Keep
         # the full supplied object behind an explicit availability envelope so a
         # Consumer product can retain it without recomputing freshness, creating a
         # macro regime, or collapsing distinct flow/authority states.
         "producer_handoff_surfaces": copy.deepcopy(dict(handoff_surfaces)),
     }
-    accepted = current_daily_decision_research_contract(
-        {"tickers": {ticker: {"current_daily_decision_research": context["current_daily_decision_research"]}}}, ticker,
-    )
-    if not isinstance(accepted, Mapping) or accepted.get("status") == "malformed":
-        raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_TICKER_CONTEXT_INVALID:" + ticker)
-    context["current_daily_decision_research"] = copy.deepcopy(dict(accepted))
-    return context
 
 
 def _present(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -184,7 +181,7 @@ def load_canonical_daily_producer_session(
     run_path = Path(producer_session_manifest)
     if run_path.name != RUN_MANIFEST_FILENAME:
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_RUN_MANIFEST_FILENAME_INVALID")
-    run = _load_json(run_path, "DAILY_PRODUCER_RUN_MANIFEST_INVALID")
+    run, _ = _load_json(run_path, "DAILY_PRODUCER_RUN_MANIFEST_INVALID")
     if run.get("schema_version") != DAILY_PRODUCER_RUN_CONTRACT:
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_RUN_CONTRACT_UNSUPPORTED")
     if run.get("target_market_session") != session:
@@ -201,14 +198,14 @@ def load_canonical_daily_producer_session(
 
     ai_manifest_path = run_path.with_name(AI_MANIFEST_FILENAME)
     bundle_path = run_path.with_name(AI_BUNDLE_FILENAME)
-    ai_manifest = _load_json(ai_manifest_path, "DAILY_PRODUCER_AI_MANIFEST_INVALID")
-    bundle = _load_json(bundle_path, "DAILY_PRODUCER_AI_BUNDLE_INVALID")
+    ai_manifest, ai_manifest_sha256 = _load_json(ai_manifest_path, "DAILY_PRODUCER_AI_MANIFEST_INVALID")
+    bundle, bundle_sha256 = _load_json(bundle_path, "DAILY_PRODUCER_AI_BUNDLE_INVALID")
     ai_delivery = run.get("ai_delivery")
     if not isinstance(ai_delivery, Mapping):
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_RUN_DELIVERY_MISSING")
-    for filename, path in ((AI_MANIFEST_FILENAME, ai_manifest_path), (AI_BUNDLE_FILENAME, bundle_path)):
+    for filename, sha256 in ((AI_MANIFEST_FILENAME, ai_manifest_sha256), (AI_BUNDLE_FILENAME, bundle_sha256)):
         record = ai_delivery.get(filename)
-        if not isinstance(record, Mapping) or record.get("sha256") != _sha256(path):
+        if not isinstance(record, Mapping) or record.get("sha256") != sha256:
             raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_RUN_DELIVERY_HASH_MISMATCH:" + filename)
 
     if ai_manifest.get("schema_version") != AI_BUNDLE_MANIFEST_CONTRACT:
@@ -223,7 +220,7 @@ def load_canonical_daily_producer_session(
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_CONSUMER_CONTRACT_UNSUPPORTED")
     if ai_manifest.get("primary_bundle_filename") != AI_BUNDLE_FILENAME:
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_PRIMARY_BUNDLE_REFERENCE_INVALID")
-    _verify_hash(ai_manifest, AI_BUNDLE_FILENAME, bundle_path)
+    _verify_hash(ai_manifest, AI_BUNDLE_FILENAME, bundle_sha256)
 
     if bundle.get("schema_version") != AI_RESEARCH_SESSION_BUNDLE_CONTRACT:
         raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_AI_BUNDLE_CONTRACT_UNSUPPORTED")
@@ -269,7 +266,7 @@ def load_canonical_daily_producer_session(
         "session": session,
         "input_artifact_identities": copy.deepcopy(dict(upstream)),
         "source_artifact_identities": copy.deepcopy(dict(ai_manifest["source_artifact_identities"])),
-        "ai_bundle_sha256": _sha256(bundle_path),
-        "ai_manifest_sha256": _sha256(ai_manifest_path),
+        "ai_bundle_sha256": bundle_sha256,
+        "ai_manifest_sha256": ai_manifest_sha256,
     }
     return {"ticker_contexts": contexts, "provenance": provenance}

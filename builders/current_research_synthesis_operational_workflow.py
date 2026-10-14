@@ -1,12 +1,11 @@
 """Provider-neutral prepare/ingest workflow; no model invocation or prose generation."""
 from __future__ import annotations
-import copy,hashlib,json
+import copy
 from typing import Any,Mapping,Sequence
 from builders.structured_research_synthesis_boundary import LEGACY_DIRECT,accept_structured_research_synthesis
 from builders.accepted_structured_synthesis_corpus import register_accepted_structured_synthesis,corpus_to_dossier_batch_inputs
+from builders.canonical_identity import content_identity as _i
 SCHEMA_VERSION='1.0.0';CONTRACT_VERSION='current_research_synthesis_operational_workflow/v1'
-def _c(v):return json.dumps(v,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)
-def _i(p,v):return p+hashlib.sha256(_c(v).encode()).hexdigest()
 _COMPONENTS=('watchlist_tactical_entry_classifier','current_opportunity_decision_context','current_research_decision_packet','current_research_scenario_context','current_market_sector_leadership_context','current_financial_momentum_context','current_corporate_event_context','current_research_risk_register','market_wide_current_valuation','market_wide_historical_research_context')
 def build_synthesis_request_package(context:Mapping[str,Any],*,packet_consumption_mode:str=LEGACY_DIRECT)->dict[str,Any]:
  if not isinstance(context,Mapping) or not isinstance(context.get('ticker'),str):raise ValueError('REQUEST_CONTEXT_MALFORMED')

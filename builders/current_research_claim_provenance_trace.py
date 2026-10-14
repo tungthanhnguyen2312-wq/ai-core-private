@@ -10,7 +10,6 @@ the former case the trace says so explicitly instead of pretending an exact link
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 from typing import Any, Iterable, Mapping
 
@@ -19,6 +18,7 @@ from builders.structured_research_synthesis_boundary import (
     PACKET_SHADOW,
     accept_structured_research_synthesis,
 )
+from builders.canonical_identity import content_identity as _identity
 
 SCHEMA_VERSION = "1.0.0"
 CONTRACT_VERSION = "current_research_claim_provenance_trace/v1"
@@ -70,14 +70,6 @@ _LIMITATION_KEYS = {
     "reason_codes", "warnings", "limitations", "allowed_uses", "status", "context_status",
     "event_status", "temporal_completeness", "probability_status", "share_basis_status",
 }
-
-
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
-def _identity(prefix: str, value: Any) -> str:
-    return prefix + hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
 
 
 def _parse_response(response: str | Mapping[str, Any]) -> Mapping[str, Any]:

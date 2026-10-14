@@ -7,10 +7,9 @@ a prediction: an observed price move is only an observation on an explicit basis
 from __future__ import annotations
 
 import copy
-import hashlib
-import json
 from collections import Counter
 from typing import Any, Mapping, Sequence
+from builders.canonical_identity import content_identity as _identity
 
 
 SCHEMA_VERSION = "1.0.0"
@@ -39,14 +38,6 @@ _AUTHORITY_BOUNDARY = [
     "NOT_BACKTEST_NOT_EXPECTED_RETURN_NOT_PROBABILITY",
     "NOT_RECOMMENDATION_NOT_SIZING_NOT_STRATEGY_RANKING",
 ]
-
-
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
-def _identity(prefix: str, value: Any) -> str:
-    return prefix + hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
 
 
 def _nonempty_string(value: Any) -> bool:
