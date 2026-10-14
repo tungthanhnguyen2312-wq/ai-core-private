@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import os
 import tempfile
@@ -16,6 +15,7 @@ from builders.prospective_learning_longitudinal_registry import (
     render_registry_inventory,
     summarize_registry,
 )
+from builders.canonical_identity import canonical_json as _canonical, content_identity as _identity
 
 
 SCHEMA_VERSION = "1.0.0"
@@ -26,14 +26,6 @@ _AUTHORITY_BOUNDARY = [
     "NOT_SCORE_PERFORMANCE_BACKTEST_OR_MODEL_LEARNING",
     "NOT_PIT_RAW_AS_TRADED_OR_RECOMMENDATION_AUTHORITY",
 ]
-
-
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
-def _identity(prefix: str, value: Any) -> str:
-    return prefix + hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
 
 
 def rollforward_registry(registry: Mapping[str, Any], product_inputs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

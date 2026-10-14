@@ -2,7 +2,8 @@
 
 The files below are retained for audit and reproducibility. They describe earlier
 Consumer evolution and do not override `AGENTS.md`, the current Producer
-`../stock-core-private/docs/STATE.md`, or Producer roadmap state.
+navigation set (`../stock-core-private/docs/ACTIVE_STATE.md` and the compact files
+it names), or Producer roadmap state.
 
 ## Historical planning
 

@@ -8,26 +8,18 @@ avoid recursive self-hashing. VNSTOCK is never read or written by this script.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vn_time import vn_now_iso  # noqa: E402
+from vn_time import vn_now_iso   # noqa: E402
+from canonical_identity import sha256_file  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 RELEASE_ROOT = (ROOT / "release" / "v1.0").resolve()
 MANAGED_DIRS = ["project_discovery","metadata","knowledge","summary","context_packages","validation","workflows","builders","exports","docs","prompts","tests","operating_pack"]
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def collect_inventory() -> list[dict[str, Any]]:

@@ -1,13 +1,12 @@
 """Immutable, acceptance-gated retention for structured current-research responses."""
 from __future__ import annotations
-import copy, hashlib, json, os, tempfile
+import copy, os, tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 from builders.structured_research_synthesis_boundary import LEGACY_DIRECT, accept_structured_research_synthesis
+from builders.canonical_identity import canonical_json as _canonical, content_identity as _identity
 
 SCHEMA_VERSION = "1.0.0"; CONTRACT_VERSION = "accepted_structured_synthesis_corpus/v1"
-def _canonical(v: Any) -> str: return json.dumps(v, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
-def _identity(p: str, v: Any) -> str: return p + hashlib.sha256(_canonical(v).encode()).hexdigest()
 def _context_identity(context: Mapping[str, Any]) -> str: return _identity("current_research_context:", context)
 
 def _summary(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import os
 import tempfile
@@ -15,6 +14,7 @@ from builders.current_research_auditable_dossier import (
     render_current_research_auditable_dossier_markdown,
     replay_current_research_auditable_dossier,
 )
+from builders.canonical_identity import canonical_json as _canonical, content_identity as _identity
 
 SCHEMA_VERSION = "1.0.0"
 CONTRACT_VERSION = "current_research_dossier_batch_catalog/v1"
@@ -27,14 +27,6 @@ MALFORMED = "MALFORMED"
 AUTHORITY_BLOCKED = "AUTHORITY_BLOCKED"
 INPUT_NOT_FOUND = "INPUT_NOT_FOUND"
 _STATUSES = {DOSSIER_READY, NO_ACCEPTED_SYNTHESIS, REJECTED_UNTRACEABLE, CONTEXT_UNAVAILABLE, EVIDENCE_CONFLICT_FAIL_CLOSED, MALFORMED, AUTHORITY_BLOCKED, INPUT_NOT_FOUND}
-
-
-def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
-def _identity(prefix: str, value: Any) -> str:
-    return prefix + hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
 
 
 def _load_object(path: Path) -> Mapping[str, Any]:

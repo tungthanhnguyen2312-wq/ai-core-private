@@ -27,3 +27,5 @@ jobs:
           tests/test_dnse_foreign_flow_contract_pass_through.py
           tests/test_current_market_flow_positioning_contract_pass_through.py
           tests/test_shadow_recommendation_consumer_narrative.py
+          tests/test_canonical_identity.py
+          tests/test_current_research_synthesis_operational_workflow.py

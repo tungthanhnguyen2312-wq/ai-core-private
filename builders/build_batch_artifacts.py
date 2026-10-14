@@ -7,7 +7,6 @@ AI ANALYZE/exports/context_packages and existing files are never overwritten.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -15,7 +14,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vn_time import vn_now_iso  # noqa: E402
+from vn_time import vn_now_iso   # noqa: E402
+from canonical_identity import is_relative_to as _is_relative_to, sha256_file  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE_ROOT = SCRIPT_DIR.parent
@@ -57,14 +57,6 @@ def save_json_new(path: Path, payload: dict[str, Any]) -> None:
     save_text_new(path, json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
 
 
-def _is_relative_to(path: Path, parent: Path) -> bool:
-    try:
-        path.relative_to(parent)
-        return True
-    except ValueError:
-        return False
-
-
 def validate_output_path(path: Path) -> Path:
     resolved = path if path.is_absolute() else WORKSPACE_ROOT / path
     resolved = resolved.resolve()
@@ -75,14 +67,6 @@ def validate_output_path(path: Path) -> Path:
     if resolved.suffix.lower() not in {".json", ".md"}:
         raise ValueError("Output must be .json or .md")
     return resolved
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def fingerprint_file(path: Path) -> dict[str, Any]:
