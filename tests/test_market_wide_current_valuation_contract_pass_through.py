@@ -8,7 +8,10 @@ from builders.build_ticker_context import (
 )
 
 
-ARTIFACT = (Path(__file__).resolve().parents[2] / "stock-core-private" / "operations-review"
+WORKSPACE = Path(__file__).resolve().parents[2]
+if WORKSPACE.name == "worktrees":
+    WORKSPACE = WORKSPACE.parent
+ARTIFACT = (WORKSPACE / "stock-core-private" / "operations-review"
             / "market-wide-current-valuation-research-scaleout-v1" / "market_wide_current_valuation_artifact.json")
 
 
