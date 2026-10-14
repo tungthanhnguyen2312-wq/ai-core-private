@@ -119,6 +119,55 @@ def _optional_contract(
     return _present(value)
 
 
+# Producer ``current_macro_regime.session_context()`` is what Daily binds into
+# ``market.macro``: a cutoff-narrowed projection of a ``current_macro_regime/v1``
+# artifact, which by design carries no ``contract_version`` of its own.
+MACRO_SESSION_UNAVAILABLE_REQUIRED_KEYS = frozenset({"status", "reason", "is_actionable"})
+MACRO_SESSION_UNAVAILABLE_KEYS = MACRO_SESSION_UNAVAILABLE_REQUIRED_KEYS | {"macro_artifact_identity"}
+MACRO_SESSION_AVAILABLE_KEYS = frozenset({
+    "status", "macro_artifact_identity", "cutoff", "macro_regime",
+    "state_axes", "observations", "excluded_observations", "is_actionable",
+})
+
+
+def _is_macro_session_projection(value: Mapping[str, Any]) -> bool:
+    """Exact Producer session-projection shape; tighter than the card ``macro_context`` check."""
+    if value.get("is_actionable") is not False:
+        return False
+    keys = set(value)
+    if value.get("status") == "UNAVAILABLE":
+        identity = value.get("macro_artifact_identity", "")
+        return (MACRO_SESSION_UNAVAILABLE_REQUIRED_KEYS <= keys <= MACRO_SESSION_UNAVAILABLE_KEYS
+                and isinstance(value.get("reason"), str) and bool(value["reason"])
+                and (identity is None or isinstance(identity, str)))
+    if value.get("status") == "AVAILABLE":
+        identity = value.get("macro_artifact_identity")
+        return (keys == MACRO_SESSION_AVAILABLE_KEYS
+                and isinstance(identity, str) and identity.startswith("current_macro_regime:")
+                and isinstance(value.get("cutoff"), str) and bool(value["cutoff"])
+                and all(isinstance(value.get(name), Mapping) for name in ("macro_regime", "state_axes", "observations", "excluded_observations")))
+    return False
+
+
+def _current_macro_regime(value: Any) -> dict[str, Any]:
+    """Accept a versioned regime or the unversioned session projection, verbatim.
+
+    A value carrying any ``contract_version`` keeps the strict version check; an
+    unversioned value is accepted only in the exact projection shape.  Nothing is
+    added to it, so no version is synthesized and no authority is promoted.
+    """
+    if isinstance(value, Mapping) and "contract_version" not in value:
+        if not _is_macro_session_projection(value):
+            raise CanonicalDailyProducerSessionError("DAILY_PRODUCER_CURRENT_MACRO_REGIME_INVALID")
+        return _present(value)
+    return _optional_contract(
+        value,
+        expected_contract=CURRENT_MACRO_REGIME_CONTRACT,
+        missing_reason="PRODUCER_CURRENT_MACRO_REGIME_MISSING",
+        malformed_reason="DAILY_PRODUCER_CURRENT_MACRO_REGIME_INVALID",
+    )
+
+
 def _handoff_surfaces(bundle: Mapping[str, Any]) -> dict[str, Any]:
     """Return additive, bundle-scoped current Producer surfaces without interpretation.
 
@@ -141,12 +190,7 @@ def _handoff_surfaces(bundle: Mapping[str, Any]) -> dict[str, Any]:
         missing_reason="PRODUCER_MACRO_PRESENTATION_CONTEXT_MISSING",
         malformed_reason="DAILY_PRODUCER_MACRO_PRESENTATION_CONTEXT_INVALID",
     )
-    macro_regime = _optional_contract(
-        market.get("macro"),
-        expected_contract=CURRENT_MACRO_REGIME_CONTRACT,
-        missing_reason="PRODUCER_CURRENT_MACRO_REGIME_MISSING",
-        malformed_reason="DAILY_PRODUCER_CURRENT_MACRO_REGIME_INVALID",
-    )
+    macro_regime = _current_macro_regime(market.get("macro"))
     overlay = bundle.get("integrated_decision_overlay_v1")
     if overlay is not None and (
         not isinstance(overlay, Mapping) or overlay.get("contract_version") != INTEGRATED_DELIVERY_CONTRACT
