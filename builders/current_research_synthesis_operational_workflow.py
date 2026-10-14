@@ -5,6 +5,7 @@ from typing import Any,Mapping,Sequence
 from builders.structured_research_synthesis_boundary import LEGACY_DIRECT,accept_structured_research_synthesis
 from builders.accepted_structured_synthesis_corpus import register_accepted_structured_synthesis,corpus_to_dossier_batch_inputs
 from builders.canonical_identity import content_identity as _i
+from builders.financial_metric_research_consumer_context import build_financial_metric_research_consumer_context
 SCHEMA_VERSION='1.0.0';CONTRACT_VERSION='current_research_synthesis_operational_workflow/v1'
 _COMPONENTS=('watchlist_tactical_entry_classifier','current_opportunity_decision_context','current_research_decision_packet','current_research_scenario_context','current_market_sector_leadership_context','current_financial_momentum_context','current_corporate_event_context','current_research_risk_register','market_wide_current_valuation','market_wide_historical_research_context')
 def build_synthesis_request_package(context:Mapping[str,Any],*,packet_consumption_mode:str=LEGACY_DIRECT)->dict[str,Any]:
@@ -22,15 +23,19 @@ def build_synthesis_request_package(context:Mapping[str,Any],*,packet_consumptio
    if value['availability']=='AVAILABLE' and not isinstance(value.get('value'),Mapping):raise ValueError('PRODUCER_HANDOFF_SURFACES_MALFORMED')
    if value['availability']=='MISSING' and (not isinstance(value.get('reason_codes'),list) or not value['reason_codes']):raise ValueError('PRODUCER_HANDOFF_SURFACES_MALFORMED')
   request['producer_handoff_surfaces']=copy.deepcopy(dict(surfaces))
+ # Opt-in Producer numerical metric research: projected verbatim, never recalculated; absent leaves the request unchanged.
+ if 'financial_valuation_metric_research' in context:request['financial_metric_research_context']=build_financial_metric_research_consumer_context(context['financial_valuation_metric_research'],context['ticker'])
  request['request_identity']=_i('current_research_synthesis_request:',request);return request
-def prepare_synthesis_session(inputs:Sequence[Mapping[str,Any]],*,session_label:str)->dict[str,Any]:
+def prepare_synthesis_session(inputs:Sequence[Mapping[str,Any]],*,session_label:str,retain_contexts:bool=True)->dict[str,Any]:
+ # retain_contexts=False skips the per-ticker context copy for callers that only write requests; the manifest is identical.
  if not isinstance(session_label,str) or not session_label:raise ValueError('SESSION_LABEL_MALFORMED')
  seen=set();packages=[];contexts={}
  for item in inputs:
   if not isinstance(item,Mapping) or not isinstance(item.get('context'),Mapping):raise ValueError('SESSION_INPUT_MALFORMED')
   p=build_synthesis_request_package(item['context'],packet_consumption_mode=item.get('packet_consumption_mode',LEGACY_DIRECT));t=p['ticker']
   if t in seen:raise ValueError('SESSION_DUPLICATE_TICKER:'+t)
-  seen.add(t);packages.append(p);contexts[t]=copy.deepcopy(item['context'])
+  seen.add(t);packages.append(p)
+  if retain_contexts:contexts[t]=copy.deepcopy(item['context'])
  packages.sort(key=lambda x:x['ticker']);manifest={'schema_version':SCHEMA_VERSION,'contract_version':CONTRACT_VERSION,'session_label':session_label,'requests':packages,'denominator':len(packages),'authority_boundary':{'is_actionable':False,'no_model_invocation':True,'explicit_response_ingestion_only':True}}
  manifest['session_identity']=_i('current_research_synthesis_session:',manifest);return {'manifest':manifest,'contexts_by_ticker':contexts}
 def ingest_synthesis_session(prepared:Mapping[str,Any],responses_by_ticker:Mapping[str,Any],corpus:Mapping[str,Any])->dict[str,Any]:

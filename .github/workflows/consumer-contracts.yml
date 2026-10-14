@@ -29,3 +29,4 @@ jobs:
           tests/test_shadow_recommendation_consumer_narrative.py
           tests/test_canonical_identity.py
           tests/test_current_research_synthesis_operational_workflow.py
+          tests/test_financial_metric_research_consumer_context.py
