@@ -125,6 +125,31 @@ class CanonicalDailyProducerSessionIngestionTests(unittest.TestCase):
         self.assertEqual("UNAVAILABLE", surfaces["market_flow_coverage"]["value"]["status"])
         self.assertEqual("integrated_decision_delivery_overlay/v1", surfaces["integrated_decision_overlay"]["value"]["contract_version"])
 
+    def test_synthesis_request_keeps_available_macro_and_missing_surfaces_verbatim(self):
+        available = {
+            "status": "AVAILABLE", "macro_artifact_identity": "current_macro_regime:retained",
+            "cutoff": "2026-08-25T08:00:00+00:00", "macro_regime": {"state": "MIXED"},
+            "state_axes": {}, "observations": {}, "excluded_observations": {},
+            "is_actionable": False,
+        }
+        self.fixture.bundle["market"]["macro"] = available
+        del self.fixture.bundle["market"]["macro_presentation_context"]
+        self.fixture._write_all()
+        context = load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)["ticker_contexts"]["ABB"]
+        original = copy.deepcopy(context)
+        request = prepare_synthesis_session([{"context": context}], session_label=SESSION)["manifest"]["requests"][0]
+        assert request["producer_handoff_surfaces"] == context["producer_handoff_surfaces"]
+        assert request["producer_handoff_surfaces"]["current_macro_regime"]["value"] == available
+        assert request["producer_handoff_surfaces"]["macro_presentation_context"]["availability"] == "MISSING"
+        assert request["permitted_evidence_refs"] == []
+        assert context == original
+
+    def test_synthesis_request_refuses_malformed_handoff_envelope(self):
+        context = load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)["ticker_contexts"]["ABB"]
+        context["producer_handoff_surfaces"]["current_macro_regime"] = {"availability": "AVAILABLE", "value": 2}
+        with self.assertRaisesRegex(ValueError, "PRODUCER_HANDOFF_SURFACES_MALFORMED"):
+            prepare_synthesis_session([{"context": context}], session_label=SESSION)
+
     def test_missing_optional_current_surfaces_are_explicit_not_synthesized(self):
         del self.fixture.bundle["source_freshness_matrix"]
         del self.fixture.bundle["market"]["macro"]
@@ -142,6 +167,63 @@ class CanonicalDailyProducerSessionIngestionTests(unittest.TestCase):
         self.fixture._write_all()
         with self.assertRaisesRegex(CanonicalDailyProducerSessionError, "MACRO_PRESENTATION_CONTEXT_INVALID"):
             load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)
+
+    def _load_macro(self, macro):
+        self.fixture.bundle["market"]["macro"] = macro
+        self.fixture._write_all()
+        surfaces = load_canonical_daily_producer_session(self.fixture.run_path, session=SESSION)["ticker_contexts"]["ABB"]["producer_handoff_surfaces"]
+        return surfaces["current_macro_regime"]
+
+    def test_unversioned_macro_session_projections_are_preserved_verbatim(self):
+        available = {
+            "status": "AVAILABLE", "macro_artifact_identity": "current_macro_regime:abc",
+            "cutoff": "2026-08-25T08:00:00+00:00", "macro_regime": {"state": "MIXED"},
+            "state_axes": {}, "observations": {}, "excluded_observations": {"us_cpi": ["NEXT_OFFICIAL_RELEASE_DUE"]},
+            "is_actionable": False,
+        }
+        unavailable = [
+            {"status": "UNAVAILABLE", "reason": "NO_EXPLICIT_MACRO_ARTIFACT_BOUND", "is_actionable": False},
+            {"status": "UNAVAILABLE", "reason": "MACRO_EVIDENCE_NOT_KNOWN_BY_RETAINED_EQUITY_SESSION",
+             "macro_artifact_identity": "current_macro_regime:abc", "is_actionable": False},
+            {"status": "UNAVAILABLE", "reason": "MACRO_EVIDENCE_NOT_KNOWN_BY_RETAINED_EQUITY_SESSION",
+             "macro_artifact_identity": None, "is_actionable": False},
+        ]
+        for macro in [available, *unavailable]:
+            with self.subTest(status=macro["status"], reason=macro.get("reason")):
+                surface = self._load_macro(copy.deepcopy(macro))
+                self.assertEqual({"availability": "AVAILABLE", "value": macro}, surface)
+                self.assertNotIn("contract_version", surface["value"])
+
+    def test_malformed_unversioned_macro_projection_fails_closed(self):
+        base = {
+            "status": "AVAILABLE", "macro_artifact_identity": "current_macro_regime:abc",
+            "cutoff": "2026-08-25T08:00:00+00:00", "macro_regime": {}, "state_axes": {},
+            "observations": {}, "excluded_observations": {}, "is_actionable": False,
+        }
+        cases = {
+            "actionable": {**base, "is_actionable": True},
+            "actionable_missing": {k: v for k, v in base.items() if k != "is_actionable"},
+            "unknown_status": {**base, "status": "PARTIAL"},
+            "extra_field": {**base, "authority": "PROMOTED"},
+            "missing_field": {k: v for k, v in base.items() if k != "state_axes"},
+            "foreign_identity": {**base, "macro_artifact_identity": "macro_presentation_context:abc"},
+            "empty_cutoff": {**base, "cutoff": ""},
+            "non_mapping_axes": {**base, "observations": []},
+            "unavailable_without_reason": {"status": "UNAVAILABLE", "is_actionable": False},
+            "unavailable_extra_field": {"status": "UNAVAILABLE", "reason": "X", "macro_regime": {}, "is_actionable": False},
+            "not_a_mapping": ["AVAILABLE"],
+        }
+        for name, macro in cases.items():
+            with self.subTest(case=name):
+                with self.assertRaisesRegex(CanonicalDailyProducerSessionError, "CURRENT_MACRO_REGIME_INVALID"):
+                    self._load_macro(macro)
+
+    def test_versioned_macro_keeps_strict_version_check(self):
+        projection = {"status": "UNAVAILABLE", "reason": "NO_EXPLICIT_MACRO_ARTIFACT_BOUND", "is_actionable": False}
+        for version in ("current_macro_regime/v2", "macro_presentation_context/v1", None, ""):
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(CanonicalDailyProducerSessionError, "CURRENT_MACRO_REGIME_INVALID"):
+                    self._load_macro({**projection, "contract_version": version})
 
     def test_wrong_identity_is_rejected(self):
         self.fixture.bundle["operation_identity"] = "daily_research_session_operation:other"
