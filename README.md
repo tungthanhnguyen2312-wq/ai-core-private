@@ -1,55 +1,67 @@
-# AI ANALYZE — Consumer contract layer
+<a id="ai-analyze--consumer-contract-layer"></a>
+# AI ANALYZE — Lớp hợp đồng Consumer
 
-AI ANALYZE is the fail-closed Consumer for Stock Lookup. Its normal input is the
-immutable Producer handoff (`ai_research_session_bundle/v1`) and any explicitly
-referenced deterministic artifact. It validates and preserves qualified contracts
-for human research interaction in ChatGPT, Codex, or another approved AI surface.
+AI ANALYZE là Consumer hoạt động theo nguyên tắc fail-closed của Stock Lookup.
+Đầu vào thông thường là gói bàn giao bất biến từ Producer
+(`ai_research_session_bundle/v1`) cùng các artifact tính toán tất định được tham
+chiếu rõ ràng. Consumer kiểm tra và bảo toàn các hợp đồng đã được xác nhận đủ
+điều kiện để con người nghiên cứu với AI trong ChatGPT, Codex hoặc một giao diện
+AI khác đã được phê duyệt.
 
-`stock-core-private` is the Producer and factual/numerical authority. DNSE is its
-primary current market-data direction. This repository does not crawl markets,
-create source authority, upgrade freshness, or turn AI prose into a recommendation.
+`stock-core-private` là Producer, nắm authority về dữ kiện và số liệu. DNSE là
+định hướng nguồn dữ liệu thị trường hiện tại chủ đạo của Producer. Repository
+này không thu thập dữ liệu thị trường, tạo authority cho nguồn, nâng mức độ mới
+của dữ liệu hay biến nội dung do AI viết thành khuyến nghị.
 
-## Start here
+<a id="start-here"></a>
+## Bắt đầu tại đây
 
-- Read [the current Consumer authority map](docs/current_consumer_authority_map.md).
-- For a current Daily handoff, use
-  `builders/canonical_daily_producer_session_ingestion.py` with one explicit,
-  retained `run_manifest.json`; it resolves only its co-located immutable delivery
-  files and never selects a “latest” run.
-- Use [the prompt library](prompts/ai_analysis_templates.md) and
-  [the operating pack](operating_pack/README.md) after the handoff is available.
-- Read [historical planning and operating documents](docs/HISTORICAL_DOCUMENTS.md)
-  only for reproduction or audit context. They do not supersede Producer state.
+- Đọc [bản đồ authority hiện tại của Consumer](docs/current_consumer_authority_map.md).
+- Với gói bàn giao Daily hiện tại, dùng
+  `builders/canonical_daily_producer_session_ingestion.py` với một
+  `run_manifest.json` được chỉ định rõ và đã lưu giữ; công cụ chỉ phân giải các
+  file bàn giao bất biến nằm cùng vị trí, không bao giờ tự chọn lần chạy “mới nhất”.
+- Dùng [thư viện prompt](prompts/ai_analysis_templates.md) và
+  [bộ hướng dẫn vận hành](operating_pack/README.md) sau khi có gói bàn giao.
+- Chỉ đọc [tài liệu kế hoạch và vận hành lịch sử](docs/HISTORICAL_DOCUMENTS.md)
+  khi cần tái hiện hoặc kiểm toán. Các tài liệu này không thay thế trạng thái
+  do Producer quản lý.
 
-## Authority boundary
+<a id="authority-boundary"></a>
+## Ranh giới authority
 
-Producer → qualified deterministic research → immutable AI handoff → Consumer
-validation/pass-through → human AI research interaction.
+Producer → nghiên cứu tất định từ evidence đủ điều kiện → gói bàn giao AI bất
+biến → Consumer kiểm tra và chuyển tiếp nguyên trạng → con người nghiên cứu với AI.
 
-- A Producer fact, source identity, freshness state, authority tier, reason code,
-  or unavailable state is preserved as supplied.
-- `macro_presentation_context/v1` is descriptive presentation context and remains
-  distinct from `current_macro_regime/v1`.
-- DNSE foreign/value flow, broader market-flow positioning, and proprietary-flow
-  availability are separate concepts; Consumer does not merge them.
-- Tactical/shadow evidence is non-authoritative. It cannot become a production
-  recommendation, probability, target, or sizing instruction.
-- Missing intrinsic valuation or sizing authority remains blocked/unavailable.
-- AI narrative is non-authoritative: it cannot create a buy/sell decision,
-  target, probability, expected return, allocation, or share count.
+- Dữ kiện, danh tính nguồn, trạng thái độ mới, cấp authority, reason code hoặc
+  trạng thái không khả dụng từ Producer đều được bảo toàn như khi nhận.
+- `macro_presentation_context/v1` là ngữ cảnh trình bày mang tính mô tả, luôn
+  tách biệt với `current_macro_regime/v1`.
+- Dòng giao dịch nước ngoài/giá trị từ DNSE, vị thế dòng tiền thị trường rộng
+  và mức độ sẵn có của dữ liệu tự doanh là các khái niệm riêng; Consumer không
+  gộp chúng.
+- Evidence kỹ thuật/shadow không có authority. Không được biến evidence đó
+  thành khuyến nghị production, xác suất, mục tiêu hay chỉ dẫn quy mô vị thế.
+- Authority còn thiếu cho định giá nội tại hoặc xác định quy mô vị thế vẫn
+  được giữ ở trạng thái bị chặn/không khả dụng.
+- Diễn giải của AI không có authority: không được tạo quyết định mua/bán,
+  mục tiêu, xác suất, lợi nhuận kỳ vọng, phân bổ vốn hoặc số lượng cổ phiếu.
 
-## Legacy and historical material
+<a id="legacy-and-historical-material"></a>
+## Tài liệu cũ và lịch sử
 
-Context packages, VNStock-named schemas, old platform upload instructions, and
-the Gemini pack remain for reproducibility where retained. They are
-`HISTORICAL` or `OPTIONAL_FALLBACK`, not the normal Daily path. Gemini material is
-deprecated historical/audit material and is not a recommended executor.
+Các gói ngữ cảnh, schema mang tên VNStock, hướng dẫn tải lên nền tảng cũ và
+bộ tài liệu Gemini được giữ lại để tái hiện khi còn dữ liệu lưu giữ. Chúng
+thuộc `HISTORICAL` hoặc `OPTIONAL_FALLBACK`, không phải luồng Daily thông thường.
+Tài liệu Gemini là tư liệu lịch sử/kiểm toán đã ngừng khuyến nghị sử dụng;
+Gemini không phải bên thực thi được đề xuất.
 
-## Repository guardrails
+<a id="repository-guardrails"></a>
+## Nguyên tắc bảo vệ repository
 
-- Do not modify the runtime selected by `STOCK_LOOKUP_RUNTIME_ROOT`.
-- Do not treat missing, null, sentinel, stale, partial, or blocked inputs as a
-  usable current value.
-- Keep point-in-time, source, unit, scale, and authority boundaries explicit.
-- Producer state and roadmap remain authoritative; this repository does not own a
-  competing Stock Lookup roadmap.
+- Không sửa runtime được chọn qua `STOCK_LOOKUP_RUNTIME_ROOT`.
+- Không coi đầu vào bị thiếu, null, sentinel, cũ, một phần hoặc bị chặn là
+  giá trị hiện tại có thể sử dụng.
+- Nêu rõ ranh giới point-in-time, nguồn, đơn vị, thang đo và authority.
+- Trạng thái và lộ trình do Producer quản lý vẫn có authority; repository này
+  không duy trì một lộ trình Stock Lookup cạnh tranh.
